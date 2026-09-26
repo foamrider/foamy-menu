@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "foamy.menu",
+  "name": "Foamy Menu",
+  "version": "1.0.0",
+  "author": "foamrider",
+  "description": "Omarchy's stock menu with a configurable minimum width and bar icon",
+  "license": "MIT",
+  "kinds": ["menu", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {"menu": "Menu.qml", "barWidget": "BarWidget.qml"},
+  "barWidget": {
+    "displayName": "Menu",
+    "description": "Stock Omarchy menu with a configurable width and icon",
+    "category": "Compositor",
+    "allowMultiple": false,
+    "defaultSection": "left",
+    "defaults": {"width": 360, "icon": "󰣇", "iconFont": ""},
+    "schema": [
+      {"key": "width", "type": "integer", "label": "Minimum menu width (0 = stock)", "defaultValue": 360, "min": 0, "max": 4096, "step": 10},
+      {"key": "icon", "type": "string", "label": "Bar icon", "defaultValue": "󰣇"},
+      {"key": "iconFont", "type": "string", "label": "Icon font (empty = bar font)", "defaultValue": ""}
+    ]
+  },
+  "omarchy": {"clonedFrom": "omarchy.menu"}
+}
