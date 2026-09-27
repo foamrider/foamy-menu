@@ -65,6 +65,19 @@ Run `omarchy plugin validate .` and `qmllint -I "$OMARCHY_PATH/shell" Menu.qml B
 Run `./test.sh` in a graphical session for integration checks. It briefly opens
 preview menus in a separate Quickshell instance and uses only temporary fixtures.
 
+## Remove
+
+```sh
+omarchy plugin remove foamy.menu
+```
+
+When removing an enabled replacement, Omarchy restores `omarchy.menu`. Restart
+the shell with `omarchy restart shell` to reload the stock menu. Your application
+entries and `omarchy-menu.jsonc` customizations remain unchanged.
+
+Omarchy manages the plugin entry in `shell.json`. Packages and data outside
+the plugin directory are retained unless you remove them separately.
+
 ## License
 
 [MIT](LICENSE), with the [Omarchy notice](LICENSE-OMARCHY) for the derived bar widget.
