@@ -47,8 +47,9 @@ continues to use `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
 
 ## Compatibility
 
-The wrapper loads Omarchy's packaged `AppLibrary.qml` for the menu because the
-host plugin facade can lose its application-library reference during reloads.
+The wrapper reuses the host application library. If a configuration reload
+revokes that capability, it loads Omarchy's packaged `AppLibrary.qml` as a
+fallback and releases it when the host capability is available again.
 Width settings are watched directly in `shell.json` for the same reason.
 Application discovery and launch logic still come entirely from Omarchy.
 

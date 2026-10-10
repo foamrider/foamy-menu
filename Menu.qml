@@ -11,6 +11,9 @@ Item {
   property string settingsPath: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/omarchy/shell.json"
   property var barConfig: ({})
   property var manifest: null
+  property var shell: null
+  readonly property var sharedAppLibrary: shell ? shell.appLibrary : null
+  readonly property bool usingSharedAppLibrary: !!sharedAppLibrary
   readonly property bool opened: menu.item ? menu.item.opened : false
   property var menuWindow: null
   property var menuSurface: null
@@ -58,20 +61,20 @@ Item {
   function refresh() { return menu.item ? menu.item.refresh() : "stock menu unavailable" }
   function ping() { return menu.item ? menu.item.ping() : "stock menu unavailable" }
 
-  // Own the packaged engine: the shell's plugin facade can lose its library
-  // during API reloads. No application-list or launch logic is copied here.
+  // Reuse the host library. A revoked facade needs a packaged fallback until reinjection.
   Loader {
     id: localAppLibrary
+    active: !root.usingSharedAppLibrary
     source: root.omarchyPath + "/shell/services/AppLibrary.qml"
   }
   QtObject {
     id: menuServices
-    readonly property var appLibrary: localAppLibrary.item
+    readonly property var appLibrary: root.sharedAppLibrary || localAppLibrary.item
   }
 
   Loader {
     id: menu
-    active: localAppLibrary.status === Loader.Ready
+    active: menuServices.appLibrary !== null
     source: root.omarchyPath + "/shell/plugins/menu/Menu.qml"
     onLoaded: {
       item.shell = menuServices

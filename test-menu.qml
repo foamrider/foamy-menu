@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "plugin" as Foamy
+import "services" as Services
 
 ShellRoot {
   id: test
@@ -13,7 +14,34 @@ ShellRoot {
     checks++
     console.log("PASS: " + message)
   }
+  Services.AppLibrary { id: hostLibrary }
+  Services.PluginAppLibraryApi {
+    id: capability
+    ownerPluginId: "foamy.menu"
+    _entryName: function(entry) { return hostLibrary.entryName(entry) }
+    _entrySubtext: function(entry) { return hostLibrary.entrySubtext(entry) }
+    _sortedEntries: function(query) { return hostLibrary.sortedEntries(query) }
+    _iconSource: function(icon) { return hostLibrary.iconSource(icon) }
+    _refreshIcons: function() { hostLibrary.refreshIcons() }
+  }
+  Connections {
+    target: hostLibrary
+    function onAppsChanged() { capability.appsChanged() }
+  }
+  Component {
+    id: facade
+    Services.PluginShellApi { pluginId: "foamy.menu"; appLibrary: capability }
+  }
   Foamy.Menu { id: wrapper; settingsPath: settingsFixture.path }
+  Component.onCompleted: wrapper.shell = facade.createObject(null)
+  function fallbackActive() {
+    for (var i = 0; i < wrapper.data.length; i++) {
+      var child = wrapper.data[i]
+      if (child instanceof Loader && String(child.source).endsWith("/AppLibrary.qml"))
+        return child.active
+    }
+    return true
+  }
   FileView {
     id: settingsFixture
     path: Qt.resolvedUrl("shell.json").toString().replace("file://", "")
@@ -35,6 +63,7 @@ ShellRoot {
       switch (test.stage++) {
       case 0:
         test.check(stock && wrapper.menuSurface, "loads the installed stock menu")
+        test.check(wrapper.usingSharedAppLibrary && !test.fallbackActive(), "host capability avoids a duplicate application library")
         wrapper.open('{"menu":"root"}')
         break
       case 1:
@@ -89,6 +118,23 @@ ShellRoot {
         break
       case 12:
         test.check(stock.item("foamy-test") === null, "removed entry disappears through stock file watcher")
+        wrapper.close()
+        // Revocation destroys the actual facade object, as the host does on reload.
+        wrapper.shell.destroy()
+        break
+      case 13:
+        test.check(!wrapper.usingSharedAppLibrary && test.fallbackActive(), "revoked facade activates the packaged fallback")
+        wrapper.open('{"menu":"apps"}')
+        break
+      case 14:
+        test.check(stock.childCount("apps") > 0, "applications remain available after capability loss")
+        stock.setFilter("firefox")
+        wrapper.shell = facade.createObject(null)
+        break
+      case 15:
+        test.check(wrapper.usingSharedAppLibrary && !test.fallbackActive(), "restored capability releases the fallback library")
+        test.check(wrapper.opened && stock.filterText === "firefox", "search and open state survive capability restoration")
+        test.check(stock.childCount("apps") > 0, "restored host capability supplies applications")
         wrapper.close()
         console.log("RESULT: " + test.checks + " integration checks passed")
         Qt.quit()
