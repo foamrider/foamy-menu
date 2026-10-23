@@ -89,3 +89,5 @@ the plugin directory are retained unless you remove them separately.
 ## License
 
 [MIT](LICENSE), with the [Omarchy notice](LICENSE-OMARCHY) for the derived bar widget.
+
+Menu text is provided by the installed Omarchy menu and follows its language selection on 4.5.
