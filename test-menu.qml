@@ -9,6 +9,19 @@ ShellRoot {
   id: test
   property int stage: 0
   property int checks: 0
+  property int sectionIndex: 0
+  readonly property var sections: ["left", "centerBegin", "center", "centerEnd", "tray", "right"]
+  property var summonCalls: []
+  property var expectedCommands: []
+  property var actionModes: ["accepted", "denied", "revoked", "older", "restored"]
+  property int actionMode: 0
+  readonly property var summonTargets: [
+    {id: "omarchy.clipboard", payload: "{}"},
+    {id: "omarchy.speedtest", payload: "{}"},
+    {id: "omarchy.disk-speedtest", payload: "{}"},
+    {id: "omarchy.image-picker", payload: '{"source":"themes"}'},
+    {id: "omarchy.wifiqr", payload: "{}"}
+  ]
   function check(condition, message) {
     if (!condition) { console.error("FAIL: " + message); Qt.exit(1); return }
     checks++
@@ -46,10 +59,77 @@ ShellRoot {
     id: settingsFixture
     path: Qt.resolvedUrl("shell.json").toString().replace("file://", "")
   }
+  function captureMenu(name) {
+    var path = Quickshell.env("FOAMY_MENU_CAPTURE_DIR")
+    if (path && wrapper.menuSurface) wrapper.menuSurface.grabToImage(function(result) {
+      test.check(result.saveToFile(path + "/" + name + ".png"), "menu capture saved")
+    })
+  }
   function setConfig(bar) { settingsFixture.setText(JSON.stringify({version: 1, bar: bar})) }
   FileView {
     id: fixture
     path: Qt.resolvedUrl("menu.jsonc").toString().replace("file://", "")
+  }
+  function setMenuTestEntry(enabled) {
+    var entries = {apps: {label: "Apps", provider: "apps"}}
+    if (enabled) entries["foamy-test"] = {label: "Foamy test entry", action: "true"}
+    fixture.setText(JSON.stringify(entries))
+  }
+  FileView {
+    id: actionLog
+    path: Quickshell.env("FOAMY_MENU_TEST_ACTION_LOG")
+    blockLoading: true
+  }
+  function startActionBatch() {
+    var mode = actionModes[actionMode]
+    if (mode === "revoked") wrapper.shell.destroy()
+    if (mode === "older") wrapper.shell = {appLibrary: capability}
+    if (mode === "restored") wrapper.shell = facade.createObject(null)
+    if (mode === "accepted" || mode === "denied" || mode === "restored") {
+      wrapper.shell._summon = function(id, payload) {
+        test.summonCalls.push({id: id, payload: payload})
+        return mode !== "denied"
+      }
+    }
+    // Older hosts and destroyed QObjects must both leave the fallback reachable.
+    // Destruction is deferred, so the revoked batch starts on the next timer tick.
+  }
+  function runActionBatch(stock) {
+    var mode = actionModes[actionMode]
+    var accepted = mode === "accepted" || mode === "restored"
+    summonCalls = []
+    test.check(stock.shell.summon("omarchy.image-picker", '{"source":"themes"}') === accepted,
+               mode + " facade preserves the summon result")
+    if (accepted || mode === "denied")
+      test.check(JSON.stringify(summonCalls) === JSON.stringify([summonTargets[3]]),
+                 mode + " facade forwards target and payload unchanged")
+    summonCalls = []
+    for (var i = 0; i < summonTargets.length; i++) {
+      var target = summonTargets[i]
+      var command = "omarchy-shell shell summon " + target.id
+      if (target.payload !== "{}") command += " '" + target.payload + "'"
+      stock.runAction(command)
+    }
+    // 4.0.6 dispatches every action through a command; 4.5 first tries the facade.
+    var direct = summonCalls.length > 0
+    test.check(!direct || JSON.stringify(summonCalls) === JSON.stringify(summonTargets),
+               mode + " direct dispatch is either unused or forwards all five targets once")
+    if (!direct || !accepted) {
+      for (var j = 0; j < summonTargets.length; j++) {
+        var entry = summonTargets[j]
+        expectedCommands.push("shell summon " + entry.id + (entry.payload === "{}" ? "" : " " + entry.payload))
+      }
+    }
+    console.log("DISPATCH: " + mode + ", " + summonCalls.length + " direct host calls")
+  }
+  function actionBatchFinished() {
+    actionLog.reload()
+    var content = actionLog.text().trim()
+    var commands = content ? content.split("\n") : []
+    if (commands.length < expectedCommands.length) return false
+    test.check(JSON.stringify(commands.sort()) === JSON.stringify(expectedCommands.slice().sort()),
+               actionModes[actionMode] + " stock fallback dispatches exact commands without duplicates")
+    return true
   }
   Timer {
     interval: 500
@@ -60,9 +140,16 @@ ShellRoot {
       for (var i = 0; i < wrapper.data.length; i++) {
         if (wrapper.data[i] instanceof Loader) stock = wrapper.data[i].item
       }
+      // Switching application libraries can recreate the stock menu. Let each
+      // new instance load the same fixture before exercising its routes.
+      if (stock && stock.userMenuPath !== fixture.path) {
+        stock.userMenuPath = fixture.path
+        return
+      }
       switch (test.stage++) {
       case 0:
         test.check(stock && wrapper.menuSurface, "loads the installed stock menu")
+        test.check(typeof stock.shell.summon === "function", "stock menu receives a summon adapter")
         test.check(wrapper.usingSharedAppLibrary && !test.fallbackActive(), "host capability avoids a duplicate application library")
         wrapper.open('{"menu":"root"}')
         break
@@ -109,12 +196,11 @@ ShellRoot {
         break
       case 10:
         test.check(wrapper.menuSurface.width <= wrapper.menuWindow.width - Style.gapsOut * 2, "oversized width stays within the screen")
-        stock.userMenuPath = fixture.path
-        fixture.setText('{"foamy-test":{"label":"Foamy test entry","action":"true"}}')
+        test.setMenuTestEntry(true)
         break
       case 11:
         test.check(stock.item("foamy-test") !== null, "new entry appears through stock file watcher")
-        fixture.setText('{}')
+        test.setMenuTestEntry(false)
         break
       case 12:
         test.check(stock.item("foamy-test") === null, "removed entry disappears through stock file watcher")
@@ -136,10 +222,53 @@ ShellRoot {
         test.check(wrapper.opened && stock.filterText === "firefox", "search and open state survive capability restoration")
         test.check(stock.childCount("apps") > 0, "restored host capability supplies applications")
         wrapper.close()
+        test.startActionBatch()
+        break
+      case 16:
+        test.runActionBatch(stock)
+        break
+      case 17:
+        if (!test.actionBatchFinished()) { test.stage--; break }
+        if (++test.actionMode < test.actionModes.length) {
+          test.startActionBatch()
+          test.stage = 16
+          break
+        }
+        break
+      case 18:
+        if (test.sectionIndex === test.sections.length) {
+          test.setConfig({layout: {left: {id: "foamy.menu", width: 800}, right: [{id: "foamy.menu", width: 460}]}})
+          test.stage = 20
+          break
+        }
+        var layout = {}
+        layout[test.sections[test.sectionIndex]] = [{id: "other.menu", width: 900}, "foamy.menu", {id: "foamy.menu", width: 610 + test.sectionIndex}]
+        test.setConfig({layout: layout})
+        wrapper.open('{"menu":"root"}')
+        break
+      case 19:
+        test.check(wrapper.configuredWidth === 610 + test.sectionIndex
+                   && wrapper.menuSurface.width === Style.space(610 + test.sectionIndex),
+                   test.sections[test.sectionIndex] + " retains width through the file watcher")
+        if (test.sectionIndex === 0 || test.sectionIndex === 4) test.captureMenu(test.sections[test.sectionIndex])
+        test.sectionIndex++
+        test.stage = 18
+        break
+      case 20:
+        test.check(wrapper.configuredWidth === 460, "malformed section is skipped")
+        test.setConfig({layout: {tray: [{id: "foamy.menu", width: -1}]}})
+        break
+      case 21:
+        test.check(wrapper.configuredWidth === 360, "invalid width in tray falls back")
+        test.setConfig({layout: {centerEnd: ["foamy.menu"]}})
+        break
+      case 22:
+        test.check(wrapper.configuredWidth === 360, "string entry keeps default width")
+        wrapper.close()
         console.log("RESULT: " + test.checks + " integration checks passed")
         Qt.quit()
       }
     }
   }
-  Timer { interval: 15000; running: true; onTriggered: { console.error("FAIL: timeout"); Qt.exit(1) } }
+  Timer { interval: 40000; running: true; onTriggered: { console.error("FAIL: timeout"); Qt.exit(1) } }
 }

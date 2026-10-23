@@ -20,9 +20,9 @@ Item {
 
   readonly property int configuredWidth: {
     var layout = root.barConfig.layout
-    var sections = ["left", "center", "right"]
+    var sections = ["left", "centerBegin", "center", "centerEnd", "tray", "right"]
     for (var s = 0; layout && s < sections.length; s++) {
-      var entries = layout[sections[s]] || []
+      var entries = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i]
         if (!entry || entry.id !== "foamy.menu" || entry.width === undefined) continue
@@ -70,6 +70,12 @@ Item {
   QtObject {
     id: menuServices
     readonly property var appLibrary: root.sharedAppLibrary || localAppLibrary.item
+
+    function summon(id, payloadJson) {
+      // A missing or revoked facade must leave the stock command fallback available.
+      if (!root.shell || typeof root.shell.summon !== "function") return false
+      return root.shell.summon(id, payloadJson)
+    }
   }
 
   Loader {

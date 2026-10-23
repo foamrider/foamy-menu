@@ -23,7 +23,8 @@ this checkout to `~/.config/omarchy/plugins/foamy.menu` and enable `foamy.menu`.
 ## Configure
 
 Set these fields on the `foamy.menu` entry in `~/.config/omarchy/shell.json`, under
-`bar.layout.left`, `center`, or `right`:
+`bar.layout.left`, `center`, or `right`. Omarchy 4.5 also supports
+`centerBegin`, `centerEnd`, and `tray`:
 
 ```json
 {
@@ -53,6 +54,10 @@ fallback and releases it when the host capability is available again.
 Width settings are watched directly in `shell.json` for the same reason.
 Application discovery and launch logic still come entirely from Omarchy.
 
+On Omarchy 4.5, the adapter forwards menu summon actions to the current host
+API. If that API is unavailable or declines the action, the stock menu retains
+its command fallback. Omarchy 4.0.6 continues to use its stock command dispatch.
+
 The width adapter locates the stock menu's `PanelWindow` and `BorderSurface`, and
 uses its `cardWidth` and `dmenuActive` properties. These are internal Omarchy QML
 interfaces. Menu entry additions/removals require no Foamy update; a structural
@@ -65,6 +70,8 @@ shell after updating Omarchy to load its new code.
 Run `omarchy plugin validate .` and `qmllint -I "$OMARCHY_PATH/shell" Menu.qml BarWidget.qml`.
 Run `./test.sh` in a graphical session for integration checks. It briefly opens
 preview menus in a separate Quickshell instance and uses only temporary fixtures.
+Summon commands are recorded instead of opening panels or running speed tests.
+Set `OMARCHY_PATH` to another Omarchy source directory to test that version.
 
 ## Remove
 
