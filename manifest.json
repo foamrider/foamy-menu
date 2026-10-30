@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "foamy.menu",
   "name": "Foamy Menu",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "foamrider",
   "description": "Omarchy's stock menu with a configurable minimum width and bar icon",
   "license": "MIT",
