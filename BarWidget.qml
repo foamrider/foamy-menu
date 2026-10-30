@@ -9,7 +9,7 @@ BarWidget {
   id: root
   moduleName: "foamy.menu"
 
-  readonly property string icon: String(setting("icon", "󰣇"))
+  readonly property string icon: String(setting("icon", "\u{f08c7}"))
   readonly property string iconFont: String(setting("iconFont", "")) || (bar ? bar.fontFamily : Style.font.family)
   // One code point (a Nerd Font glyph is a UTF-16 surrogate pair).
   readonly property bool glyphIcon: icon.length === 1
