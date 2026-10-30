@@ -53,6 +53,11 @@ Item {
     onLoadFailed: console.warn("foamy.menu: cannot read shell.json; keeping the last valid width")
   }
 
+  function isWindow(object) {
+    return !!object && typeof object === "object" && "contentItem" in object && "screen" in object
+      && !!object.contentItem && "children" in object.contentItem
+  }
+
   function open(payloadJson) {
     if (!menu.item) throw new Error("foamy.menu: stock menu failed to load; check the shell log")
     menu.item.open(payloadJson)
@@ -88,9 +93,12 @@ Item {
 
       // Change only the painted card width, retaining the stock width binding
       // as the minimum for special menus added by future Omarchy releases.
+      // The card is a BorderSurface directly inside the menu's window: a
+      // PanelWindow on 4.0.6, an OverlayWindow (a PanelWindow) on 4.5. Any
+      // window type is accepted, so a new overlay base doesn't break it.
       for (var i = 0; i < item.data.length; i++) {
         var window = item.data[i]
-        if (!(window instanceof PanelWindow)) continue
+        if (!root.isWindow(window)) continue
         for (var j = 0; j < window.contentItem.children.length; j++) {
           var surface = window.contentItem.children[j]
           if (!(surface instanceof BorderSurface)) continue
