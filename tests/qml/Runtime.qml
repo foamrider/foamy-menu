@@ -4,6 +4,11 @@ import Quickshell.Io
 import qs.Commons
 import "plugin" as Foamy
 import "services" as Services
+import "harness" as Harness
+
+// Offscreen integration test, run by tests/runtime.py against the host's
+// real stock menu (4.0.6 or 4.5): width adapter, app library sharing and
+// fallback, live settings, summon routing and the bar button.
 
 ShellRoot {
   id: test
@@ -23,7 +28,7 @@ ShellRoot {
     {id: "omarchy.wifiqr", payload: "{}"}
   ]
   function check(condition, message) {
-    if (!condition) { console.error("FAIL: " + message); Qt.exit(1); return }
+    if (!condition) { console.log("FOAMY FAIL " + message); Qt.exit(1); return }
     checks++
     console.log("PASS: " + message)
   }
@@ -59,11 +64,23 @@ ShellRoot {
     id: settingsFixture
     path: Qt.resolvedUrl("shell.json").toString().replace("file://", "")
   }
-  function captureMenu(name) {
-    var path = Quickshell.env("FOAMY_MENU_CAPTURE_DIR")
-    if (path && wrapper.menuSurface) wrapper.menuSurface.grabToImage(function(result) {
-      test.check(result.saveToFile(path + "/" + name + ".png"), "menu capture saved")
+  readonly property string shots: Quickshell.env("FOAMY_MENU_SHOTS") || ""
+  function capture(item, name) {
+    if (!shots || !item) return
+    item.grabToImage(function(result) {
+      var path = shots + "/" + name + ".png"
+      if (result.saveToFile(path)) console.log("FOAMY SHOT " + path + " " + Math.round(item.width) + "x" + Math.round(item.height))
     })
+  }
+  function captureMenu(name) {
+    if (!shots || !wrapper.menuWindow) return
+    // 4.5's OverlayWindow maps only once Hyprland reports the monitor's
+    // scale; offscreen there is no Hyprland, so show it for the capture.
+    if ("shown" in wrapper.menuWindow && !wrapper.menuWindow.visible) {
+      wrapper.menuWindow.visible = true
+      wrapper.menuWindow.contentItem.opacity = 1
+    }
+    Qt.callLater(function() { test.capture(wrapper.menuSurface, name) })
   }
   function setConfig(bar) { settingsFixture.setText(JSON.stringify({version: 1, bar: bar})) }
   FileView {
@@ -171,7 +188,8 @@ ShellRoot {
         break
       case 4:
         test.check(wrapper.menuSurface.width === Style.space(440), "configuration updates live in another bar section")
-        wrapper.open('{"menu":"style.font"}')
+        // The font picker is one of the stock menus wider than 440 (4.5 renamed it).
+        wrapper.open(JSON.stringify({ menu: stock.item("appearance.font") ? "appearance.font" : "style.font" }))
         break
       case 5:
         test.check(wrapper.menuSurface.width === stock.cardWidth && stock.cardWidth === Style.space(520), "wider stock menu preserved")
@@ -250,7 +268,6 @@ ShellRoot {
         test.check(wrapper.configuredWidth === 610 + test.sectionIndex
                    && wrapper.menuSurface.width === Style.space(610 + test.sectionIndex),
                    test.sections[test.sectionIndex] + " retains width through the file watcher")
-        if (test.sectionIndex === 0 || test.sectionIndex === 4) test.captureMenu(test.sections[test.sectionIndex])
         test.sectionIndex++
         test.stage = 18
         break
@@ -265,10 +282,76 @@ ShellRoot {
       case 22:
         test.check(wrapper.configuredWidth === 360, "string entry keeps default width")
         wrapper.close()
-        console.log("RESULT: " + test.checks + " integration checks passed")
+        test.checkBarWidget()
+        break
+      case 23:
+        test.capture(buttonStrip, "buttons")
+        break
+      case 24:
+        test.setConfig({layout: {left: [{id: "foamy.menu", width: 360}]}})
+        wrapper.open('{"menu":"root"}')
+        break
+      case 25:
+        test.captureMenu("menu-root")
+        break
+      case 26:
+        console.log("FOAMY RESULT " + test.checks + " checks")
+        console.log("FOAMY DONE")
         Qt.quit()
       }
     }
   }
-  Timer { interval: 40000; running: true; onTriggered: { console.error("FAIL: timeout"); Qt.exit(1) } }
+  // --- bar button ---------------------------------------------------------------------------------
+  // A facade-like shell whose toggle() answers `toggleAnswer` (undefined = no toggle at all).
+  QtObject {
+    id: barShell
+    property var toggles: []
+    property var toggleAnswer: true
+    function toggle(id, payload) {
+      toggles = toggles.concat([{ id: id, payload: payload }])
+      return toggleAnswer
+    }
+  }
+  Harness.MockBar {
+    id: mockBar
+    property var runs: []
+    function run(command) { runs = runs.concat([command]) }
+  }
+  FloatingWindow {
+    implicitWidth: 200
+    implicitHeight: mockBar.barSize
+    color: mockBar.background
+    Item {
+      id: buttonStrip
+      width: 200
+      height: mockBar.barSize
+      Foamy.BarWidget { id: glyphWidget; height: parent.height; bar: mockBar; settings: ({}) }
+      Foamy.BarWidget { id: textWidget; x: 60; height: parent.height; bar: mockBar; settings: ({ icon: "Menu" }) }
+    }
+  }
+  function checkBarWidget() {
+    var button = glyphWidget.buttonItem
+    test.check(glyphWidget.glyphIcon && button && "slotSize" in button, "a glyph icon uses the stock BarIconButton")
+    test.check(glyphWidget.implicitWidth === button.slotSize, "the glyph button takes the stock icon slot")
+    test.check(!textWidget.glyphIcon && !("slotSize" in textWidget.buttonItem) && textWidget.implicitWidth > glyphWidget.implicitWidth,
+               "text icons use a WidgetButton that fits the text")
+    mockBar.shell = barShell
+    glyphWidget.activate(Qt.LeftButton)
+    test.check(JSON.stringify(barShell.toggles) === JSON.stringify([{ id: "omarchy.menu", payload: '{"menu":"root"}' }])
+               && mockBar.runs.length === 0, "left-click toggles the menu in-process through the facade")
+    barShell.toggleAnswer = false
+    glyphWidget.activate(Qt.LeftButton)
+    test.check(JSON.stringify(mockBar.runs) === JSON.stringify(["omarchy-shell shell toggle omarchy.menu '{\"menu\":\"root\"}'"]),
+               "a refused toggle falls back to the stock command")
+    mockBar.runs = []
+    mockBar.shell = null
+    textWidget.activate(Qt.LeftButton)
+    test.check(mockBar.runs.length === 1 && mockBar.runs[0].indexOf("omarchy-shell shell toggle omarchy.menu") === 0,
+               "no facade falls back to the stock command")
+    mockBar.runs = []
+    glyphWidget.activate(Qt.RightButton)
+    test.check(JSON.stringify(mockBar.runs) === JSON.stringify(["xdg-terminal-exec"]), "right-click opens the terminal")
+  }
+
+  Timer { interval: 60000; running: true; onTriggered: { console.log("FOAMY FAIL timeout at stage " + test.stage); Qt.exit(1) } }
 }
