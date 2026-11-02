@@ -8,7 +8,8 @@ Item {
   id: root
 
   property string omarchyPath: Quickshell.env("OMARCHY_PATH")
-  property string settingsPath: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/omarchy/shell.json"
+  // The host always reads this path; it does not follow XDG_CONFIG_HOME.
+  property string settingsPath: Quickshell.env("HOME") + "/.config/omarchy/shell.json"
   property var barConfig: ({})
   property var manifest: null
   property var shell: null
@@ -18,21 +19,35 @@ Item {
   property var menuWindow: null
   property var menuSurface: null
 
-  readonly property int configuredWidth: {
+  // The first `width` set on a foamy.menu bar entry, unchecked (undefined if none).
+  readonly property var configuredWidthSetting: {
     var layout = root.barConfig.layout
     var sections = ["left", "centerBegin", "center", "centerEnd", "tray", "right"]
     for (var s = 0; layout && s < sections.length; s++) {
       var entries = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i]
-        if (!entry || entry.id !== "foamy.menu" || entry.width === undefined) continue
-        if (typeof entry.width === "number" && Number.isInteger(entry.width)
-            && entry.width >= 0 && entry.width <= 4096) return entry.width
-        console.warn("foamy.menu: width must be an integer from 0 to 4096; using 360")
-        return 360
+        if (entry && entry.id === "foamy.menu" && entry.width !== undefined) return entry.width
       }
     }
-    return 360
+    return undefined
+  }
+  readonly property int configuredWidth: validWidth(configuredWidthSetting) ? configuredWidthSetting : 360
+  // The manifest's integer schema: a finite whole number from 0 to 4096.
+  function validWidth(value) {
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 4096
+  }
+
+  // Every config read re-evaluates the width; warn once per invalid value.
+  property string reportedWidthSetting: ""
+  onConfiguredWidthSettingChanged: reportWidthSetting()
+  Component.onCompleted: reportWidthSetting()
+  function reportWidthSetting() {
+    var value = configuredWidthSetting
+    var invalid = value !== undefined && !validWidth(value) ? typeof value + " " + String(value) : ""
+    if (invalid && invalid !== reportedWidthSetting)
+      console.warn("foamy.menu: width must be an integer from 0 to 4096; using 360")
+    reportedWidthSetting = invalid
   }
 
   // Read settings independently because a shell config reload can revoke the

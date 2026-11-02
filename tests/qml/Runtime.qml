@@ -210,10 +210,12 @@ ShellRoot {
         break
       case 9:
         test.check(wrapper.configuredWidth === 360 && wrapper.menuSurface.width === Style.space(360), "invalid setting falls back with warning")
+        test.check(wrapper.reportedWidthSetting === "number -20", "invalid width is reported once")
         test.setConfig({layout: {left: [{id: "foamy.menu", width: 4096}]}})
         break
       case 10:
         test.check(wrapper.menuSurface.width <= wrapper.menuWindow.width - Style.gapsOut * 2, "oversized width stays within the screen")
+        test.check(wrapper.reportedWidthSetting === "", "valid width clears the warning")
         test.setMenuTestEntry(true)
         break
       case 11:
@@ -273,10 +275,10 @@ ShellRoot {
         break
       case 20:
         test.check(wrapper.configuredWidth === 460, "malformed section is skipped")
-        test.setConfig({layout: {tray: [{id: "foamy.menu", width: -1}]}})
+        test.setConfig({layout: {tray: [{id: "foamy.menu", width: "440"}]}})
         break
       case 21:
-        test.check(wrapper.configuredWidth === 360, "invalid width in tray falls back")
+        test.check(wrapper.configuredWidth === 360 && wrapper.reportedWidthSetting === "string 440", "non-numeric width in tray falls back")
         test.setConfig({layout: {centerEnd: ["foamy.menu"]}})
         break
       case 22:
