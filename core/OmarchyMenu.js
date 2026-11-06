@@ -1,8 +1,31 @@
 
+// JSONC as Omarchy's menu files use it: whole-line // comments (a JSON
+// string cannot span lines, so one never starts inside a string) and
+// trailing commas, removed only outside strings so a value such as
+// "printf '%s' ',}'" reaches the shell unchanged.
 function stripJsonc(raw) {
-  return String(raw || "")
-    .replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
-    .replace(/,(\s*[}\]])/g, "$1")
+  var text = String(raw || "").replace(/^\s*\/\/[^\n]*(\n|$)/gm, "")
+  var out = ""
+  var inString = false
+  var escaped = false
+  for (var i = 0; i < text.length; i++) {
+    var ch = text.charAt(i)
+    if (inString) {
+      out += ch
+      if (escaped) escaped = false
+      else if (ch === "\\") escaped = true
+      else if (ch === "\"") inString = false
+      continue
+    }
+    if (ch === "\"") inString = true
+    else if (ch === ",") {
+      var j = i + 1
+      while (j < text.length && /\s/.test(text.charAt(j))) j++
+      if (text.charAt(j) === "}" || text.charAt(j) === "]") continue
+    }
+    out += ch
+  }
+  return out
 }
 
 function parentOf(id) {

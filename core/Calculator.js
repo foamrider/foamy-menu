@@ -621,6 +621,9 @@ function multiply(a, b, divide, state) {
   if (a.pct && b.pct) return pct(n)
   if (a.unit && b.unit) {
     if (a.unit.offset || b.unit.offset) throw new CalcError("affine unit")
+    // Two currencies only cancel at a known rate; without rates there is none.
+    if (a.unit.currency && b.unit.currency && a.unit.currency !== b.unit.currency && !(ENV && ENV.rates && ENV.rates.rates))
+      throw new CalcError("no exchange rates")
     var c = compound(a.unit, b.unit, divide ? -1 : 1)
     if (c.scalar !== undefined) return num(n * c.scalar)
     return num(n * c.scale, c.unit)
@@ -780,7 +783,10 @@ Parser.prototype.parseUnit = function(afterNumber) {
   return this.continueUnit(m.unit, 1)
 }
 
+// The unit as typed is kept as `label` ("cm/s", "mm³"): a conversion target
+// that normalises to another unit must still answer in the one asked for.
 Parser.prototype.continueUnit = function(unit, scale) {
+  var label = unit.sym
   for (;;) {
     if ((this.isOp("/") || this.isWord("per")) && this.peek(1) && this.peek(1).t === "id") {
       var save = this.i
@@ -791,16 +797,21 @@ Parser.prototype.continueUnit = function(unit, scale) {
       var c = compound(unit, den.unit, -1)
       if (c.scalar !== undefined) throw new CalcError("unit cancels")
       unit = c.unit; scale *= c.scale
+      label += "/" + den.unit.sym
     } else if (this.isOp("^") && this.peek(1) && this.peek(1).t === "num") {
       this.i++
-      var p = unitPow(unit, this.next().v)
+      var power = this.next().v
+      var p = unitPow(unit, power)
       unit = p.unit; scale *= p.scale
+      label += power === 2 ? "²" : power === 3 ? "³" : "^" + power
     } else if (this.isOp("²") || this.isOp("³")) {
-      var q = unitPow(unit, this.next().v === "²" ? 2 : 3)
+      var sup = this.next().v
+      var q = unitPow(unit, sup === "²" ? 2 : 3)
       unit = q.unit; scale *= q.scale
+      label += sup
     } else break
   }
-  return { unit: unit, scale: scale }
+  return { unit: unit, scale: scale, label: label }
 }
 
 Parser.prototype.parseStatement = function() {
@@ -889,6 +900,10 @@ Parser.prototype.parseTarget = function(value) {
   var u = this.parseUnit(true)
   if (!u) throw new CalcError("unknown target")
   if (value.type !== "num") throw new CalcError("cannot convert")
+  // "36 km/h to cm/s": the target normalised to m/s with a scale; answer in
+  // the unit asked for, whose factor carries that scale.
+  if (u.scale !== 1 && !u.unit.currency && !u.unit.offset)
+    u = { unit: { sym: u.label, name: u.label, plural: u.label, dims: u.unit.dims, factor: unitFactor(u.unit) * u.scale, offset: 0, long: false, currency: "", hint: "", atoms: u.unit.atoms }, scale: 1 }
   this.state.kind = u.unit.currency ? "currency" : "conversion"
   this.state.fromUnit = value.unit
   this.state.toUnit = u.unit

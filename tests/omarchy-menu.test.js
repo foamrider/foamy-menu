@@ -84,3 +84,19 @@ test("the installed Omarchy menu parses completely", { skip: !fs.existsSync(ship
   for (const id of ["apps", "system", "setup", "install", "remove", "update"]) assert.ok(tree.children.root.includes(id), id)
   assert.ok(tree.children.root.includes("style") || tree.children.root.includes("appearance"))
 })
+
+test("trailing commas go, but never from inside a string", () => {
+  // x's action holds ",}" and ",]"; z's label ends in an escaped backslash
+  // right before its closing quote; y and the file end in trailing commas.
+  const raw = [
+    "// a comment line",
+    '{"x": {"label": "X, y", "action": "printf %s \\",}\\" \\",]\\""},',
+    ' "z": {"label": "a\\\\", "action": "true"},',
+    ' "y": {"label": "Y", "action": "true",},',
+    "}"
+  ].join("\n")
+  const parsed = M.parse(raw)
+  assert.equal(parsed.error, "")
+  assert.deepEqual(parsed.items.map((i) => [i.id, i.label, i.action]),
+    [["x", "X, y", 'printf %s ",}" ",]"'], ["z", "a\\", "true"], ["y", "Y", "true"]])
+})
