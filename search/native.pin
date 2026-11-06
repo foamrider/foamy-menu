@@ -1,0 +1,11 @@
+# native.pin: written by foamy-kit tools/build-native.sh; do not edit.
+# check.sh and tests/kit-check.sh verify bin/<arch>/<binary> against it and
+# report the binaries stale when `source` no longer matches the crate, kit/rust,
+# Cargo.toml, Cargo.lock and rust-toolchain.toml. Rebuild: foamy-kit tools/build-native.sh <plugin>.
+crate search
+binary foamy-menu-search
+toolchain 1.99.1
+kit 0.5.0
+source fb2597aa178932f94cb3d5c5de6ce6cf63948cbbf0787c4b96a70bb8228fd7c3
+5396a102d3c1d94df9e9a909285b1e035d067ff5a9acd6f6673ea32113b05232  bin/aarch64/foamy-menu-search
+251a9e31d199dcd3b4aece26005e2c140b397b90521d3f85d7e6e024df40de0b  bin/x86_64/foamy-menu-search

@@ -1,0 +1,4 @@
+[workspace]
+members = ["search"]
+exclude = ["kit"]
+resolver = "3"

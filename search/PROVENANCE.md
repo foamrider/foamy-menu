@@ -82,9 +82,18 @@ The last line may omit LF.
 
 ## Build and verification
 
-Dependencies are `serde` (derive) and `serde_json`; edition is 2024 and release
-LTO is enabled. `Cargo.lock` records dependency resolution from the build host.
-Run `cargo test --locked` and `cargo build --release --locked`. The integration tests execute the built binary and
-cover protocol recovery, reload atomicity, channel scores, optional fields,
-reordered fields, Unicode, long requests, and each input limit. Unit tests also
-cover matcher tiers, shadow removal, sensitivity, and write/flush failure.
+Dependencies are `serde` (derive) and `serde_json`; edition is 2024. The crate is
+the `search` member of the plugin's root Cargo workspace; `Cargo.lock` and
+`rust-toolchain.toml` (foamy-kit, Rust 1.99.1) sit at the plugin root. The release
+binaries `bin/x86_64/foamy-menu-search` and `bin/aarch64/foamy-menu-search` are
+committed, static musl, built reproducibly by foamy-kit's `tools/build-native.sh`
+(through `bin/build-search`) with the kit's release profile (`kit/rust/release.toml`:
+opt-level "s", fat LTO, `panic = "abort"`; `main` exits 101 from the panic hook), and
+recorded in `native.pin`. `bin/build-search --test` runs `cargo fmt --check`, clippy
+with `-D warnings` and `cargo test --locked`; `bin/build-search --verify` rebuilds
+in a fresh target dir and compares bytes. The integration tests execute the built
+binary, or the one named by `FOAMY_HELPER` (a JSON argv prefix, e.g. the aarch64
+build through qemu-user binfmt), and cover protocol recovery, reload atomicity,
+channel scores, optional fields, reordered fields, Unicode, long requests, and each
+input limit. Unit tests also cover matcher tiers, shadow removal, sensitivity, and
+write/flush failure.

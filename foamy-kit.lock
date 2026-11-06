@@ -1,16 +1,27 @@
 # foamy-kit.lock: written by foamy-kit sync.sh; do not edit.
 # Hashes are of each file's body (the file without its stamp line);
 # notices are hashed whole. tests/kit-check.sh verifies them.
-version 0.4.7
-source b13e15564b47
-components FoamyI18n,FoamyIpc,FoamyMotion,FoamyPrefs
+version 0.5.0
+source c656045be63f
+components FoamyI18n,FoamyIpc,FoamyMotion,FoamyNative,FoamyPrefs
 1823e930a714d5adabc6349dc4e43ca810b971939970c5c503cb219fe96533b9  kit/FoamyI18n.qml
 5a372861e53b40a49d0d97cc2796f89231337a9c40700f26a0fcb694d70d2a9b  kit/FoamyIpc.qml
 9560787e2fe14c573f84942540ba4c4686cde246420984419379ed8769a77697  kit/FoamyIpcPreference.qml
 429b18a7c00baf4488c6792a95e4be71207aefa1a237436cef34e33122956915  kit/FoamyIpcResolver.js
 79218200ee2dbe5d1bdfd6ef41768bce029e136f8640f8f5f0833a97d8371d5a  kit/FoamyMotion.qml
+16b017e91ba960a867a1c5cc056f7f8d7bad07c07722714b32765d7c6d53920a  kit/FoamyNative.js
 aeaf0e29f6d83d27bac96614f33f843116dbbd070a675b82f0301773f105624c  kit/FoamyPrefs.js
 e8ac5bbe9a79ea4202f637017e7eb9e438f41bbfcf43a5c91f372e8190af7d91  kit/FoamyPrefsQueue.qml
 90b1a10f5f5005c94031f36fef0ad3d8e705cf4e13372dd8362ef4579e0a93df  kit/node-loader.cjs
 76e34d6aa5a7af3dd8a4db85c4b83c5b3f07e4660c2d5aefd418c4bf1f64c9c2  kit/qmldir
-7cea4426bc12828c7fa8242d275c4b2de44283c163ee2ae7786a175a44f91e77  tests/kit-check.sh
+b55348cdbe6d0e5167b8ce5ea774e7074fc893296c23ad7717d629ec3059f90d  kit/rust/foamy-helper/Cargo.toml
+9b74bf82136c6b84e1545ed33c9b2575d8568c5a17f27a8a86a0d6dade4019a8  kit/rust/foamy-helper/src/child.rs
+402155c59682692dee3485a547be8099c7f484c48af768ff1ed1a562f02be5cd  kit/rust/foamy-helper/src/fs.rs
+17d4cde5814661e1eedce8abdb7ea1e46ef8f9a588d3454920e5fdba99b83c0c  kit/rust/foamy-helper/src/io.rs
+b53abf4b5d48ec1968d93dd9947f1705fb9911e38a5439926cc4a5e36c1bb78c  kit/rust/foamy-helper/src/json.rs
+c29ac380ca7ffec3cee9bc9c227bfb3c6bd50f7aa697911feb087b0b5a89b193  kit/rust/foamy-helper/src/lib.rs
+b5f018d5c973f1115da2ae6c35c7eb8700e6cc24d97cb7b917a04ca05560d45c  kit/rust/foamy-helper/src/lock.rs
+cd151f207a538a6447cbb76a86bd3a0029cb0fa964b5f34a967e4784c0b48289  kit/rust/foamy-helper/src/process.rs
+0aab5b4b47dd8c8530849b0c9540e4c945789e58661f12480d832348786aee6e  kit/rust/release.toml
+868af8f99d78154f4ab510eaa594ed9833639b763939a7f47fb38a0070ea6f6e  rust-toolchain.toml
+12731d0eade39c216ccea404f3db6f70ae697a373da71526868d8ea761e84778  tests/kit-check.sh
