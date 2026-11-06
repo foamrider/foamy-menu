@@ -2,25 +2,192 @@
   "schemaVersion": 1,
   "id": "foamy.menu",
   "name": "Foamy Menu",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "author": "foamrider",
-  "description": "Omarchy's stock menu with a configurable minimum width and bar icon",
+  "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH and web-search scopes",
   "license": "MIT",
-  "kinds": ["menu", "bar-widget"],
+  "kinds": [
+    "menu",
+    "bar-widget"
+  ],
   "keepLoaded": true,
-  "entryPoints": {"menu": "Menu.qml", "barWidget": "BarWidget.qml"},
+  "entryPoints": {
+    "menu": "Menu.qml",
+    "barWidget": "BarWidget.qml"
+  },
   "barWidget": {
     "displayName": "Menu",
-    "description": "Stock Omarchy menu with a configurable width and icon",
+    "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH and web-search scopes",
     "category": "Compositor",
     "allowMultiple": false,
     "defaultSection": "left",
-    "defaults": {"width": 360, "icon": "󰣇", "iconFont": ""},
+    "defaults": {
+      "width": 360,
+      "icon": "\udb82\udcc7",
+      "iconFont": "",
+      "windowMode": "expanded",
+      "escapeKeyBehavior": "pop-back-or-close",
+      "popToRootTimeout": 90,
+      "navigationBindings": "emacs",
+      "rootSearchSensitivity": "medium",
+      "keepVisibleOnFocusLoss": false,
+      "sshScope": true,
+      "webSearchHistory": false,
+      "webSearchSuggestions": false,
+      "currencyRates": true,
+      "clockFormat": "auto",
+      "remToPxRate": 16,
+      "workHoursPerDay": 8,
+      "logLevel": "info"
+    },
     "schema": [
-      {"key": "width", "type": "integer", "label": "Minimum menu width (0 = stock)", "defaultValue": 360, "min": 0, "max": 4096, "step": 10},
-      {"key": "icon", "type": "string", "label": "Bar icon", "defaultValue": "󰣇"},
-      {"key": "iconFont", "type": "string", "label": "Icon font (empty = bar font)", "defaultValue": ""}
+      {
+        "key": "width",
+        "type": "integer",
+        "label": "Minimum menu width (0 = default)",
+        "defaultValue": 360,
+        "min": 0,
+        "max": 4096,
+        "step": 10
+      },
+      {
+        "key": "icon",
+        "type": "string",
+        "label": "Bar icon",
+        "defaultValue": "\udb82\udcc7"
+      },
+      {
+        "key": "iconFont",
+        "type": "string",
+        "label": "Icon font (empty = bar font)",
+        "defaultValue": ""
+      },
+      {
+        "key": "windowMode",
+        "type": "enum",
+        "label": "Window: expanded, or compact (only the search field until you type)",
+        "options": [
+          "expanded",
+          "compact"
+        ],
+        "defaultValue": "expanded"
+      },
+      {
+        "key": "escapeKeyBehavior",
+        "type": "enum",
+        "label": "Esc: go back one level, or close and start over",
+        "options": [
+          "pop-back-or-close",
+          "close-and-pop-to-root"
+        ],
+        "defaultValue": "pop-back-or-close"
+      },
+      {
+        "key": "popToRootTimeout",
+        "type": "integer",
+        "label": "Seconds a closed launcher keeps its place (0 = always start over)",
+        "defaultValue": 90,
+        "min": 0,
+        "max": 3600,
+        "step": 10
+      },
+      {
+        "key": "navigationBindings",
+        "type": "enum",
+        "label": "Move keys besides the arrows: Ctrl+N/P (emacs) or Ctrl+J/K (vim-motions)",
+        "options": [
+          "emacs",
+          "vim-motions"
+        ],
+        "defaultValue": "emacs"
+      },
+      {
+        "key": "rootSearchSensitivity",
+        "type": "enum",
+        "label": "How loosely search matches typos",
+        "options": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "defaultValue": "medium"
+      },
+      {
+        "key": "keepVisibleOnFocusLoss",
+        "type": "boolean",
+        "label": "Stay open when clicking outside",
+        "defaultValue": false
+      },
+      {
+        "key": "sshScope",
+        "type": "boolean",
+        "label": "SSH scope (ssh + Tab)",
+        "defaultValue": true
+      },
+      {
+        "key": "webSearchHistory",
+        "type": "boolean",
+        "label": "Save web searches and list them as Recent Searches",
+        "defaultValue": false
+      },
+      {
+        "key": "webSearchSuggestions",
+        "type": "boolean",
+        "label": "Show search suggestions while typing (sends what you type to the engine)",
+        "defaultValue": false
+      },
+      {
+        "key": "currencyRates",
+        "type": "boolean",
+        "label": "Download exchange rates for currency conversion",
+        "defaultValue": true
+      },
+      {
+        "key": "clockFormat",
+        "type": "enum",
+        "label": "Clock in time calculations (auto follows the system)",
+        "options": [
+          "auto",
+          "12h",
+          "24h"
+        ],
+        "defaultValue": "auto"
+      },
+      {
+        "key": "remToPxRate",
+        "type": "number",
+        "label": "Pixels per rem in unit conversions",
+        "defaultValue": 16,
+        "min": 1,
+        "max": 1000,
+        "step": 1
+      },
+      {
+        "key": "workHoursPerDay",
+        "type": "number",
+        "label": "Hours in a work day in time conversions",
+        "defaultValue": 8,
+        "min": 1,
+        "max": 24,
+        "step": 1
+      },
+      {
+        "key": "logLevel",
+        "type": "enum",
+        "label": "Log level",
+        "options": [
+          "trace",
+          "debug",
+          "info",
+          "warning",
+          "error",
+          "fatal"
+        ],
+        "defaultValue": "info"
+      }
     ]
   },
-  "omarchy": {"clonedFrom": "omarchy.menu"}
+  "omarchy": {
+    "clonedFrom": "omarchy.menu"
+  }
 }
