@@ -52,7 +52,12 @@ as loaded; any search before the first successful load fails.
 
 The caller applies `Ranker.transliterate` to every input string and query once.
 The helper performs no transliteration, normalization, trimming, or path search.
-Each score comes directly from `Matcher::name_bytes`. Hits retain loaded entry
+Each score comes directly from `Matcher::name_bytes`. Before scoring, a field is
+skipped when upstream's letter-presence filter (`searchbits::possible` on the
+query's and the field's `searchbits::mask`, the field mask computed once at load)
+rules it out: the field lacks more query letters than the edit budget, or a digit
+or punctuation of the query. The filter only rejects fields the matcher couldn't
+score (non-ASCII text always passes), so results are identical. Hits retain loaded entry
 order and contain explicit numeric or null `title`, `alternate`, `subtitle`, and
 `keyword` scores. Entries with no surviving channel are omitted. Alternate and
 keyword channels take their maximum score. A subtitle equal to the title after

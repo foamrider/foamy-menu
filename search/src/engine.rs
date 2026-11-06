@@ -1,3 +1,4 @@
+use crate::backend::searchbits;
 use crate::backend::searchmatch::{HIT_SPAN, Letter, Matcher, NAME, SHADOW_TYPO, State};
 use crate::backend::searchtypo::Scratch;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -27,12 +28,26 @@ fn present_string<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<S
     String::deserialize(deserializer).map(Some)
 }
 
+// A searchable field and its letter mask (`searchbits::mask`), computed once at
+// load so a query can skip fields that lack its letters without scoring them.
+struct Field {
+    text: String,
+    bits: u64,
+}
+
+impl Field {
+    fn new(text: String) -> Self {
+        let bits = searchbits::mask(text.as_bytes());
+        Self { text, bits }
+    }
+}
+
 struct Candidate {
-    title: String,
-    subtitle: Option<String>,
-    alternate_titles: Vec<String>,
-    keywords: Vec<String>,
-    bundle_id: Option<String>,
+    title: Field,
+    subtitle: Option<Field>,
+    alternate_titles: Vec<Field>,
+    keywords: Vec<Field>,
+    bundle_id: Option<Field>,
 }
 
 impl Entry {
@@ -79,11 +94,11 @@ impl Entry {
         }
         let subtitle = subtitle.filter(|text| text.to_lowercase() != self.title.to_lowercase());
         Candidate {
-            title: self.title,
-            subtitle,
-            alternate_titles: self.alternate_titles,
-            keywords,
-            bundle_id: self.bundle_id,
+            title: Field::new(self.title),
+            subtitle: subtitle.map(Field::new),
+            alternate_titles: self.alternate_titles.into_iter().map(Field::new).collect(),
+            keywords: keywords.into_iter().map(Field::new).collect(),
+            bundle_id: self.bundle_id.map(Field::new),
         }
     }
 }
@@ -142,6 +157,20 @@ impl Scorer {
     }
 }
 
+impl Scorer {
+    // The matcher's letter-presence filter: a field missing more query letters
+    // than the edit budget allows (or any digit or punctuation of the query)
+    // can't score, so it is skipped without running the matcher. Non-ASCII
+    // text or queries always pass (searchbits::UNKNOWN), so results are the
+    // same as scoring every field.
+    fn score_field(&mut self, field: &Field) -> Option<i32> {
+        if !searchbits::possible(self.matcher.bits, field.bits, self.matcher.budget) {
+            return None;
+        }
+        self.score(&field.text)
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Catalog {
     entries: Option<Vec<Candidate>>,
@@ -174,22 +203,25 @@ impl Catalog {
         let mut scorer = Scorer::new(query, sensitivity);
         let mut hits = Vec::new();
         for (index, entry) in entries.iter().enumerate() {
-            let title = scorer.score(&entry.title);
+            let title = scorer.score_field(&entry.title);
             let alternate = entry
                 .alternate_titles
                 .iter()
-                .filter_map(|text| scorer.score(text))
+                .filter_map(|field| scorer.score_field(field))
                 .max();
-            let subtitle = entry.subtitle.as_ref().and_then(|text| scorer.score(text));
+            let subtitle = entry
+                .subtitle
+                .as_ref()
+                .and_then(|field| scorer.score_field(field));
             let mut keyword = entry
                 .keywords
                 .iter()
-                .filter_map(|text| scorer.score(text))
+                .filter_map(|field| scorer.score_field(field))
                 .max();
             if query.contains('.')
                 && let Some(bundle_id) = &entry.bundle_id
             {
-                keyword = keyword.max(scorer.score(bundle_id));
+                keyword = keyword.max(scorer.score_field(bundle_id));
             }
             if title.is_some() || alternate.is_some() || subtitle.is_some() || keyword.is_some() {
                 hits.push(Hit {
@@ -217,6 +249,78 @@ mod tests {
             .load(serde_json::from_value(entries).unwrap())
             .unwrap();
         catalog
+    }
+
+    #[test]
+    fn letter_filter_never_drops_a_field_the_matcher_would_score() {
+        // The prefilter must be a pure shortcut: every field the matcher
+        // scores (at any sensitivity) passes searchbits::possible.
+        let texts = [
+            "Firefox",
+            "Mozilla Firefox",
+            "first-response",
+            "Terminal",
+            "GNOME Terminal",
+            "Café Crème",
+            "Файл",
+            "Zoom 5.0",
+            "C++ IDE",
+            "org.gnome.Nautilus",
+            "my_app-2",
+            "CamelCaseTool",
+            "VS Code",
+            "a/b/c path",
+            "Plus+Minus",
+            "x.y.z",
+            "Bluetooth Settings",
+        ];
+        let queries = [
+            "f",
+            "fi",
+            "fire",
+            "fierfox",
+            "firefoc",
+            "frfx",
+            "term",
+            "temrinal",
+            "gnome term",
+            "cafe",
+            "café",
+            "фл",
+            "zoom 5",
+            "zoom 6",
+            "c++",
+            "c+",
+            "org.gnome",
+            "nautilsu",
+            "my_app",
+            "myapp2",
+            "camel tool",
+            "vs",
+            "vscode",
+            "a/b",
+            "b/c",
+            "plus+",
+            "x.y",
+            "blue",
+            "bluetoth",
+            "settngs",
+            "5.0",
+            "IDE",
+            "ZZZ",
+            "q",
+            "tool",
+        ];
+        for query in queries {
+            for sensitivity in [Sensitivity::Low, Sensitivity::Medium, Sensitivity::High] {
+                let mut scorer = Scorer::new(query, sensitivity);
+                for text in texts {
+                    let field = Field::new(text.to_string());
+                    let scored = scorer.score(text);
+                    assert_eq!(scorer.score_field(&field), scored, "{query:?} on {text:?}");
+                }
+            }
+        }
     }
 
     #[test]
