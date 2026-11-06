@@ -7,8 +7,21 @@ const MAX_FIELD_BYTES: usize = 16_384;
 const MAX_FIELDS: usize = 1_024;
 const MAX_ENTRIES: usize = 20_000;
 
+/// The helper under test: `FOAMY_HELPER` (a JSON argv prefix such as
+/// `["bin/aarch64/foamy-menu-search"]`), else the binary cargo just built.
+fn helper() -> Command {
+    let argv: Vec<String> = match std::env::var("FOAMY_HELPER") {
+        Ok(json) => serde_json::from_str(&json).expect("FOAMY_HELPER is a JSON array of strings"),
+        Err(_) => vec![env!("CARGO_BIN_EXE_foamy-menu-search").to_owned()],
+    };
+    let (program, args) = argv.split_first().expect("FOAMY_HELPER names a program");
+    let mut command = Command::new(program);
+    command.args(args);
+    command
+}
+
 fn exchange(input: &[u8]) -> Vec<Value> {
-    let mut child = Command::new(env!("CARGO_BIN_EXE_foamy-menu-search"))
+    let mut child = helper()
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn().unwrap();
     child.stdin.take().unwrap().write_all(input).unwrap();

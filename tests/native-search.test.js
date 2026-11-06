@@ -3,6 +3,9 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
+const { spawn } = require("node:child_process")
+const readline = require("node:readline")
+const helperUnderTest = require("./search-helper.js")
 const F = require("../core/FleaSearch.js")
 const R = require("../core/Ranker.js")
 
@@ -140,4 +143,33 @@ test("keyword-only tiers rank exact ahead of typo while titles keep priority", (
   assert.deepEqual(R.rank(c, "browser", { fleaHits }).map(r => r.candidate.id), ["exact", "typo"])
   fleaHits.typo.title = 2000001
   assert.equal(R.rank(c, "browser", { fleaHits })[0].candidate.id, "typo")
+})
+
+test("the service drives the real helper: load, query, reload", { skip: helperUnderTest.skip, timeout: 10000 }, async t => {
+  const h = harness(), got = []
+  const child = spawn(helperUnderTest.argv[0], helperUnderTest.argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
+  t.after(() => child.kill())
+  readline.createInterface({ input: child.stdout }).on("line", line => h.service.receive(line))
+  h.helper.write = s => child.stdin.write(s)
+  const answer = () => new Promise(resolve => {
+    const before = got.length
+    const poll = setInterval(() => { if (got.length > before) { clearInterval(poll); resolve(got.at(-1)) } }, 5)
+  })
+  h.service.entries = F.entries([{ title: "Files" }, { title: "Firefox" }], R.transliterate)
+  h.service.ids = ["files", "firefox"]
+  h.service.search("fi", "medium", r => got.push(r))
+  h.service.load()
+  const first = await answer()
+  assert.ok(first.files.title > 0 && first.firefox.title > 0)
+  h.service.search("firefox", "medium", r => got.push(r))
+  const second = await answer()
+  assert.equal(second.firefox.title, 5000000)
+  h.service.entries = F.entries([{ title: "Terminal" }], R.transliterate)
+  h.service.ids = ["terminal"]
+  h.service.invalidate()
+  h.service.search("term", "medium", r => got.push(r))
+  assert.deepEqual(Object.keys(await answer()), ["terminal"])
+  assert.equal(h.service.disabled, false)
+  assert.deepEqual(h.events, [])
+  child.stdin.end()
 })
