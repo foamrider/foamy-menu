@@ -1,4 +1,3 @@
+/target/
 /search/target/
-/bin/foamy-menu-search
-/bin/.search.*
 __pycache__/

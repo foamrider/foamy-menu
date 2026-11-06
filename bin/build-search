@@ -1,16 +1,19 @@
 #!/bin/bash
+# Rebuild the bundled search helper, bin/<arch>/foamy-menu-search, for x86_64
+# and aarch64 with foamy-kit's build tool (static musl, pinned toolchain,
+# reproducible), and update search/native.pin. Extra arguments go to the tool:
+# --verify (clean rebuild, byte compare) or --test (fmt, clippy, cargo test).
+# Cargo output goes to ${FOAMY_NATIVE_CACHE:-~/.cache/foamy-native}/foamy-menu,
+# never into the plugin folder, which omarchy-shell watches and would reload
+# for every file cargo writes. Users never need this: the binaries are committed.
 set -euo pipefail
 
-repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-command -v cargo >/dev/null || { echo "foamy-menu: building search needs Rust (cargo)" >&2; exit 1; }
-# The build goes outside the plugin folder: omarchy-shell watches that folder
-# and would reload the plugin for every file cargo writes.
-target_dir=${CARGO_TARGET_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/foamy-menu/search-target}
-[[ $target_dir == /* ]] || target_dir="$PWD/$target_dir"
-cargo build --locked --release --manifest-path "$repo/search/Cargo.toml" --target-dir "$target_dir"
-temporary=$(mktemp "$repo/bin/.search.XXXXXXXX")
-trap 'rm -f -- "$temporary"' EXIT
-cp "$target_dir/release/foamy-menu-search" "$temporary"
-chmod 755 "$temporary"
-mv -f -- "$temporary" "$repo/bin/foamy-menu-search"
-echo "built $repo/bin/foamy-menu-search"
+repo=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd -P)
+kit=${FOAMY_KIT:-$(dirname -- "$repo")/foamy-kit}
+tool=$kit/tools/build-native.sh
+[[ -x $tool ]] || {
+  echo "foamy-menu: building search needs foamy-kit 0.5.0 or later with tools/build-native.sh" >&2
+  echo "  (clone https://github.com/foamrider/foamy-kit next to this plugin, or set FOAMY_KIT)" >&2
+  exit 1
+}
+exec "$tool" "$repo" --crate search --bin foamy-menu-search "$@"

@@ -3,6 +3,12 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
+const { spawn } = require("node:child_process")
+const readline = require("node:readline")
+const os = require("node:os")
+const { spawnSync } = require("node:child_process")
+const helperUnderTest = require("./search-helper.js")
+const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
 const F = require("../core/FleaSearch.js")
 const R = require("../core/Ranker.js")
 
@@ -12,8 +18,8 @@ function harness() {
   const service = { entries: [{ title: "Files" }], ids: ["files"], serial: 0, loadId: 0, loaded: false, disabled: false, pending: null, failed: m => events.push(m) }
   const helper = { running: false, write: s => writes.push(JSON.parse(s)) }
   const timeout = { active: false, restart() { this.active = true }, stop() { this.active = false } }
-  const context = vm.createContext({ service, helper, timeout, FleaSearch: F })
-  for (const name of ["cancel", "invalidate", "search", "load", "send", "fail", "receive"]) {
+  const context = vm.createContext({ service, helper, timeout, FleaSearch: F, FoamyNative })
+  for (const name of ["cancel", "invalidate", "search", "load", "send", "fail", "exited", "receive"]) {
     const start = source.indexOf("  function " + name + "(")
     const end = source.indexOf("\n  }", start) + 4
     vm.runInContext(source.slice(start, end).trim(), context)
@@ -140,4 +146,77 @@ test("keyword-only tiers rank exact ahead of typo while titles keep priority", (
   assert.deepEqual(R.rank(c, "browser", { fleaHits }).map(r => r.candidate.id), ["exact", "typo"])
   fleaHits.typo.title = 2000001
   assert.equal(R.rank(c, "browser", { fleaHits })[0].candidate.id, "typo")
+})
+
+test("the service drives the real helper: load, query, reload", { skip: helperUnderTest.skip, timeout: 10000 }, async t => {
+  const h = harness(), got = []
+  const child = spawn(helperUnderTest.argv[0], helperUnderTest.argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
+  t.after(() => child.kill())
+  readline.createInterface({ input: child.stdout }).on("line", line => h.service.receive(line))
+  h.helper.write = s => child.stdin.write(s)
+  const answer = () => new Promise(resolve => {
+    const before = got.length
+    const poll = setInterval(() => { if (got.length > before) { clearInterval(poll); resolve(got.at(-1)) } }, 5)
+  })
+  h.service.entries = F.entries([{ title: "Files" }, { title: "Firefox" }], R.transliterate)
+  h.service.ids = ["files", "firefox"]
+  h.service.search("fi", "medium", r => got.push(r))
+  h.service.load()
+  const first = await answer()
+  assert.ok(first.files.title > 0 && first.firefox.title > 0)
+  h.service.search("firefox", "medium", r => got.push(r))
+  const second = await answer()
+  assert.equal(second.firefox.title, 5000000)
+  h.service.entries = F.entries([{ title: "Terminal" }], R.transliterate)
+  h.service.ids = ["terminal"]
+  h.service.invalidate()
+  h.service.search("term", "medium", r => got.push(r))
+  assert.deepEqual(Object.keys(await answer()), ["terminal"])
+  assert.equal(h.service.disabled, false)
+  assert.deepEqual(h.events, [])
+  child.stdin.end()
+})
+
+test("the launch command uses the bundled helper for this CPU", () => {
+  assert.match(source, /command: FoamyNative\.command\(service\.pluginDir, "foamy-menu-search", \[\]\)/)
+  assert.match(source, /pluginDir: FoamyNative\.localPath\(Qt\.resolvedUrl\("\.\."\)\)/)
+  assert.match(source, /onExited: function\(exitCode, exitStatus\) \{ service\.exited\(exitCode\) \}/)
+})
+
+test("no helper for this CPU, or one that can't run, falls back to the built-in matcher once", t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-native-"))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const launch = () => {
+    const [cmd, ...args] = FoamyNative.command(dir, "foamy-menu-search", [])
+    return spawnSync(cmd, args, { input: "", stdio: ["pipe", "ignore", "ignore"] }).status
+  }
+  const helperFor = arch => path.join(dir, "bin", arch, "foamy-menu-search")
+  fs.mkdirSync(path.dirname(helperFor("riscv64")), { recursive: true })
+  fs.writeFileSync(helperFor("riscv64"), "#!/bin/sh\nexit 0\n", { mode: 0o755 })
+  assert.equal(launch(), 127, "only another CPU's helper")
+  const arch = spawnSync("bash", ["-c", 'printf %s "$HOSTTYPE"'], { encoding: "utf8" }).stdout
+  fs.mkdirSync(path.dirname(helperFor(arch)))
+  fs.writeFileSync(helperFor(arch), "#!/bin/sh\nexit 0\n", { mode: 0o644 })
+  assert.equal(launch(), 126, "helper not executable")
+  for (const code of [127, 126]) {
+    const h = harness(), got = []
+    h.service.search("fi", "medium", r => got.push(r))
+    assert.equal(h.helper.running, true)
+    h.service.exited(code)
+    assert.deepEqual(got, [null])
+    assert.equal(h.service.disabled, true)
+    assert.deepEqual(h.events, ["Search helper isn't available for this CPU; using the built-in matcher"])
+    h.service.exited(code)
+    h.service.search("files", "medium", r => got.push(r))
+    assert.deepEqual(got, [null, null], "no retry: later searches use the built-in matcher")
+    assert.equal(h.helper.running, false)
+    assert.equal(h.events.length, 1)
+  }
+  const crashed = harness(), got = []
+  crashed.service.search("fi", "medium", r => got.push(r))
+  crashed.service.exited(101)
+  assert.deepEqual(got, [null])
+  assert.deepEqual(crashed.events, ["Search helper exited; using the built-in matcher"])
+  const fallback = R.rank([{ id: "files", title: "Files" }, { id: "firefox", title: "Firefox" }], "fire", { fleaHits: null, nowMs: 1000 })
+  assert.equal(fallback[0].candidate.id, "firefox")
 })

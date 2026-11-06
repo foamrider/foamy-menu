@@ -18,7 +18,7 @@ stock_runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stock_runtime)
 
 
-def run_case(host, theme, width, language, shots):
+def run_case(host, theme, width, language, shots, native=True):
     run = harness.Run(host, (PLUGIN / 'tests/qml/LauncherRuntime.qml').read_text(),
                       plugin=PLUGIN, theme=theme, language=language, prefix='foamy-menu-launcher-')
     stock_runtime.build(run)
@@ -26,6 +26,10 @@ def run_case(host, theme, width, language, shots):
     (run.root / 'plugin').unlink()
     local = run.root / 'plugin'
     shutil.copytree(PLUGIN, local, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+    if not native:
+        # A CPU without a bundled helper: the built-in matcher must carry every check.
+        for arch in ('x86_64', 'aarch64'):
+            shutil.rmtree(local / 'bin' / arch)
     window = local / 'ui/LauncherWindow.qml'
     text, count = stock_runtime.transform_windows(window.read_text())
     assert count == 1, 'launcher window structure changed'
@@ -99,7 +103,15 @@ with open(path, "w") as f:
     run.run(timeout=45)
     result = next((line.split('FOAMY RESULT ', 1)[1] for line in run.log.splitlines()
                    if 'FOAMY RESULT ' in line), 'no result')
-    print(f'{"PASS" if run.ok else "FAIL"} launcher {host}/{theme}/{width}/{language}: {result}')
+    # The bundled helper answers every root search; without one, NativeSearch
+    # says so once and the built-in matcher takes over.
+    helper_lines = [line for line in run.log.splitlines() if 'Search helper' in line]
+    unavailable = "Search helper isn't available for this CPU; using the built-in matcher"
+    if helper_lines if native else len(helper_lines) != 1 or unavailable not in helper_lines[0]:
+        run.ok = False
+        result += f'; unexpected search helper log: {helper_lines!r}'
+    label = '' if native else '/no-native-helper'
+    print(f'{"PASS" if run.ok else "FAIL"} launcher {host}/{theme}/{width}/{language}{label}: {result}')
     if not run.ok:
         print(run.log[-12000:])
         print(f'log kept at {run.base}')
@@ -117,6 +129,8 @@ def main():
     # English on the wide dark layout, Norwegian (Omarchy 4.5 language) on the narrow light one.
     results = [run_case(host, theme, width, language, args.shots) for host in hosts
                for theme, width, language in [('dark', 1280, 'en'), ('light', 600, 'no')]]
+    # Once per host: the same checks with no bundled helper (JS matcher fallback).
+    results += [run_case(host, 'dark', 1280, 'en', None, native=False) for host in hosts]
     return 0 if all(results) else 1
 
 

@@ -1,7 +1,8 @@
 use crate::engine::{Catalog, Entry, Hit, Sensitivity};
+use foamy_helper::io::{LineReader, is_over_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, Write};
 
 pub(crate) const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -24,8 +25,14 @@ struct SearchRequest {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum Response {
-    Loaded { id: u64, loaded: usize },
-    Hits { id: u64, hits: Vec<Hit> },
+    Loaded {
+        id: u64,
+        loaded: usize,
+    },
+    Hits {
+        id: u64,
+        hits: Vec<Hit>,
+    },
     Error {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<u64>,
@@ -35,7 +42,10 @@ enum Response {
 
 impl Response {
     fn error(id: Option<u64>, error: impl Into<String>) -> Self {
-        Self::Error { id, error: error.into() }
+        Self::Error {
+            id,
+            error: error.into(),
+        }
     }
 }
 
@@ -46,13 +56,19 @@ fn request(value: Value, catalog: &mut Catalog) -> Result<Response, String> {
             let request: LoadRequest = serde_json::from_value(value)
                 .map_err(|error| format!("invalid load request: {error}"))?;
             let loaded = catalog.load(request.entries)?;
-            Ok(Response::Loaded { id: request.id, loaded })
+            Ok(Response::Loaded {
+                id: request.id,
+                loaded,
+            })
         }
         (false, true) => {
             let request: SearchRequest = serde_json::from_value(value)
                 .map_err(|error| format!("invalid search request: {error}"))?;
             let hits = catalog.search(&request.query, request.sensitivity)?;
-            Ok(Response::Hits { id: request.id, hits })
+            Ok(Response::Hits {
+                id: request.id,
+                hits,
+            })
         }
         _ => Err("request must contain exactly one of entries or query".into()),
     }
@@ -68,38 +84,19 @@ fn response(line: &[u8], catalog: &mut Catalog) -> Response {
     request(value, catalog).unwrap_or_else(|error| Response::error(id, error))
 }
 
-fn drain_line(reader: &mut impl BufRead) -> io::Result<()> {
-    loop {
-        let bytes = reader.fill_buf()?;
-        if bytes.is_empty() {
-            return Ok(());
-        }
-        let newline = bytes.iter().position(|&byte| byte == b'\n');
-        let consumed = newline.map_or(bytes.len(), |at| at + 1);
-        reader.consume(consumed);
-        if newline.is_some() {
-            return Ok(());
-        }
-    }
-}
-
-pub(crate) fn run(mut reader: impl BufRead, writer: &mut impl Write) -> io::Result<()> {
+pub(crate) fn run(reader: impl BufRead, writer: &mut impl Write) -> io::Result<()> {
     let mut catalog = Catalog::default();
-    let mut line = Vec::new();
+    // The kit's bounded line reader: an oversized line is consumed through LF
+    // or EOF without growing past the limit, and reading goes on after it.
+    let mut lines = LineReader::new(reader, MAX_LINE_BYTES);
     loop {
-        line.clear();
-        let read = reader.by_ref().take((MAX_LINE_BYTES + 1) as u64).read_until(b'\n', &mut line)?;
-        if read == 0 {
-            return Ok(());
-        }
-        if line.last() == Some(&b'\n') {
-            line.pop();
-        }
-        let reply = if line.len() > MAX_LINE_BYTES {
-            drain_line(&mut reader)?;
-            Response::error(None, format!("request line exceeds {MAX_LINE_BYTES} bytes"))
-        } else {
-            response(&line, &mut catalog)
+        let reply = match lines.read_line() {
+            Ok(None) => return Ok(()),
+            Ok(Some(line)) => response(&line, &mut catalog),
+            Err(error) if is_over_limit(&error) => {
+                Response::error(None, format!("request line exceeds {MAX_LINE_BYTES} bytes"))
+            }
+            Err(error) => return Err(error),
         };
         serde_json::to_writer(&mut *writer, &reply).map_err(|error| {
             io::Error::new(error.io_error_kind().unwrap_or(io::ErrorKind::Other), error)
@@ -151,8 +148,11 @@ mod tests {
         input.extend_from_slice(b"\n{\"id\":2,\"entries\":[]}\n");
         let mut output = Vec::new();
         run(BufReader::with_capacity(7, Cursor::new(input)), &mut output).unwrap();
-        let replies: Vec<Value> = output.split(|&byte| byte == b'\n').filter(|line| !line.is_empty())
-            .map(|line| serde_json::from_slice(line).unwrap()).collect();
+        let replies: Vec<Value> = output
+            .split(|&byte| byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice(line).unwrap())
+            .collect();
         assert_eq!(replies.len(), 2);
         assert!(replies[0]["error"].as_str().unwrap().contains("exceeds"));
         assert_eq!(replies[1], serde_json::json!({"id":2,"loaded":0}));
