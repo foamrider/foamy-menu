@@ -5,4 +5,6 @@
 # (e.g. --host 4.5, --shots DIR).
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+node --test tests/*.test.js
 python3 -I tests/runtime.py "$@"
+python3 -I tests/launcher.py "$@"

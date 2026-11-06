@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Connect to one SSH host in this terminal, as the built-in SSH scope's Enter
+# does. On failure the window stays open until a key is pressed, so the error
+# can be read.
+
+set -u
+
+host=${1:-}
+if [[ -z "$host" || "$host" == -* || ! "$host" =~ ^[A-Za-z0-9_.:@%+-]+$ ]]; then
+  printf 'Invalid SSH host: %s\n' "$host" >&2
+  read -r -n 1 -s -p 'Press any key to close...'
+  exit 2
+fi
+
+printf '\033]0;ssh %s\007' "$host"
+TERM=xterm-256color ssh -- "$host"
+status=$?
+if [[ $status -ne 0 && $status -ne 130 ]]; then
+  printf '\n\033[1;31mSSH exited with error code %s\033[0m\n' "$status"
+  read -r -n 1 -s -p 'Press any key to close...'
+fi
+exit "$status"

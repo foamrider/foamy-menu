@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
+command -v cargo >/dev/null || { echo "foamy-menu: building search needs Rust (cargo)" >&2; exit 1; }
+# The build goes outside the plugin folder: omarchy-shell watches that folder
+# and would reload the plugin for every file cargo writes.
+target_dir=${CARGO_TARGET_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/foamy-menu/search-target}
+[[ $target_dir == /* ]] || target_dir="$PWD/$target_dir"
+cargo build --locked --release --manifest-path "$repo/search/Cargo.toml" --target-dir "$target_dir"
+temporary=$(mktemp "$repo/bin/.search.XXXXXXXX")
+trap 'rm -f -- "$temporary"' EXIT
+cp "$target_dir/release/foamy-menu-search" "$temporary"
+chmod 755 "$temporary"
+mv -f -- "$temporary" "$repo/bin/foamy-menu-search"
+echo "built $repo/bin/foamy-menu-search"

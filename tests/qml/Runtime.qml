@@ -50,7 +50,7 @@ ShellRoot {
     id: facade
     Services.PluginShellApi { pluginId: "foamy.menu"; appLibrary: capability }
   }
-  Foamy.Menu { id: wrapper; settingsPath: settingsFixture.path }
+  Foamy.StockMenu { id: wrapper; settingsPath: settingsFixture.path }
   Component.onCompleted: wrapper.shell = facade.createObject(null)
   function fallbackActive() {
     for (var i = 0; i < wrapper.data.length; i++) {
