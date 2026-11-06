@@ -11,14 +11,10 @@ use std::io::{self, BufWriter};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    // The kit's release profile aborts on panic. Exit 101 from the hook
-    // instead (as unwinding did), so a bug never ends in SIGABRT and a core
-    // dump; NativeSearch then falls back to the built-in matcher.
-    let report = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |info| {
-        report(info);
-        std::process::exit(101);
-    }));
+    // The kit's release profile aborts on panic. Exit 101 instead (as
+    // unwinding did), so a bug never ends in SIGABRT and a core dump;
+    // NativeSearch then falls back to the built-in matcher.
+    foamy_helper::process::exit_on_panic(101);
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut output = BufWriter::new(stdout.lock());

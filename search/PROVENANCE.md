@@ -75,20 +75,23 @@ entry, 16384 UTF-8 bytes per supplied text field, 256 Unicode scalar values per
 query, and 8 MiB per wire line excluding LF. The field count includes the title,
 each present subtitle and bundle ID (including empty strings), and every
 alternate-title and keyword array item. Generated keyword combinations are not
-supplied fields. CR in CRLF counts toward the wire limit. `BufRead::take` limits
-line reads to 8 MiB plus one detection byte; oversized lines drain through LF or
-EOF using the existing reader buffer, without growing the line allocation.
-The last line may omit LF.
+supplied fields. CR in CRLF counts toward the wire limit. Lines are read with
+foamy-kit's bounded `foamy_helper::io::LineReader`: a line stops growing at the
+limit, and an oversized line drains through LF or EOF using the existing reader
+buffer. The last line may omit LF.
 
 ## Build and verification
 
-Dependencies are `serde` (derive) and `serde_json`; edition is 2024. The crate is
+Dependencies are `serde` (derive), `serde_json` and foamy-kit's `foamy-helper`
+(vendored at `kit/rust/foamy-helper`, by path: the bounded line reader and the
+panic exit); edition is 2024. The crate is
 the `search` member of the plugin's root Cargo workspace; `Cargo.lock` and
 `rust-toolchain.toml` (foamy-kit, Rust 1.99.1) sit at the plugin root. The release
 binaries `bin/x86_64/foamy-menu-search` and `bin/aarch64/foamy-menu-search` are
 committed, static musl, built reproducibly by foamy-kit's `tools/build-native.sh`
 (through `bin/build-search`) with the kit's release profile (`kit/rust/release.toml`:
-opt-level "s", fat LTO, `panic = "abort"`; `main` exits 101 from the panic hook), and
+opt-level "s", fat LTO, `panic = "abort"`; `main` installs the kit's
+`process::exit_on_panic(101)`, so a panic exits 101), and
 recorded in `native.pin`. `bin/build-search --test` runs `cargo fmt --check`, clippy
 with `-D warnings` and `cargo test --locked`; `bin/build-search --verify` rebuilds
 in a fresh target dir and compares bytes. The integration tests execute the built
