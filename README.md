@@ -11,11 +11,14 @@ The implementation is adopted from [Omacast](https://github.com/typecraft-dev/om
 snapshot `98bd0bb1cd1adf787afc704ff31f951d3c938708` (2026-11-02).
 It lives in this repository and does not require the Omacast plugin.
 Upstream MIT attribution is retained in [LICENSE-OMACAST](LICENSE-OMACAST).
-The optional flea-search helper retains its license and provenance in `search/`.
+The bundled flea-search helper retains its license and provenance in `search/`.
 
 ## Install and use
 
 Requires Omarchy Quattro with Quickshell and the stock menu components.
+Search uses the bundled helper (`bin/x86_64/` and `bin/aarch64/foamy-menu-search`,
+static binaries, no Rust needed); on other CPUs, or if the helper fails, the
+menu falls back to its built-in matcher.
 
 ```sh
 omarchy plugin add https://github.com/foamrider/foamy-menu.git --enable
@@ -308,16 +311,29 @@ work offline. History stays local, with owner-only directories and files.
 bin/foamy-menu show
 bin/foamy-menu call calculator.calculate '{"query":"2+2"}'
 omarchy bar set foamy.menu windowMode compact
-bin/build-search                  # optional; requires existing Rust/cargo
+bin/build-search                  # rebuild the bundled helper (developers; see below)
 ./test.sh --host 4.0               # JS tests and installed-host runtime checks
 python3 -I tests/launcher.py --host 4.0 --shots /tmp/foamy-menu-shots
 omarchy plugin validate .
 ```
 
-The optional helper builds from the checked-in source and Cargo lockfile;
-without it the built-in matcher works. No Node runtime is needed by the plugin;
-Node is used only for tests. Core logic lives in `core/`, I/O in `services/`,
-and the launcher UI in `ui/`. `Menu.qml` routes between `Launcher.qml` and
+The search helper is committed for x86_64 and aarch64 and falls back to the
+built-in matcher when it is missing for the CPU or fails. After changing
+`search/`, rebuild it with `bin/build-search` (also `foamy-menu build-search`):
+it runs foamy-kit's `tools/build-native.sh` (`FOAMY_KIT`, default `../foamy-kit`),
+which builds static musl binaries for both arches reproducibly with the pinned
+toolchain (`rust-toolchain.toml`, rustup with the musl targets), installs
+`bin/<arch>/foamy-menu-search` and updates `search/native.pin`. Cargo output goes
+to `~/.cache/foamy-native/foamy-menu`, never into the plugin folder, which the
+shell watches. `bin/build-search --test` runs rustfmt, clippy and the cargo tests;
+`--verify` rebuilds from scratch and compares bytes. Commit the binaries and the
+pin with the source. The helper tests (`cargo test --test protocol` in `search/`,
+`node --test tests/*.test.js`) run against another build when `FOAMY_HELPER` holds
+a JSON argv prefix with an absolute path, e.g.
+`FOAMY_HELPER="[\"$PWD/bin/aarch64/foamy-menu-search\"]"` (qemu-user binfmt).
+
+No Node runtime is needed by the plugin; Node is used only for tests. Core logic
+lives in `core/`, I/O in `services/`, and the launcher UI in `ui/`. `Menu.qml` routes between `Launcher.qml` and
 `StockMenu.qml`; `BarWidget.qml` retains Foamy's bar styling. Scopes are
 `core/Scopes.js` (definitions, merging, parsing) and `services/ScopeSource.qml`
 (files and commands); the SSH scope's helpers are `bin/foamy-ssh-hosts` and
