@@ -1,5 +1,8 @@
-// Vendored matcher also exposes filesystem-search APIs unused by this adapter.
-#[allow(dead_code)]
+// The vendored Flea matcher (see PROVENANCE.md) stays byte-identical to
+// upstream: rustfmt skips it, and the lints it trips (unused filesystem-search
+// APIs, newer clippy style lints) are allowed here at the module boundary.
+#[rustfmt::skip]
+#[allow(dead_code, clippy::unnecessary_map_or)]
 mod backend;
 mod engine;
 mod protocol;

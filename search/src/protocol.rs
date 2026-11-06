@@ -24,8 +24,14 @@ struct SearchRequest {
 #[derive(Serialize)]
 #[serde(untagged)]
 enum Response {
-    Loaded { id: u64, loaded: usize },
-    Hits { id: u64, hits: Vec<Hit> },
+    Loaded {
+        id: u64,
+        loaded: usize,
+    },
+    Hits {
+        id: u64,
+        hits: Vec<Hit>,
+    },
     Error {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<u64>,
@@ -35,7 +41,10 @@ enum Response {
 
 impl Response {
     fn error(id: Option<u64>, error: impl Into<String>) -> Self {
-        Self::Error { id, error: error.into() }
+        Self::Error {
+            id,
+            error: error.into(),
+        }
     }
 }
 
@@ -46,13 +55,19 @@ fn request(value: Value, catalog: &mut Catalog) -> Result<Response, String> {
             let request: LoadRequest = serde_json::from_value(value)
                 .map_err(|error| format!("invalid load request: {error}"))?;
             let loaded = catalog.load(request.entries)?;
-            Ok(Response::Loaded { id: request.id, loaded })
+            Ok(Response::Loaded {
+                id: request.id,
+                loaded,
+            })
         }
         (false, true) => {
             let request: SearchRequest = serde_json::from_value(value)
                 .map_err(|error| format!("invalid search request: {error}"))?;
             let hits = catalog.search(&request.query, request.sensitivity)?;
-            Ok(Response::Hits { id: request.id, hits })
+            Ok(Response::Hits {
+                id: request.id,
+                hits,
+            })
         }
         _ => Err("request must contain exactly one of entries or query".into()),
     }
@@ -88,7 +103,10 @@ pub(crate) fn run(mut reader: impl BufRead, writer: &mut impl Write) -> io::Resu
     let mut line = Vec::new();
     loop {
         line.clear();
-        let read = reader.by_ref().take((MAX_LINE_BYTES + 1) as u64).read_until(b'\n', &mut line)?;
+        let read = reader
+            .by_ref()
+            .take((MAX_LINE_BYTES + 1) as u64)
+            .read_until(b'\n', &mut line)?;
         if read == 0 {
             return Ok(());
         }
@@ -151,8 +169,11 @@ mod tests {
         input.extend_from_slice(b"\n{\"id\":2,\"entries\":[]}\n");
         let mut output = Vec::new();
         run(BufReader::with_capacity(7, Cursor::new(input)), &mut output).unwrap();
-        let replies: Vec<Value> = output.split(|&byte| byte == b'\n').filter(|line| !line.is_empty())
-            .map(|line| serde_json::from_slice(line).unwrap()).collect();
+        let replies: Vec<Value> = output
+            .split(|&byte| byte == b'\n')
+            .filter(|line| !line.is_empty())
+            .map(|line| serde_json::from_slice(line).unwrap())
+            .collect();
         assert_eq!(replies.len(), 2);
         assert!(replies[0]["error"].as_str().unwrap().contains("exceeds"));
         assert_eq!(replies[1], serde_json::json!({"id":2,"loaded":0}));

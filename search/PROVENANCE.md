@@ -24,8 +24,11 @@ pub(crate) mod tests;
 ```
 
 `src/backend/mod.rs` retains the original module hierarchy, including the
-`crate::backend::searchtypo` reference. Unused filesystem-search APIs are allowed
-at the adapter's module boundary so the vendored files need no warning edits.
+`crate::backend::searchtypo` reference. Unused filesystem-search APIs and the
+newer clippy lints the vendored code trips are allowed, and rustfmt is skipped,
+at the adapter's module boundary (`src/main.rs`), so the vendored files need no
+warning or formatting edits. `tests/search-provenance.test.js` checks the
+hashes above and the license hash below.
 The helper's own tests live in `src/engine.rs`, `src/protocol.rs`, and
 `tests/protocol.rs`.
 
@@ -79,7 +82,7 @@ The last line may omit LF.
 
 ## Build and verification
 
-Dependencies are `serde` (derive) and `serde_json`; edition is 2021 and release
+Dependencies are `serde` (derive) and `serde_json`; edition is 2024 and release
 LTO is enabled. `Cargo.lock` records dependency resolution from the build host.
 Run `cargo test --locked` and `cargo build --release --locked`. The integration tests execute the built binary and
 cover protocol recovery, reload atomicity, channel scores, optional fields,
