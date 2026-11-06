@@ -1,12 +1,15 @@
 import QtQuick
 import Quickshell.Io
 import "../core/FleaSearch.js" as FleaSearch
+import "../kit/FoamyNative.js" as FoamyNative
 
 Item {
   id: service
   property var entries: []
   property var ids: []
-  property string executable: decodeURIComponent(Qt.resolvedUrl("../bin/foamy-menu-search").toString().replace(/^file:\/\//, ""))
+  // The bundled helper is bin/<arch>/foamy-menu-search; without one for this
+  // CPU (or after any failure) the built-in matcher takes over.
+  property string pluginDir: FoamyNative.localPath(Qt.resolvedUrl(".."))
   property bool disabled: false
   property bool loaded: false
   property int serial: 0
@@ -57,6 +60,13 @@ Item {
     if (request) request.callback(null)
   }
 
+  function exited(exitCode) {
+    if (service.disabled) return
+    service.fail(FoamyNative.unavailable(exitCode)
+      ? "Search helper isn't available for this CPU; using the built-in matcher"
+      : "Search helper exited; using the built-in matcher")
+  }
+
   function receive(line) {
     try {
       var data = FleaSearch.reply(line)
@@ -87,13 +97,12 @@ Item {
 
   Process {
     id: helper
-    // Bash emits a normal process exit when the helper is missing or cannot execute.
-    command: ["bash", "-c", 'exec -- "$1"', "foamy-menu-search", service.executable]
+    // FoamyNative's bash exec turns a missing binary or an unsupported CPU
+    // into a normal exit 127 (126: not executable) instead of no exit at all.
+    command: FoamyNative.command(service.pluginDir, "foamy-menu-search", [])
     stdinEnabled: true
     stdout: SplitParser { onRead: function(line) { service.receive(line) } }
     onStarted: service.load()
-    onExited: function(exitCode, exitStatus) {
-      if (!service.disabled) service.fail("Search helper exited; using the built-in matcher")
-    }
+    onExited: function(exitCode, exitStatus) { service.exited(exitCode) }
   }
 }
