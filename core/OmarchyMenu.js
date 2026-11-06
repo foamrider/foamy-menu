@@ -119,6 +119,21 @@ function buildTree(defaultItems, userItems) {
   return { items: byId, order: order, children: children }
 }
 
+// Ids of an item's parents, nearest first, by the tree's parent links (an
+// extension may set "parent" instead of a dotted id).
+function ancestors(tree, id) {
+  var out = []
+  var seen = {}
+  var item = tree.items[id]
+  var parent = item ? item.parent : "root"
+  while (parent && parent !== "root" && tree.items[parent] && !seen[parent]) {
+    seen[parent] = true
+    out.push(parent)
+    parent = tree.items[parent].parent
+  }
+  return out
+}
+
 function breadcrumb(tree, id) {
   var labels = []
   var seen = {}
@@ -250,6 +265,7 @@ if (typeof module !== "undefined") {
     parseGuardOutput: parseGuardOutput,
     shellQuote: shellQuote,
     PROVIDERS: PROVIDERS,
+    ancestors: ancestors,
     applyCatalog: applyCatalog,
     parseCatalog: parseCatalog,
     providerItems: providerItems,

@@ -121,6 +121,7 @@ function menuCandidate(tree, item, guards, deps) {
     keywords: keywords,
     typeLabel: item.kind === "action" && item.provider !== "apps" ? "Command" : "Menu",
     menuId: item.id,
+    menuAncestors: deps.OmarchyMenu.ancestors(tree, item.id),
     action: item.action,
     target: item.target,
     provider: item.provider,
@@ -313,15 +314,16 @@ function rootSections(candidates, query, ctx, deps) {
   return out
 }
 
+// A submenu by the menu tree's parent links: its children, or with a query
+// every item below it.
 function submenuSections(candidates, menuId, query, ctx, deps) {
-  var prefix = "omarchy:" + menuId + "."
   var q = String(query || "").trim()
   var inside = []
   for (var i = 0; i < candidates.length; i++) {
     var c = candidates[i]
-    if (c.id.indexOf(prefix) !== 0 || !isEnabled(c, ctx)) continue
-    var rest = c.id.slice(prefix.length)
-    if (!q && rest.indexOf(".") >= 0) continue
+    var above = c.menuAncestors
+    if (!above || !isEnabled(c, ctx)) continue
+    if (q ? above.indexOf(menuId) < 0 : above[0] !== menuId) continue
     inside.push(decorate(c, ctx, deps))
   }
   if (!q) return inside.length ? [{ id: "menu", title: "", rows: inside.map(function(c) { c.subtitle = ""; return { candidate: c, record: null } }) }] : []

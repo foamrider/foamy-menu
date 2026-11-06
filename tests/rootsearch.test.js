@@ -133,6 +133,21 @@ test("the stock Apps item opens the inline grid and is labelled a menu", () => {
   assert.equal(about.typeLabel, "Command")
 })
 
+test("a submenu follows the menu tree: an extension's explicit parent counts", () => {
+  const tree = OmarchyMenu.buildTree(OmarchyMenu.parse(`{
+    "tools": {"label":"Tools"},
+    "custom": {"label":"Custom","parent":"tools","action":"true"},
+    "tools.native": {"label":"Native","action":"true"},
+    "tools.deep": {"label":"Deep"},
+    "tools.deep.xylo": {"label":"Xylo","action":"true"}
+  }`).items, [])
+  const all = RS.menuCandidates(tree, { when: {}, checked: {}, disabled: {} }, {}, deps)
+  assert.deepEqual(titles(RS.submenuSections(all, "tools", "", ctx(), deps)[0]), ["Custom", "Native", "Deep"])
+  assert.deepEqual(titles(RS.submenuSections(all, "tools", "cust", ctx(), deps)[0]), ["Custom"])
+  assert.deepEqual(titles(RS.submenuSections(all, "tools", "xylo", ctx(), deps)[0]), ["Xylo"], "a query searches every level below")
+  assert.deepEqual(RS.submenuSections(all, "tools.deep", "cust", ctx(), deps), [])
+})
+
 test("provider rows are searchable under their menu", () => {
   const rows = OmarchyMenu.providerItems("style.font", "fonts", "Iosevka\tIosevka\tIosevka\n")
   const sections = RS.rootSections(candidates(null, { "style.font": rows }), "iosevka", ctx(), deps)

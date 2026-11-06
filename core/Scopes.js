@@ -237,10 +237,14 @@ function merge(builtins, files) {
   }
   var scopes = []
   var keywords = {}
+  // Every valid query scope, disabled ones too: their saved searches stay
+  // stored, so clearing them must find them.
+  var queryIds = []
   for (var i = 0; i < order.length; i++) {
     var result = normalize(byId[order[i]])
     if (!result.scope) { problems.push({ id: order[i], file: origin[order[i]], errors: result.errors }); continue }
     var scope = result.scope
+    if (scope.source && scope.source.type === "query") queryIds.push(scope.id)
     if (!scope.enabled) continue
     if (keywords[scope.keyword]) {
       problems.push({ id: scope.id, file: origin[scope.id], errors: ["keyword \"" + scope.keyword + "\" is already used by " + keywords[scope.keyword]] })
@@ -249,7 +253,7 @@ function merge(builtins, files) {
     keywords[scope.keyword] = scope.id
     scopes.push(scope)
   }
-  return { scopes: scopes, errors: problems }
+  return { scopes: scopes, errors: problems, queryIds: queryIds }
 }
 
 // Tab in the root search: the scope whose keyword the query names, and the

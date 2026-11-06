@@ -43,6 +43,9 @@ test("the SSH and web-search settings reach the built-in scopes; scope files sti
   const fileWins = Scopes.merge(off, [{ name: "google.json", definition: { id: "google", suggest: false } }]).scopes
   assert.equal(fileWins.find((s) => s.id === "google").suggest, false)
   assert.notEqual(Scopes.BUILTINS[0].enabled, false, "the built-in definitions are not changed")
+  const disabled = Scopes.merge(Scopes.BUILTINS, [{ name: "google.json", definition: { id: "google", enabled: false } }])
+  assert.deepEqual(disabled.queryIds, ["google", "duckduckgo"], "Clear Saved Web Searches finds disabled engines too")
+  assert.ok(!disabled.scopes.some((s) => s.id === "google"))
 })
 
 test("every setting is read by the launcher", () => {

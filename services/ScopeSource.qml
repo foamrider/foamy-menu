@@ -22,6 +22,8 @@ Item {
   // Enabled scopes, in order: built-ins first, then user files by name.
   property var scopes: []
   property var problems: []
+  // Ids of every query scope, enabled or not (Scopes.merge queryIds).
+  property var queryScopeIds: []
   // scopeId -> [{ title, value, subtitle }]
   property var items: ({})
   // scopeId -> a short failure message from its last load
@@ -59,6 +61,7 @@ Item {
       }
     }
     source.problems = merged.errors
+    source.queryScopeIds = merged.queryIds
     // Items of a scope whose definition changed load again on next entry.
     var kept = ({})
     var before = JSON.stringify(source.scopes)

@@ -536,8 +536,14 @@ function unitPow(u, p) {
   var preferred = preferredUnit(d, u.atoms || [u])
   var factor = Math.pow(unitFactor(u), p)
   if (preferred) return { unit: preferred, scale: factor / unitFactor(preferred) }
+  return { unit: poweredUnit(u, p), scale: 1 }
+}
+
+// u to the power p as one unit whose factor carries the whole scale
+// ("cubic millimeter" is mm³, 1e-9 m³), for a name that must stand alone.
+function poweredUnit(u, p) {
   var sup = p === 2 ? "²" : (p === 3 ? "³" : "^" + p)
-  return { unit: { sym: u.sym + sup, name: u.sym + sup, plural: u.sym + sup, dims: d, factor: factor, offset: 0, long: false, currency: "", hint: "", atoms: u.atoms }, scale: 1 }
+  return { sym: u.sym + sup, name: u.sym + sup, plural: u.sym + sup, dims: dimsScale(u.dims, p), factor: Math.pow(unitFactor(u), p), offset: 0, long: false, currency: "", hint: "", atoms: u.atoms }
 }
 
 // Pick a named unit for dims d, from the families of the operands: "60 mph
@@ -756,7 +762,9 @@ Parser.prototype.matchUnit = function(afterNumber) {
       var sq = /^(sq|square|cubic)\s+(.+)$/.exec(lower)
       if (!unit && sq) {
         var baseUnit = UNITS[words.slice(1).join(" ")] || UNIT_NAMES[sq[2]]
-        if (baseUnit && dimsKey(baseUnit.dims) === "L1") unit = unitPow(baseUnit, sq[1] === "cubic" ? 3 : 2).unit
+        // unitPow may normalise to another unit plus a scale; a matched name
+        // has nowhere to put the scale, so keep the powered unit itself.
+        if (baseUnit && dimsKey(baseUnit.dims) === "L1") unit = UNITS[baseUnit.sym + (sq[1] === "cubic" ? "³" : "²")] || poweredUnit(baseUnit, sq[1] === "cubic" ? 3 : 2)
       }
     }
     if (unit) return { unit: unit, len: n }

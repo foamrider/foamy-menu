@@ -217,7 +217,8 @@ Item {
       return { close: true }
     }
     if (id === "settings-action:clear-searches") {
-      var prefixes = scopeSource.scopes.filter(Scopes.isQuery).map(function(s) { return Scopes.itemId(s.id, "") })
+      // Disabled scopes too: their saved searches are still stored.
+      var prefixes = scopeSource.queryScopeIds.map(function(id) { return Scopes.itemId(id, "") })
       frecencyStore.update(function(doc) {
         for (var key in doc.items)
           for (var i = 0; i < prefixes.length; i++) if (key.indexOf(prefixes[i]) === 0) delete doc.items[key]
