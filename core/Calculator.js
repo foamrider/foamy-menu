@@ -794,10 +794,21 @@ Parser.prototype.continueUnit = function(unit, scale) {
       var den = this.matchUnit(true)
       if (!den) { this.i = save; break }
       this.i += den.len
-      var c = compound(unit, den.unit, -1)
+      // An exponent right after the denominator is its own: m/s² is m/(s²),
+      // not (m/s)².
+      var denUnit = den.unit, denScale = 1, denLabel = den.unit.sym
+      var denPower = 0
+      if (this.isOp("^") && this.peek(1) && this.peek(1).t === "num") { this.i++; denPower = this.next().v }
+      else if (this.isOp("²") || this.isOp("³")) denPower = this.next().v === "²" ? 2 : 3
+      if (denPower) {
+        var dp = unitPow(denUnit, denPower)
+        denUnit = dp.unit; denScale = dp.scale
+        denLabel += denPower === 2 ? "²" : denPower === 3 ? "³" : "^" + denPower
+      }
+      var c = compound(unit, denUnit, -1)
       if (c.scalar !== undefined) throw new CalcError("unit cancels")
-      unit = c.unit; scale *= c.scale
-      label += "/" + den.unit.sym
+      unit = c.unit; scale *= c.scale / denScale
+      label += "/" + denLabel
     } else if (this.isOp("^") && this.peek(1) && this.peek(1).t === "num") {
       this.i++
       var power = this.next().v
