@@ -45,3 +45,24 @@ test("a click lands on the nearest character boundary", () => {
   assert.equal(Q.indexAt("games", 16, advance), 2)
   assert.equal(Q.indexAt("games", 999, advance), 5)
 })
+
+test("the cursor never splits a character beyond U+FFFF", () => {
+  const smile = "\u{1F600}"
+  const s = Q.state(smile, 2)
+  assert.equal(Q.move(s, -1, false).cursor, 0, "← steps over the whole emoji")
+  assert.equal(Q.insert(Q.move(s, -1, false), "x").text, "x" + smile)
+  assert.equal(Q.move(Q.state(smile, 0), 1, false).cursor, 2)
+  assert.equal(Q.backspace(Q.state("a" + smile, 3), false).text, "a", "Backspace removes the whole emoji")
+  assert.equal(Q.deleteForward(Q.state(smile + "b", 0), false).text, "b")
+  assert.equal(Q.state(smile, 1).cursor, 2, "a cursor inside the pair moves past it")
+  assert.equal(Q.indexAt(smile, 9, (p) => p.length * 10), 0, "a click never lands inside it")
+  assert.equal(Q.indexAt(smile, 11, (p) => p.length * 10), 2)
+})
+
+test("a long query scrolls just enough to keep the cursor in view", () => {
+  assert.equal(Q.scrollFor(50, 30, 80, 100), 0, "fits: no scroll")
+  assert.equal(Q.scrollFor(0, 300, 300, 100), 200, "the end in view")
+  assert.equal(Q.scrollFor(200, 0, 300, 100), 0, "Home: the start in view")
+  assert.equal(Q.scrollFor(200, 250, 300, 100), 200, "a visible cursor leaves the scroll alone")
+  assert.equal(Q.scrollFor(200, 150, 300, 100), 150, "just enough to the left")
+})

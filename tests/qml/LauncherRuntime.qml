@@ -74,6 +74,16 @@ ShellRoot {
     for (var i = 0; i < node.children.length; i++) if (test.findTag(node.children[i])) return true
     return false
   }
+  // The search field's clipped box (LauncherWindow queryBox).
+  function findQueryBox(item) {
+    var node = item || view.cardItem
+    if (node.keepCursorVisible !== undefined) return node
+    for (var i = 0; i < node.children.length; i++) {
+      var found = test.findQueryBox(node.children[i])
+      if (found) return found
+    }
+    return null
+  }
   function type(text) {
     for (var i = 0; i < text.length; i++) view.handleKey({ key: 0, modifiers: Qt.NoModifier, text: text.charAt(i) })
   }
@@ -138,7 +148,10 @@ ShellRoot {
         test.check(view.placeholder === test.said("Search for apps and commands…", "Søk etter apper og kommandoer…"), "placeholder follows the language")
         test.check(backend.candidatesById["omarchy:apps"].title === test.said("Apps", "Apper"), "Omarchy menu labels use Omarchy's catalog")
         test.check(backend.candidatesById["builtin:calculator-history"].title === test.said("Calculator History", "Kalkulatorhistorikk"), "built-in titles are translated")
-        test.check(backend.scopes.map(function(s) { return s.id }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks" : "ssh,google,duckduckgo,bookmarks"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
+        test.check(backend.scopes.map(function(s) { return s.id }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,shelf" : "ssh,google,duckduckgo,bookmarks,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
+        test.check(backend.callSync("rootSearch.search", { query: "kettle", view: { kind: "root" } }).data.some(function(s) {
+          return s.rows.some(function(r) { return r.id === "scope-item:shelf:Kettle" })
+        }), "a list source's items survive the scope rebuild (rootSearch, requireItems)")
         test.capture("root", function() { view.setQuery("2 + 3 * 4") })
         break
       case 2:
@@ -395,7 +408,15 @@ ShellRoot {
         test.check(view.cursorPos === 0, "Ctrl+← jumps a word")
         key(Qt.Key_Backspace)
         test.check(view.query === "games", "Backspace at the start removes nothing")
+        // A query wider than the field scrolls to keep the cursor in view.
+        view.setQuery("convert " + "1234567890 ".repeat(30) + "usd to nok")
+        var box = test.findQueryBox()
+        test.check(box && box.scroll > 0 && box.offsetOf(view.query) <= box.width + 1, "a long query shows its end, where the cursor is")
+        key(Qt.Key_Home)
+        test.check(box.scroll === 0, "Home scrolls back to the start")
         key(Qt.Key_End)
+        test.check(box.scroll > 0, "End scrolls to the end again")
+        view.setQuery("games")
         break
       case 30:
         if (test.waitFor(!view.searchPending)) break

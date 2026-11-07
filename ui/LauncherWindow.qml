@@ -224,7 +224,15 @@ PanelWindow {
   }
 
 
+  // Whether the search in flight resets the selection (a new query).
+  property bool resetPending: false
+
   function rebuild(resetSelection, restoreIndex) {
+    // A refresh (new candidates, a toast) while a new query's search is still
+    // in flight keeps that reset: the selection on screen belongs to the
+    // previous query and must not be carried over to the new results.
+    if (window.searchPending && window.resetPending) resetSelection = true
+    window.resetPending = !!resetSelection
     var serial = ++window.searchSerial
     window.backend.cancelSearch()
     pointerGate.reset()
@@ -237,6 +245,7 @@ PanelWindow {
       if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
       window.applySearch(result, keepId, restoreIndex)
       window.searchPending = false
+      window.resetPending = false
     })
   }
 
@@ -810,7 +819,7 @@ PanelWindow {
       }
 
       // Room left of the filter button.
-      readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryText.x
+      readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryBox.x
 
       // The scope's tag, as typed into the search: click or Backspace removes it.
       // A grid scope (Games) shows none, as Apps doesn't.
@@ -858,28 +867,45 @@ PanelWindow {
         }
       }
 
-      Text {
-        id: queryText
-        textFormat: Text.PlainText
+      // The query in a clipped box: a query wider than the room scrolls so
+      // the cursor stays in view (QueryEdit.scrollFor), as a text field does.
+      Item {
+        id: queryBox
         x: (scopeTag.visible ? scopeTag.x + scopeTag.width : lead.x + lead.width) + window.px(12)
-        width: Math.min(implicitWidth, header.queryRoom)
-        anchors.verticalCenter: parent.verticalCenter
-        text: window.query || window.placeholder
-        color: window.look.foreground
-        opacity: window.query ? 1 : 0.45
-        font.family: window.look.fontFamily
-        font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
-        elide: Text.ElideLeft
+        width: Math.min(queryText.implicitWidth, header.queryRoom)
+        height: parent.height
+        clip: true
 
-        // Where a prefix of the query ends on screen. A long query is cut at
-        // its start (ElideLeft), so offsets count back from the right edge.
+        property real scroll: 0
+        function keepCursorVisible() {
+          queryBox.scroll = QueryEdit.scrollFor(queryBox.scroll, queryFont.advanceWidth(window.query.slice(0, window.cursorPos)),
+                                                queryFont.advanceWidth(window.query), queryBox.width)
+        }
+        onWidthChanged: queryBox.keepCursorVisible()
+        Connections {
+          target: window
+          function onQueryChanged() { queryBox.keepCursorVisible() }
+          function onCursorPosChanged() { queryBox.keepCursorVisible() }
+        }
+
+        // Where a prefix of the query ends inside the box.
         function offsetOf(prefix) {
-          var full = queryFont.advanceWidth(window.query)
-          var at = queryFont.advanceWidth(prefix)
-          return full <= queryText.width ? at : Math.max(0, queryText.width - (full - at))
+          return queryFont.advanceWidth(prefix) - queryBox.scroll
         }
 
         FontMetrics { id: queryFont; font: queryText.font }
+
+        Text {
+          id: queryText
+          textFormat: Text.PlainText
+          x: -queryBox.scroll
+          anchors.verticalCenter: parent.verticalCenter
+          text: window.query || window.placeholder
+          color: window.look.foreground
+          opacity: window.query ? 1 : 0.45
+          font.family: window.look.fontFamily
+          font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
+        }
 
         // A click puts the cursor at the nearest character boundary.
         MouseArea {
@@ -887,7 +913,7 @@ PanelWindow {
           enabled: window.query.length > 0
           cursorShape: Qt.IBeamCursor
           onClicked: function(mouse) {
-            window.applyEdit({ text: window.query, cursor: QueryEdit.indexAt(window.query, mouse.x, queryText.offsetOf) })
+            window.applyEdit({ text: window.query, cursor: QueryEdit.indexAt(window.query, mouse.x, queryBox.offsetOf) })
             window.closePopups()
             keyCatcher.forceActiveFocus()
           }
@@ -900,8 +926,8 @@ PanelWindow {
         width: Math.max(1, Style.space(2))
         height: queryText.font.pixelSize + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
-        x: queryText.x + (window.query
-          ? queryText.offsetOf(window.query.slice(0, window.cursorPos)) + (caret.atEnd ? Style.space(1) : -Math.round(caret.width / 2))
+        x: queryBox.x + (window.query
+          ? queryBox.offsetOf(window.query.slice(0, window.cursorPos)) + (caret.atEnd ? Style.space(1) : -Math.round(caret.width / 2))
           : 0)
         color: window.look.accent
         visible: window.shown && !window.actionPanelOpen

@@ -155,6 +155,10 @@ def run_case(host, theme, width, language, shots, native=True):
     (scopes / 'bookmarks.json').write_text(json.dumps({
         'title': 'Bookmarks', 'keyword': 'bm', 'source': {'type': 'list', 'items': ['Omarchy']},
         'open': ['omarchy-launch-browser', 'https://omarchy.org/{value}']}))
+    # A list source loads at once: its items must survive the scope rebuild
+    # (requireItems shows the scope, rootSearch finds the item).
+    (scopes / 'shelf.json').write_text(json.dumps({'title': 'Shelf', 'requireItems': True, 'rootSearch': True,
+                                                   'source': {'type': 'list', 'items': ['Kettle']}, 'open': ['true']}))
     (scopes / 'off.json').write_text(json.dumps({'id': 'off', 'enabled': False, 'title': 'Off',
                                                  'source': {'type': 'list', 'items': []}, 'open': ['true']}))
     (stubs / 'omarchy-launch-tui').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')

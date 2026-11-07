@@ -71,8 +71,10 @@ Item {
       if (old && JSON.stringify(old) === JSON.stringify(merged.scopes[s]) && source.items[id]) kept[id] = source.items[id]
     }
     if (JSON.stringify(merged.scopes) !== before) {
-      source.scopes = merged.scopes
+      // Items first: a scopesChanged handler may load a list source at once
+      // (Backend.refreshRootScopes), and that must not be reset afterwards.
       source.items = kept
+      source.scopes = merged.scopes
       source.revision++
     }
   }
