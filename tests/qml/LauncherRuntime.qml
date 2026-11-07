@@ -3,6 +3,9 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import "plugin" as Foamy
+import "plugin/services" as FoamyServices
+import "plugin/core/Fetch.js" as Fetch
+import "plugin/core/Scopes.js" as Scopes
 
 ShellRoot {
   id: test
@@ -53,6 +56,22 @@ ShellRoot {
   FileView { id: browsed; path: Quickshell.env("FOAMY_BROWSER_FILE"); printErrors: false; blockLoading: true }
   FileView { id: launched; path: Quickshell.env("FOAMY_LAUNCH_FILE"); printErrors: false; blockLoading: true }
   FileView { id: copied; path: Quickshell.env("FOAMY_COPY_FILE"); printErrors: false; blockLoading: true }
+  // The services' fetches against launcher.py's local HTTPS server.
+  readonly property string fetchUrl: Quickshell.env("FOAMY_FETCH_URL")
+  FoamyServices.CalculatorData {
+    id: ratesProbe
+    cacheDir: Quickshell.env("FOAMY_FETCH_CACHE")
+    ratesEnabled: false
+    property var said: []
+    onMessage: function(level, text, metadata) { ratesProbe.said = ratesProbe.said.concat([text + (metadata && metadata.error ? ": " + metadata.error : "")]) }
+  }
+  FileView { id: ratesCache; path: Quickshell.env("FOAMY_FETCH_CACHE") + "/currencies.json"; printErrors: false; blockLoading: true }
+  FoamyServices.ScopeSource {
+    id: suggestProbe
+    builtins: [Object.assign({}, Scopes.BUILTINS[2], { suggest: true, suggestUrl: test.fetchUrl + "/ac?q={query}" })]
+    property var stored: []
+    onSuggestionsChanged: if (suggestions.duckduckgo) stored = stored.concat([suggestions.duckduckgo.query])
+  }
   Timer {
     running: true
     repeat: true
@@ -283,6 +302,39 @@ ShellRoot {
         break
       case 24:
         test.check(menu.stockMenu.opened && !launcher.opened, "named stock routes remain supported")
+        ratesProbe.ratesUrl = test.fetchUrl + "/endless"
+        ratesProbe.fetchRates()
+        break
+      case 25:
+        if (test.waitFor(!ratesProbe.fetching && ratesProbe.said.length > 0)) break
+        test.check(ratesProbe.rates === null && ratesProbe.said[ratesProbe.said.length - 1] === "could not fetch exchange rates: reply is over " + Fetch.MAX_BYTES + " bytes",
+          "an endless rates reply stops at the cap and fails: " + ratesProbe.said)
+        ratesProbe.ratesUrl = test.fetchUrl + "/v1/latest"
+        ratesProbe.fetchRates()
+        break
+      case 26:
+        if (test.waitFor(!ratesProbe.fetching && ratesProbe.said.length > 1)) break
+        test.check(ratesProbe.rates && ratesProbe.rates.base === "EUR" && ratesProbe.rates.rates.USD === 1.08 && ratesProbe.said[1] === "exchange rates updated",
+          "a normal rates reply still parses: " + ratesProbe.said)
+        ratesCache.reload()
+        test.check(JSON.parse(ratesCache.text()).rates.NOK === 11.7, "fetched rates are cached")
+        suggestProbe.suggest("duckduckgo", "huge pasta")
+        break
+      case 27:
+        var huge = suggestProbe.suggestions.duckduckgo
+        if (test.waitFor(huge && huge.query === "huge pasta")) break
+        test.check(huge.items.length === 0, "an endless suggestion reply stops at the cap and lists nothing")
+        suggestProbe.suggest("duckduckgo", "slow pasta")
+        break
+      case 28:
+        // "slow pasta" is in flight (2 s); the next text replaces it.
+        suggestProbe.suggest("duckduckgo", "pasta")
+        break
+      case 29:
+        var normal = suggestProbe.suggestions.duckduckgo
+        if (test.waitFor(normal && normal.query === "pasta")) break
+        test.check(normal.items.join() === "pasta one,pasta two", "a normal suggestion reply still parses")
+        test.check(suggestProbe.stored.join() === "huge pasta,pasta", "a replaced request's reply is dropped: " + suggestProbe.stored)
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

@@ -4,13 +4,18 @@
 Runs on Omarchy 4.5 by default (hosts as in tests/runtime.py: FOAMY_HOST_45,
 OMARCHY_TEST_ROOT or the installed shell); 4.0 only with FOAMY_HOST_40."""
 import argparse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
 import os
 from pathlib import Path
 import shutil
+import ssl
+import subprocess
 import sys
+import threading
 import time
+from urllib.parse import parse_qs, urlparse
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get('FOAMY_KIT', Path.home() / 'GitHub/Personal/foamy-kit'))
@@ -23,6 +28,71 @@ import harness
 spec = importlib.util.spec_from_file_location('stock_runtime', PLUGIN / 'tests/runtime.py')
 stock_runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stock_runtime)
+
+
+class FetchFixture(BaseHTTPRequestHandler):
+    """The rates and suggestion servers for the bounded-fetch probes:
+    /v1/latest (rates), /endless (a reply that never ends, no length) and
+    /ac?q= (suggestions; a query starting with "huge" never ends, one
+    starting with "slow" takes 2 s)."""
+    protocol_version = 'HTTP/1.1'
+
+    def log_message(self, *args):
+        pass
+
+    def reply(self, body):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except OSError:  # a replaced request: its curl was stopped
+            self.close_connection = True
+
+    def endless(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Transfer-Encoding', 'chunked')
+        self.end_headers()
+        chunk = b'[' * 65536
+        try:
+            while True:
+                self.wfile.write(b'%x\r\n%s\r\n' % (len(chunk), chunk))
+        except OSError:
+            pass
+        self.close_connection = True
+
+    def do_GET(self):
+        url = urlparse(self.path)
+        query = parse_qs(url.query).get('q', [''])[0]
+        if url.path == '/v1/latest':
+            self.reply(json.dumps({'amount': 1, 'base': 'EUR', 'date': '2026-11-06',
+                                   'rates': {'USD': 1.08, 'NOK': 11.7}}).encode())
+        elif url.path == '/endless' or (url.path == '/ac' and query.startswith('huge')):
+            self.endless()
+        elif url.path == '/ac':
+            if query.startswith('slow'):
+                time.sleep(2)
+            self.reply(json.dumps([query, [query + ' one', query + ' two']]).encode())
+        else:
+            self.send_error(404)
+
+
+def start_fetch_fixture(base):
+    """An HTTPS server on 127.0.0.1 with a throwaway certificate; curl trusts
+    it through CURL_CA_BUNDLE."""
+    key, cert = base / 'fixture-key.pem', base / 'fixture-cert.pem'
+    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
+                    '-keyout', str(key), '-out', str(cert), '-days', '1', '-subj', '/CN=127.0.0.1',
+                    '-addext', 'subjectAltName=IP:127.0.0.1'], check=True, capture_output=True)
+    server = ThreadingHTTPServer(('127.0.0.1', 0), FetchFixture)
+    server.daemon_threads = True
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f'https://127.0.0.1:{server.server_address[1]}', cert
 
 
 def run_case(host, theme, width, language, shots, native=True):
@@ -102,6 +172,11 @@ with open(path, "w") as f:
     (stubs / 'omarchy').chmod(0o755)
     # Saved searches are opt-in; this turns them on for DuckDuckGo only.
     (scopes / 'duckduckgo.json').write_text(json.dumps({'id': 'duckduckgo', 'history': True}))
+    # Rates and suggestions through BoundedFetch, from a local server.
+    fixture, fixture_url, fixture_cert = start_fetch_fixture(run.base)
+    fetch_cache = run.base / 'fetch-cache'
+    fetch_cache.mkdir()
+    run.env.update({'FOAMY_FETCH_URL': fixture_url, 'FOAMY_FETCH_CACHE': str(fetch_cache), 'CURL_CA_BUNDLE': str(fixture_cert)})
     run.env.update({'FOAMY_TEST_WIDTH': str(width), 'FOAMY_COPY_FILE': str(run.base / 'copied'),
                     'FOAMY_LAUNCH_FILE': str(run.base / 'launched'), 'FOAMY_BROWSER_FILE': str(run.base / 'browsed'), 'FOAMY_TEST_LANGUAGE': language,
                     'FOAMY_TEST_NATIVE': '1' if native else '0'})
@@ -109,7 +184,11 @@ with open(path, "w") as f:
         out = Path(shots) / f'{host}-{theme}-{width}-{language}'
         out.mkdir(parents=True, exist_ok=True)
         run.env['FOAMY_MENU_SHOTS'] = str(out)
-    run.run(timeout=45)
+    try:
+        run.run(timeout=45)
+    finally:
+        fixture.shutdown()
+        fixture.server_close()
     result = next((line.split('FOAMY RESULT ', 1)[1] for line in run.log.splitlines()
                    if 'FOAMY RESULT ' in line), 'no result')
     # The bundled helper answers every root search; without one, NativeSearch

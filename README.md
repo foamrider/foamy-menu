@@ -319,6 +319,9 @@ Currency conversion downloads ECB rates from `api.frankfurter.dev` when the
 cached rates are over 12 hours old (30-minute retry after failure).
 `omarchy bar set foamy.menu currencyRates false --json` turns this off. Other calculations
 work offline. History stays local, with owner-only directories and files.
+Rates and web-search suggestions are fetched with `curl` over HTTPS, at most
+256 KiB per reply (15 s for rates, 3 s for suggestions); a larger, slower or
+failed reply is dropped. The URL goes to curl on stdin, never on its command line.
 
 ## CLI and development
 
@@ -349,7 +352,9 @@ a JSON argv prefix with an absolute path, e.g.
 `tests/ssh-hosts.test.js` runs `foamy-menu-search ssh-hosts` next to the retired
 Bash lister (`tests/fixtures/foamy-ssh-hosts.sh`, a test fixture only) over
 fixture homes and requires the same bytes, or the documented ssh-correct
-difference where the script misread `ssh_config`.
+difference where the script misread `ssh_config`. `tests/fetch.test.js` runs
+the bounded curl fetch (`core/Fetch.js`) against a local HTTPS server with a
+throwaway `openssl` certificate: normal, oversized, endless and stalled replies.
 
 No Node runtime is needed by the plugin; Node is used only for tests. Core logic
 lives in `core/`, I/O in `services/`, and the launcher UI in `ui/`. `Menu.qml` routes between `Launcher.qml` and
@@ -362,8 +367,9 @@ lives in `core/`, I/O in `services/`, and the launcher UI in `ui/`. `Menu.qml` r
 `tests/runtime.py` exercises the stock adapter. `tests/launcher.py` exercises
 the new launcher, action panel, calculator, Apps grid, scopes (a fake
 `~/.ssh/config` read by the bundled helper, a user scope file, Enter through a
-stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts and
-route handoffs in an isolated offscreen shell with stub commands. It runs the
+stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts,
+route handoffs, and the rates and suggestion fetches against a local HTTPS
+server in an isolated offscreen shell with stub commands. It runs the
 dark layout in English and the light layout in Norwegian. `preview.png` is
 `root.png` from the English dark run of
 `python3 -I tests/launcher.py --shots DIR`.

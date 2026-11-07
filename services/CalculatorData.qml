@@ -1,11 +1,12 @@
 import QtQuick
 import Quickshell.Io
 import "../core/Calculator.js" as Calculator
+import "../core/Fetch.js" as Fetch
 
 // Live inputs for core/Calculator.js: ECB exchange rates (SPEC §8: cached
-// daily, frankfurter.dev) and the current UTC offset of every time zone the
-// calculator knows. QML's JS engine has no Intl, so one bash process asks
-// strftime for all of them (~40 ms).
+// daily, frankfurter.dev, size-capped by BoundedFetch) and the current UTC
+// offset of every time zone the calculator knows. QML's JS engine has no
+// Intl, so one bash process asks strftime for all of them (~40 ms).
 Item {
   id: data
 
@@ -20,9 +21,9 @@ Item {
   property double ratesTriedAt: 0
   property double zonesAt: 0
   property bool cacheRead: false
-  property var request: null
+  readonly property bool fetching: ratesFetch.busy
 
-  readonly property string ratesUrl: "https://api.frankfurter.dev/v1/latest"
+  property string ratesUrl: "https://api.frankfurter.dev/v1/latest"
   readonly property double ratesMaxAgeMs: 12 * 3600 * 1000     // ECB publishes once a working day
   readonly property double retryAfterMs: 30 * 60 * 1000
   readonly property double zonesMaxAgeMs: 10 * 60 * 1000       // catches DST switches
@@ -33,7 +34,7 @@ Item {
   function refresh() {
     var now = Date.now()
     if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running) zoneProcess.running = true
-    if (data.ratesEnabled && data.cacheRead && !data.request
+    if (data.ratesEnabled && data.cacheRead && !ratesFetch.busy
         && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
       data.fetchRates()
   }
@@ -47,38 +48,26 @@ Item {
 
   function fetchRates() {
     data.ratesTriedAt = Date.now()
-    var xhr = new XMLHttpRequest()
-    data.request = xhr
-    xhr.onreadystatechange = function() {
-      // data is null once the plugin reloads with this request in flight.
-      if (!data || xhr.readyState !== XMLHttpRequest.DONE || data.request !== xhr) return
-      data.request = null
-      requestTimeout.stop()
+    ratesFetch.get(data.ratesUrl, null)
+  }
+
+  // A real reply is under 1 KB. One over Fetch.MAX_BYTES is stopped there and
+  // fails like any other (retried after retryAfterMs).
+  BoundedFetch {
+    id: ratesFetch
+    timeoutSeconds: 15
+    onFinished: function(tag, text, failure) {
       var parsed = null
-      try { parsed = xhr.status === 200 ? data.validRates(JSON.parse(xhr.responseText)) : null } catch (e) { parsed = null }
+      if (!failure) try { parsed = data.validRates(JSON.parse(text)) } catch (e) { parsed = null }
       if (!parsed) {
-        data.message("warning", "could not fetch exchange rates", { status: xhr.status })
+        if (failure === Fetch.TIMED_OUT) data.message("warning", "exchange rates request timed out", null)
+        else data.message("warning", "could not fetch exchange rates", { error: failure || "not exchange rates" })
         return
       }
       data.rates = parsed
       data.ratesFetchedAt = Date.now()
       cache.setText(JSON.stringify({ fetchedAt: data.ratesFetchedAt, base: parsed.base, date: parsed.date, rates: parsed.rates }))
       data.message("info", "exchange rates updated", { date: parsed.date, currencies: Object.keys(parsed.rates).length })
-    }
-    xhr.open("GET", data.ratesUrl)
-    xhr.send()
-    requestTimeout.restart()
-  }
-
-  Timer {
-    id: requestTimeout
-    interval: 15000
-    onTriggered: {
-      if (!data.request) return
-      var xhr = data.request
-      data.request = null
-      xhr.abort()
-      data.message("warning", "exchange rates request timed out", null)
     }
   }
 
