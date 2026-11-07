@@ -40,6 +40,12 @@ Right-clicking the bar button opens the default terminal.
 - Enter opens the selected result; Shift+Enter opens a new application window.
 - Ctrl+K opens actions; Ctrl+Shift+F toggles a favorite; Ctrl+, opens the settings.
 - Arrow keys navigate; Esc goes back or closes; Shift+Esc returns to root.
+- The search field edits at its cursor: ← → move it (in grids they move
+  between cells, in the settings they change values), Ctrl+← → jump a word,
+  Home/End go to either end, Ctrl+B/F (or Ctrl+H/L with vim motions) move one
+  character, and clicking the text places it. Backspace/Delete remove a
+  character, with Ctrl a word; Ctrl+U clears up to the cursor. Typing and
+  pasting insert at the cursor.
 - **Apps** opens an icon grid of every application inside the launcher, A–Z,
   with the search field on top. Typing narrows and ranks the grid; arrow keys
   move in two dimensions; Esc clears the search, then goes back.

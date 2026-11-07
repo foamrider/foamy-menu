@@ -74,6 +74,9 @@ ShellRoot {
     for (var i = 0; i < node.children.length; i++) if (test.findTag(node.children[i])) return true
     return false
   }
+  function type(text) {
+    for (var i = 0; i < text.length; i++) view.handleKey({ key: 0, modifiers: Qt.NoModifier, text: text.charAt(i) })
+  }
   function key(code, modifiers) {
     view.handleKey({key: code, modifiers: modifiers || Qt.NoModifier, text: ""})
   }
@@ -376,7 +379,23 @@ ShellRoot {
         test.check(test.settingIds().includes("setting:steamGames") && !test.settingIds().some(function(id) { return /Art$/.test(id) }), "one Steam switch, no art choice")
         menu.open('{"menu":"root"}')
         view.popToRoot()
-        view.setQuery("games")
+        // The search field edits at its cursor.
+        view.setQuery("gmes")
+        test.check(view.cursorPos === 4, "the cursor follows a query set from outside to its end")
+        for (var l = 0; l < 3; l++) key(Qt.Key_Left)
+        test.type("a")
+        test.check(view.query === "games" && view.cursorPos === 2, "← moves the cursor and typing inserts there: " + view.query + " " + view.cursorPos)
+        key(Qt.Key_Home)
+        key(Qt.Key_Delete)
+        test.check(view.query === "ames" && view.cursorPos === 0, "Home, then Delete removes the first character")
+        test.type("g")
+        key(Qt.Key_End)
+        test.check(view.query === "games" && view.cursorPos === 5, "End moves to the end")
+        key(Qt.Key_Left, Qt.ControlModifier)
+        test.check(view.cursorPos === 0, "Ctrl+← jumps a word")
+        key(Qt.Key_Backspace)
+        test.check(view.query === "games", "Backspace at the start removes nothing")
+        key(Qt.Key_End)
         break
       case 30:
         if (test.waitFor(!view.searchPending)) break

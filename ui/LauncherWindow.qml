@@ -7,6 +7,7 @@ import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
 import "../core/Scopes.js" as Scopes
+import "../core/QueryEdit.js" as QueryEdit
 import "../kit"
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
@@ -88,8 +89,8 @@ PanelWindow {
 
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
-  // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
-  // field has none, so they do nothing here. [D]
+  // Alt+K. Ctrl+B/F (emacs) and Ctrl+H/L (vim-motions) move the search
+  // field's cursor, as in Raycast. [D]
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
   readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
 
@@ -508,6 +509,43 @@ PanelWindow {
     window.rebuild(true)
   }
 
+  // The search field's cursor (core/QueryEdit.js). Any other change of the
+  // query (a view, history, a scope keyword) puts it at the end.
+  property int cursorPos: 0
+  property bool keepCursor: false
+  onQueryChanged: if (!window.keepCursor) window.cursorPos = window.query.length
+
+  // Applies a QueryEdit result: the text (searching again when it changed)
+  // and the cursor.
+  function applyEdit(next) {
+    window.keepCursor = true
+    window.setQuery(next.text)
+    window.keepCursor = false
+    window.cursorPos = next.cursor
+  }
+
+  function queryState() { return QueryEdit.state(window.query, window.cursorPos) }
+
+  // Editing and cursor keys for the search field; false for keys it leaves
+  // to the list. Plain ←/→ belong to grids (cells) and the settings (values).
+  function handleQueryKey(event, ctrl, alt, shift, key) {
+    if (alt || (event.modifiers & Qt.MetaModifier)) return false
+    var s = window.queryState()
+    var arrowsMoveCursor = window.editing || (!window.gridView && window.view.kind !== "settings")
+    var charKey = window.vim ? (key === Qt.Key_H ? -1 : key === Qt.Key_L ? 1 : 0) : (key === Qt.Key_B ? -1 : key === Qt.Key_F ? 1 : 0)
+    if (key === Qt.Key_Home && !ctrl) { window.applyEdit(QueryEdit.home(s)); return true }
+    if (key === Qt.Key_End && !ctrl) { window.applyEdit(QueryEdit.end(s)); return true }
+    if (ctrl && !shift && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, true)); return true }
+    if (!ctrl && !shift && arrowsMoveCursor && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, false)); return true }
+    if (ctrl && !shift && charKey) { window.applyEdit(QueryEdit.move(s, charKey, false)); return true }
+    if (key === Qt.Key_Delete && !shift) { window.applyEdit(QueryEdit.deleteForward(s, ctrl)); return true }
+    if (!window.query) return false
+    if (key === Qt.Key_Backspace) { window.applyEdit(QueryEdit.backspace(s, ctrl)); return true }
+    // Ctrl+U only (Ctrl+Shift+U is Unicode input).
+    if (key === Qt.Key_U && event.modifiers === Qt.ControlModifier) { window.applyEdit(QueryEdit.killToStart(s)); return true }
+    return false
+  }
+
   function pasteClipboard() {
     clipboardInput.clear()
     clipboardInput.paste()
@@ -517,7 +555,7 @@ PanelWindow {
     if (window.actionPanelOpen) actionPanel.item.filter += text
     else {
       if (window.view.kind === "alias") text = text.replace(/\s/g, "")
-      window.setQuery(window.query + text)
+      window.applyEdit(QueryEdit.insert(window.queryState(), text))
     }
   }
 
@@ -630,6 +668,8 @@ PanelWindow {
       return window.handlePopupKey(event, actionPanel.item, ctrl, alt)
     }
 
+    if (window.handleQueryKey(event, ctrl, alt, shift, key)) return true
+
     if (window.view.kind === "setting-edit") {
       if (enter) { window.saveSettingEdit(); return true }
     } else if (window.view.kind === "alias") {
@@ -686,9 +726,8 @@ PanelWindow {
       }
     }
 
-    if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+    if (window.isTyping(event)) { window.applyEdit(QueryEdit.insert(window.queryState(), event.text)); return true }
     return false
   }
 
@@ -831,18 +870,48 @@ PanelWindow {
         font.family: window.look.fontFamily
         font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
         elide: Text.ElideLeft
+
+        // Where a prefix of the query ends on screen. A long query is cut at
+        // its start (ElideLeft), so offsets count back from the right edge.
+        function offsetOf(prefix) {
+          var full = queryFont.advanceWidth(window.query)
+          var at = queryFont.advanceWidth(prefix)
+          return full <= queryText.width ? at : Math.max(0, queryText.width - (full - at))
+        }
+
+        FontMetrics { id: queryFont; font: queryText.font }
+
+        // A click puts the cursor at the nearest character boundary.
+        MouseArea {
+          anchors.fill: parent
+          enabled: window.query.length > 0
+          cursorShape: Qt.IBeamCursor
+          onClicked: function(mouse) {
+            window.applyEdit({ text: window.query, cursor: QueryEdit.indexAt(window.query, mouse.x, queryText.offsetOf) })
+            window.closePopups()
+            keyCatcher.forceActiveFocus()
+          }
+        }
       }
 
       Rectangle {
         id: caret
+        readonly property bool atEnd: window.cursorPos >= window.query.length
         width: Math.max(1, Style.space(2))
         height: queryText.font.pixelSize + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
-        x: queryText.x + (window.query ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
+        x: queryText.x + (window.query
+          ? queryText.offsetOf(window.query.slice(0, window.cursorPos)) + (caret.atEnd ? Style.space(1) : -Math.round(caret.width / 2))
+          : 0)
         color: window.look.accent
         visible: window.shown && !window.actionPanelOpen
 
-        // The caret blinks unless motion is reduced; then it stays lit.
+        // The caret blinks unless motion is reduced; then it stays lit. It
+        // shows solid again whenever it moves.
+        Connections {
+          target: window
+          function onCursorPosChanged() { if (caretBlink.running) caretBlink.restart() }
+        }
         SequentialAnimation on opacity {
           id: caretBlink
           running: window.shown && !FoamyMotion.reduceMotion

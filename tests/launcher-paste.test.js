@@ -3,6 +3,7 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
+const QueryEdit = require("../core/QueryEdit.js")
 
 const source = fs.readFileSync(path.join(__dirname, "../ui/LauncherWindow.qml"), "utf8")
 
@@ -21,18 +22,32 @@ function harness(text) {
   })
   const changes = []
   const window = {
-    query: "prefix ", actionPanelOpen: false, view: { kind: "root" }, historyIndex: 0,
+    query: "prefix ", cursorPos: 7, keepCursor: false, actionPanelOpen: false, view: { kind: "root" }, historyIndex: 0,
+    gridView: false, editing: false, vim: false,
     rebuild: reset => changes.push(reset), isTyping: () => false,
     isActionPanelKey: () => false, direction: () => 0
   }
   const actionPanel = { item: { filter: "" } }
   const clipboardInput = { text: "", clear() { this.text = "" }, paste() { this.text = text } }
-  const context = vm.createContext({ Qt, window, actionPanel, clipboardInput, Util: { editsFilter: () => false } })
+  const context = vm.createContext({ Qt, window, actionPanel, clipboardInput, QueryEdit, Util: { editsFilter: () => false } })
+  // Both setQuery and applyEdit take `next`; restore the caller's afterwards.
   window.setQuery = next => {
+    const outer = context.next
     context.next = next
     vm.runInContext(body("function setQuery(next)"), context)
+    context.next = outer
   }
   window.pasteClipboard = () => vm.runInContext(body("function pasteClipboard()"), context)
+  // queryState is a one-line function in the window; the same expression here.
+  window.queryState = () => QueryEdit.state(window.query, window.cursorPos)
+  window.applyEdit = next => {
+    context.next = next
+    vm.runInContext(body("function applyEdit(next)"), context)
+  }
+  window.handleQueryKey = (event, ctrl, alt, shift, key) => {
+    Object.assign(context, { event, ctrl, alt, shift, key })
+    return vm.runInContext(body("function handleQueryKey(event, ctrl, alt, shift, key)"), context)
+  }
   return {
     Qt, window, actionPanel, clipboardInput, changes,
     press(key, modifiers) {
@@ -101,4 +116,13 @@ test("unrelated V and Insert shortcuts never read the clipboard", () => {
     assert.equal(h.window.query, "prefix ")
     assert.deepEqual(h.changes, [])
   }
+})
+
+test("paste inserts at the search field's cursor", () => {
+  const h = harness("rock ")
+  h.window.query = "deep galactic"
+  h.window.cursorPos = 5
+  assert.equal(h.press("V", h.Qt.ControlModifier), true)
+  assert.equal(h.window.query, "deep rock galactic")
+  assert.equal(h.window.cursorPos, 10)
 })
