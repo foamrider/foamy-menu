@@ -7,15 +7,26 @@ scope turn a keyword into a tag in the search field and list their own items.
 Search ranking learns from use. The launcher follows the current Omarchy theme
 and language (English and Norwegian).
 
+![The Foamy Menu launcher listing Omarchy commands and search scopes](preview.png)
+
 The implementation is adopted from [Omacast](https://github.com/typecraft-dev/oma-cast),
 snapshot `98bd0bb1cd1adf787afc704ff31f951d3c938708` (2026-11-02).
 It lives in this repository and does not require the Omacast plugin.
 Upstream MIT attribution is retained in [LICENSE-OMACAST](LICENSE-OMACAST).
-The optional flea-search helper retains its license and provenance in `search/`.
+The bundled flea-search helper retains its license and provenance in `search/`.
 
 ## Install and use
 
-Requires Omarchy Quattro with Quickshell and the stock menu components.
+Requires Omarchy 4.5 with Quickshell and the stock menu components.
+Search uses the bundled helper (`bin/x86_64/` and `bin/aarch64/foamy-menu-search`,
+static binaries, no Rust needed). It starts with the first search and keeps
+running; it receives the app and command list once, then one query per
+keystroke, and skips fields that cannot match before scoring them. On other
+CPUs, or when the helper exits or takes over a second to answer, the menu
+uses its built-in matcher for the rest of the shell session. The same binary
+lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`, one short run each
+time the scope loads); on a CPU without it, the SSH scope says the helper isn't
+available.
 
 ```sh
 omarchy plugin add https://github.com/foamrider/foamy-menu.git --enable
@@ -129,12 +140,19 @@ used items come first; the rest follow in the source's order.
 
 Lists every concrete `Host` in `~/.ssh/config` and the files it `Include`s
 (patterns such as `*.internal` are skipped), with `user@hostname:port` from
-the host's block. Enter opens the default terminal through
-`omarchy-launch-tui --app-id=TUI.tile` and runs `ssh <host>`; if ssh fails,
-the window stays open until a key is pressed. Ctrl+K offers **Copy SSH
-Command**, **Copy Host Name** and **Open in Files (SFTP)**. Host names must be
-plain ssh destinations (letters, digits and `_.:@%+-`, not starting with `-`).
-Turn the scope off with `omarchy bar set foamy.menu sshScope false --json`.
+the host's own blocks, read the way ssh reads them: keywords in any case,
+`Key value` or `Key=value`, quotes and `#` comments; the first value of each
+setting wins; `Include` is read where it stands (globs, relative paths under
+`~/.ssh`, `~/`), each file once, so cycles are harmless. `Match` blocks and
+pattern blocks such as `Host *` are not applied. Files are read with bounds
+(1 MiB each, 256 files, Include depth 16) and only when they resolve to a
+regular file; `FOAMY_SSH_CONFIG` names another config (for tests). Enter opens
+the default terminal through `omarchy-launch-tui --app-id=TUI.tile` and runs
+`ssh <host>`; if ssh fails, the window stays open until a key is pressed.
+Ctrl+K offers **Copy SSH Command**, **Copy Host Name** and **Open in Files
+(SFTP)**. Host names must be plain ssh destinations (letters, digits and
+`_.:@%+-`, not starting with `-`). Turn the scope off with
+`omarchy bar set foamy.menu sshScope false --json`.
 
 ### Web search (built in)
 
@@ -265,7 +283,7 @@ English. Omarchy's own menu items use Omarchy's catalogs
 English names stay searchable ("apps" still finds "Apper"). The calculator
 reads and writes numbers and dates as the language does, names time units in
 it, and understands Norwegian words as well as English; symbols (cm, kg, USD)
-and the plain copy stay as they are. Omarchy 4.0 shows English.
+and the plain copy stay as they are.
 
 Catalogs are `i18n/<code>.json`, keyed by the English text. Another language
 is one file next to `no.json`; `tests/i18n.test.js` checks that every key has
@@ -305,33 +323,55 @@ work offline. History stays local, with owner-only directories and files.
 ## CLI and development
 
 ```sh
-bin/foamy-menu show
+bin/foamy-menu show               # also: toggle, hide, ping, isOpen, run <id> (omarchy-shell foamy-menu …)
 bin/foamy-menu call calculator.calculate '{"query":"2+2"}'
 omarchy bar set foamy.menu windowMode compact
-bin/build-search                  # optional; requires existing Rust/cargo
-./test.sh --host 4.0               # JS tests and installed-host runtime checks
-python3 -I tests/launcher.py --host 4.0 --shots /tmp/foamy-menu-shots
+bin/build-search                  # rebuild the bundled helper (developers; see below)
+./test.sh                          # JS tests and runtime checks on the installed 4.5 shell
+python3 -I tests/launcher.py --shots /tmp/foamy-menu-shots
 omarchy plugin validate .
 ```
 
-The optional helper builds from the checked-in source and Cargo lockfile;
-without it the built-in matcher works. No Node runtime is needed by the plugin;
-Node is used only for tests. Core logic lives in `core/`, I/O in `services/`,
-and the launcher UI in `ui/`. `Menu.qml` routes between `Launcher.qml` and
+The search helper is committed for x86_64 and aarch64 and falls back to the
+built-in matcher when it is missing for the CPU or fails. After changing
+`search/`, rebuild it with `bin/build-search` (also `foamy-menu build-search`):
+it runs foamy-kit's `tools/build-native.sh` (`FOAMY_KIT`, default `../foamy-kit`),
+which builds static musl binaries for both arches reproducibly with the pinned
+toolchain (`rust-toolchain.toml`, rustup with the musl targets), installs
+`bin/<arch>/foamy-menu-search` and updates `search/native.pin`. Cargo output goes
+to `~/.cache/foamy-native/foamy-menu`, never into the plugin folder, which the
+shell watches. `bin/build-search --test` runs rustfmt, clippy and the cargo tests;
+`--verify` rebuilds from scratch and compares bytes. Commit the binaries and the
+pin with the source. The helper tests (`cargo test --test protocol` in `search/`,
+`node --test tests/*.test.js`) run against another build when `FOAMY_HELPER` holds
+a JSON argv prefix with an absolute path, e.g.
+`FOAMY_HELPER="[\"$PWD/bin/aarch64/foamy-menu-search\"]"` (qemu-user binfmt).
+`tests/ssh-hosts.test.js` runs `foamy-menu-search ssh-hosts` next to the retired
+Bash lister (`tests/fixtures/foamy-ssh-hosts.sh`, a test fixture only) over
+fixture homes and requires the same bytes, or the documented ssh-correct
+difference where the script misread `ssh_config`.
+
+No Node runtime is needed by the plugin; Node is used only for tests. Core logic
+lives in `core/`, I/O in `services/`, and the launcher UI in `ui/`. `Menu.qml` routes between `Launcher.qml` and
 `StockMenu.qml`; `BarWidget.qml` retains Foamy's bar styling. Scopes are
 `core/Scopes.js` (definitions, merging, parsing) and `services/ScopeSource.qml`
-(files and commands); the SSH scope's helpers are `bin/foamy-ssh-hosts` and
+(files and commands); the SSH scope lists hosts with
+`foamy-menu-search ssh-hosts` (`search/src/ssh_hosts.rs`) and connects with
 `bin/foamy-ssh-connect`.
 
 `tests/runtime.py` exercises the stock adapter. `tests/launcher.py` exercises
 the new launcher, action panel, calculator, Apps grid, scopes (a fake
-`~/.ssh/config`, a user scope file, Enter through a stubbed
-`omarchy-launch-tui`), keyboard navigation, theme/width layouts and route
-handoffs in an isolated offscreen shell with stub commands. It runs the dark
-layout in English and the light layout in Norwegian.
-The tests use the sibling `foamy-kit` harness (`FOAMY_KIT` overrides its path).
-`--host 4.5` needs a reference shell (`FOAMY_HOST_45`); `--host 4.0` uses the
-installed shell (`FOAMY_HOST_40`). These are harness labels, not version detection.
+`~/.ssh/config` read by the bundled helper, a user scope file, Enter through a
+stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts and
+route handoffs in an isolated offscreen shell with stub commands. It runs the
+dark layout in English and the light layout in Norwegian. `preview.png` is
+`root.png` from the English dark run of
+`python3 -I tests/launcher.py --shots DIR`.
+The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
+They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
+`$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.
+`--host 4.0` and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0
+shell and print a SKIP line otherwise. These are harness labels, not version detection.
 
 After source edits, restart the shell to clear Quickshell's QML cache.
 No upstream installation or migration scripts are included in Foamy's CLI.

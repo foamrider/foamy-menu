@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# The retired bin/foamy-ssh-hosts (foamy-menu 2.0.0), kept unchanged below this
+# note only for tests/ssh-hosts.test.js, which runs it with `bash` next to
+# `foamy-menu-search ssh-hosts` and requires the same output (or a documented
+# difference). Nothing in the plugin runs it.
 # The built-in SSH scope's items: every concrete Host in ~/.ssh/config and the
 # files it Includes, one per line as "host<TAB>host<TAB>user@hostname:port".
 # Wildcard patterns (*, ?, !) are skipped; the first value of each setting

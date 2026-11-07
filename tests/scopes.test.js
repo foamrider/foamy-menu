@@ -1,9 +1,5 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const fs = require("node:fs")
-const os = require("node:os")
-const path = require("node:path")
-const { execFileSync } = require("node:child_process")
 const Ranker = require("../core/Ranker.js")
 const Frecency = require("../core/Frecency.js")
 const OmarchyMenu = require("../core/OmarchyMenu.js")
@@ -117,33 +113,6 @@ test("a translated scope stays searchable by its keyword and English title", () 
   const row = Scopes.scopeCandidate(Object.assign({}, ssh, { title: "Hosts" }), (s) => (s === "Hosts" ? "Verter" : s))
   assert.equal(row.title, "Verter")
   assert.deepEqual(row.keywords, ["ssh", "Hosts"])
-})
-
-test("the SSH host lister follows Include, skips patterns and keeps the first value", () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-ssh-"))
-  try {
-    fs.mkdirSync(path.join(home, ".ssh/conf.d"), { recursive: true })
-    fs.writeFileSync(path.join(home, ".ssh/config"), [
-      "Include conf.d/*.conf",
-      "Host web prod-web", "  HostName 10.0.0.4", "  User deploy", "  Port 2222",
-      "Host *.internal !bastion", "  User nobody",
-      "Match host foo", "  User wrong",
-      "Host dup", "  HostName first", "Host dup", "  HostName second",
-      "Include ~/missing"
-    ].join("\n"))
-    fs.writeFileSync(path.join(home, ".ssh/conf.d/a.conf"), `Host db\n  Hostname db.internal\n  Port 22\nInclude ${home}/.ssh/config\n`)
-    const out = execFileSync(path.join(__dirname, "../bin/foamy-ssh-hosts"), [], { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" })
-    assert.deepEqual(Scopes.parseOutput(out), [
-      { title: "db", value: "db", subtitle: "db.internal" },
-      { title: "dup", value: "dup", subtitle: "first" },
-      { title: "prod-web", value: "prod-web", subtitle: "deploy@10.0.0.4:2222" },
-      { title: "web", value: "web", subtitle: "deploy@10.0.0.4:2222" }
-    ])
-    const none = execFileSync(path.join(__dirname, "../bin/foamy-ssh-hosts"), [], { env: { HOME: path.join(home, "nobody"), PATH: process.env.PATH }, encoding: "utf8" })
-    assert.equal(none, "")
-  } finally {
-    fs.rmSync(home, { recursive: true, force: true })
-  }
 })
 
 test("Omarchy's menu catalog translates stock labels and keeps English searchable", () => {

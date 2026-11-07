@@ -1,7 +1,5 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const fs = require("node:fs")
-const path = require("node:path")
 const { spawn } = require("node:child_process")
 const readline = require("node:readline")
 const R = require("../core/Ranker.js")
@@ -10,10 +8,10 @@ const Root = require("../core/RootSearch.js")
 const Frecency = require("../core/Frecency.js")
 const Scopes = require("../core/Scopes.js")
 const searchScopes = Scopes.merge(Scopes.BUILTINS, []).scopes.filter(Scopes.isQuery)
-const binary = path.join(__dirname, "../bin/foamy-menu-search")
+const helper = require("./search-helper.js")
 
-test("built helper feeds the actual root ranker and sections", { skip: !fs.existsSync(binary), timeout: 10000 }, async t => {
-  const child = spawn(binary, [], { stdio: ["pipe", "pipe", "inherit"] })
+test("built helper feeds the actual root ranker and sections", { skip: helper.skip, timeout: 10000 }, async t => {
+  const child = spawn(helper.argv[0], helper.argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
   t.after(() => child.kill())
   const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]()
   const ask = async obj => { child.stdin.write(JSON.stringify(obj) + "\n"); return JSON.parse((await lines.next()).value) }

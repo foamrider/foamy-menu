@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Offscreen integration test of Foamy Menu around the host's real stock
-menu, on both hosts: 4.0.6 (installed) and 4.5 (reference shell, QML only).
+menu, on Omarchy 4.5 (QML only).
 
-  tests/runtime.py [--host 4.0|4.5|both] [--shots DIR] [--plugin DIR] [--shell QML]
+  tests/runtime.py [--host 4.5|4.0|both] [--shots DIR] [--plugin DIR] [--shell QML]
+
+The 4.5 host (the default) is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell,
+else the installed /usr/share/omarchy/shell. 4.0 runs only when FOAMY_HOST_40
+names a 4.0 shell; otherwise --host 4.0/both print a SKIP line for it.
 
 Uses the foamy-kit harness (FOAMY_KIT, default ~/GitHub/Personal/foamy-kit):
 temp HOME/XDG/runtime dirs, offscreen Qt, no Wayland/Hyprland variables.
@@ -27,6 +31,10 @@ import sys
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit"))
+# Omarchy 4.5 only by default; set before the harness reads its hosts.
+if not os.environ.get("FOAMY_HOST_45"):
+    _root = os.environ.get("OMARCHY_TEST_ROOT")
+    os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
 SHELL_STUB = """#!/bin/sh
 case "$1 $2" in
   "shell summon"|"shell toggle") printf '%s\\n' "$*" >> "$FOAMY_MENU_TEST_ACTION_LOG" ;;
@@ -134,9 +142,18 @@ def run_host(host_name, shots, plugin, shell_path):
     return True
 
 
+def selected_hosts(choice):
+    """4.5, plus 4.0 for "4.0"/"both" only when FOAMY_HOST_40 is set."""
+    hosts = ["4.5", "4.0"] if choice == "both" else [choice]
+    if "4.0" in hosts and not os.environ.get("FOAMY_HOST_40"):
+        print("SKIP 4.0: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
+        hosts.remove("4.0")
+    return hosts
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--host", default="both", choices=["4.0", "4.5", "both"])
+    parser.add_argument("--host", default="4.5", choices=["4.5", "4.0", "both"])
     parser.add_argument("--shots")
     parser.add_argument("--plugin", default=str(PLUGIN), help="plugin directory to load (default: this checkout)")
     parser.add_argument("--shell", default=str(PLUGIN / "tests/qml/Runtime.qml"), help="test QML to run")
@@ -144,7 +161,7 @@ def main():
     if not (KIT / "preview/harness.py").exists():
         print(f"SKIP: foamy-kit harness not found at {KIT} (set FOAMY_KIT)")
         return 0
-    hosts = ["4.0", "4.5"] if args.host == "both" else [args.host]
+    hosts = selected_hosts(args.host)
     results = [run_host(host, args.shots, Path(args.plugin).resolve(), args.shell) for host in hosts]
     return 0 if all(results) else 1
 

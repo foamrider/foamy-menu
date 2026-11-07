@@ -6,10 +6,10 @@ case "${1:-}" in
     exec omarchy-shell foamy-menu "$@"
     ;;
   build-search)
-    exec "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/build-search"
+    exec "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/build-search" "${@:2}"
     ;;
   *)
-    echo 'Usage: foamy-menu toggle|show|hide|ping|isOpen|run <id>|call <method> [json]|build-search' >&2
+    echo 'Usage: foamy-menu toggle|show|hide|ping|isOpen|run <id>|call <method> [json]|build-search [--verify|--test]' >&2
     exit 2
     ;;
 esac

@@ -3,6 +3,7 @@ import Qt.labs.folderlistmodel
 import Quickshell
 import Quickshell.Io
 import "../core/Scopes.js" as Scopes
+import "../kit/FoamyNative.js" as FoamyNative
 
 // The scopes the launcher offers: built-ins merged with the JSON files in
 // ~/.config/foamy-menu/scopes/, watched so an edit applies without a restart.
@@ -195,6 +196,8 @@ Item {
       var id = proc.scopeId
       var failure = ""
       if (proc.timedOut) failure = "timed out"
+      // The bundled helper (the SSH scope's) has no binary for this CPU.
+      else if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.command)) failure = FoamyNative.UNAVAILABLE_TEXT
       else if (exitCode !== 0) failure = (String(err.text || "").split("\n").filter(function(l) { return l.trim() })[0] || ("exited with code " + exitCode)).slice(0, 200)
       if (failure) source.message("warning", "scope " + id + ": " + failure, { command: proc.command })
       // A failed refresh keeps the items it had.
