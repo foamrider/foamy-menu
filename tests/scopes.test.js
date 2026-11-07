@@ -14,7 +14,8 @@ const file = (name, definition) => ({ name, definition })
 test("the built-in SSH scope is enabled and valid", () => {
   const { scopes, errors } = Scopes.merge(Scopes.BUILTINS, [])
   assert.deepEqual(errors, [])
-  assert.deepEqual(scopes.map((s) => s.id), ["ssh", "google", "duckduckgo"])
+  // Games (steam) is enabled; the launcher offers it only once Steam lists games.
+  assert.deepEqual(scopes.map((s) => s.id), ["ssh", "google", "duckduckgo", "steam"])
   const ssh = scopes[0]
   assert.equal(ssh.keyword, "ssh")
   assert.equal(ssh.source.type, "command")
@@ -23,7 +24,7 @@ test("the built-in SSH scope is enabled and valid", () => {
 })
 
 test("a user file overrides a built-in by id, and enabled: false turns it off", () => {
-  assert.deepEqual(Scopes.merge(Scopes.BUILTINS, [file("ssh.json", { id: "ssh", enabled: false })]).scopes.map((s) => s.id), ["google", "duckduckgo"])
+  assert.deepEqual(Scopes.merge(Scopes.BUILTINS, [file("ssh.json", { id: "ssh", enabled: false })]).scopes.map((s) => s.id), ["google", "duckduckgo", "steam"])
   const renamed = Scopes.merge(Scopes.BUILTINS, [file("ssh.json", { id: "ssh", keyword: "s", openTitle: "Go" })]).scopes[0]
   assert.equal(renamed.keyword, "s")
   assert.equal(renamed.openTitle, "Go")
@@ -39,7 +40,7 @@ test("user scopes are added after built-ins; invalid ones are reported, not load
     file("off.json", { id: "off", enabled: false, title: "Off", source: { type: "list", items: [] }, open: ["x"] }),
     { name: "broken.json", errors: ["not valid JSON"] }
   ])
-  assert.deepEqual(scopes.map((s) => s.id), ["ssh", "google", "duckduckgo", "tmux"])
+  assert.deepEqual(scopes.map((s) => s.id), ["ssh", "google", "duckduckgo", "steam", "tmux"])
   assert.deepEqual(errors.map((e) => e.file).sort(), ["bad.json", "broken.json", "clash.json"])
   assert.match(errors.find((e) => e.file === "clash.json").errors[0], /already used by ssh/)
   assert.match(errors.find((e) => e.file === "bad.json").errors.join(), /source.command/)

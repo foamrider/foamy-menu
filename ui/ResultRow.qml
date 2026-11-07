@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import qs.Commons
+import "../core/Scopes.js" as Scopes
 
 Item {
   id: row
@@ -13,6 +14,8 @@ Item {
   required property string glyph
   required property string glyphFont
   required property string iconName
+  // A scope item's own icon (a file or an icon name) shows instead of the glyph.
+  required property string image
   required property string typeLabel
   // A setting's value sits where other rows show their type, and reads as one.
   required property bool isSetting
@@ -24,6 +27,8 @@ Item {
   required property string calcContext
 
   property bool selected: false
+  property bool imageFailed: false
+  onImageChanged: row.imageFailed = false
   property var look: null
   property var appLibrary: null
   property real zoom: 1
@@ -120,18 +125,22 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
 
       Image {
+        id: rowIcon
+        readonly property bool ownImage: row.image.length > 0 && !row.imageFailed
+        readonly property string name: ownImage ? row.image : row.iconName
         anchors.fill: parent
-        visible: row.iconName.length > 0 && row.glyph.length === 0
+        visible: name.length > 0 && (row.glyph.length === 0 || ownImage)
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         sourceSize.width: width * Screen.devicePixelRatio
         sourceSize.height: height * Screen.devicePixelRatio
-        source: !visible ? "" : (row.appLibrary ? row.appLibrary.iconSource(row.iconName) : Quickshell.iconPath(row.iconName, "application-x-executable"))
+        source: !visible ? "" : (Scopes.imageUrl(name) || (row.appLibrary ? row.appLibrary.iconSource(name) : Quickshell.iconPath(name, "application-x-executable")))
+        onStatusChanged: if (status === Image.Error && ownImage) row.imageFailed = true
       }
 
       Text {
         anchors.centerIn: parent
-        visible: row.glyph.length > 0
+        visible: row.glyph.length > 0 && !rowIcon.visible
         textFormat: Text.PlainText
         text: row.glyph
         color: row.selected ? row.look.accent : row.look.foreground

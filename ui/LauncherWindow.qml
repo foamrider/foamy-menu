@@ -98,20 +98,22 @@ PanelWindow {
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
-  // The Apps view lays the same rows out as an icon grid.
-  readonly property bool gridView: window.view.kind === "apps"
-  readonly property int gridColumns: grid.columns
-  // The scope on screen: whether its items loaded, its failure and texts.
+  // The scope on screen: whether its items loaded, its failure, texts and layout.
   readonly property var scopeState: {
     window.backend.candidatesRevision
     return window.view.kind === "scope" ? window.backend.scopeState(window.view.scopeId) : null
   }
+  // The Apps view lays the same rows out as an icon grid, and so does a scope
+  // whose layout is "icons" or "covers" (Steam Games).
+  readonly property bool gridView: window.view.kind === "apps" || (!!window.scopeState && window.scopeState.layout !== "list")
+  readonly property bool coverGrid: !!window.scopeState && window.scopeState.layout === "covers"
+  readonly property int gridColumns: grid.columns
   // Views whose search field is a value being typed (no list below).
   readonly property bool editing: window.view.kind === "alias" || window.view.kind === "setting-edit"
   readonly property string placeholder: window.view.kind === "alias" ? window.t("Type an alias, then press ↵")
     : window.view.kind === "setting-edit" ? window.t("Type a value, then press ↵")
     : window.view.kind === "settings" ? window.t("Search settings…")
-    : window.gridView ? window.t("Search apps…")
+    : window.view.kind === "apps" ? window.t("Search apps…")
     : window.view.kind === "scope" ? (window.scopeState && window.scopeState.placeholder ? window.t(window.scopeState.placeholder) : window.t("Search %1…", [window.view.title]))
     : window.view.kind === "menu" ? window.t("Search %1…", [window.view.title])
     : window.view.kind === "calculator-history" ? window.t("Search calculations…")
@@ -268,6 +270,9 @@ PanelWindow {
       glyph: String(c.glyph || ""),
       glyphFont: String(c.glyphFont || ""),
       iconName: String(c.iconName || ""),
+      image: String(c.image || ""),
+      cover: String(c.cover || ""),
+      fallbackIcon: String(c.fallbackIcon || ""),
       typeLabel: c.typeLabel ? window.t(c.typeLabel, c.typeLabelValues || undefined) : "",
       isSetting: c.kind === "setting",
       alias: String(c.alias || ""),
@@ -290,7 +295,9 @@ PanelWindow {
     return -1
   }
 
-  function select(index) {
+  // fromPointer: the mouse moved onto the row, which is on screen already;
+  // scrolling it fully into view would jump the list under the pointer.
+  function select(index, fromPointer) {
     if (index !== window.selectedIndex) {
       var previous = list.itemAtIndex(window.selectedIndex)
       if (previous) previous.selected = false
@@ -299,6 +306,7 @@ PanelWindow {
     var current = list.itemAtIndex(index)
     if (current) current.selected = true
     window.selectedRow = Rows.snapshot(rows, index)
+    if (fromPointer) return
     if (window.gridView) {
       if (index >= 0) grid.positionViewAtIndex(index, GridView.Contain)
       if (index === window.nextSelectable(-1, 1)) grid.positionViewAtBeginning()
@@ -766,9 +774,10 @@ PanelWindow {
       readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryText.x
 
       // The scope's tag, as typed into the search: click or Backspace removes it.
+      // A grid scope (Games) shows none, as Apps doesn't.
       Rectangle {
         id: scopeTag
-        visible: window.view.kind === "scope"
+        visible: window.view.kind === "scope" && !window.gridView
         x: lead.x + lead.width + window.px(8)
         anchors.verticalCenter: parent.verticalCenter
         height: window.px(28)
@@ -928,14 +937,16 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
+          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, true) }
           onClicked: function(i) { window.perform("open", i) }
         }
       }
 
       GridView {
         id: grid
-        readonly property int columns: Math.max(1, Math.floor(width / window.px(104)))
+        readonly property int columns: Math.max(1, Math.floor(width / window.px(window.coverGrid ? 120 : 104)))
+        // A cover cell: the 2:3 cover, its margins and two lines of name.
+        readonly property int coverCellHeight: Math.round((Math.floor(width / columns) - window.px(16)) * 1.5) + window.px(8 + 8 + 34)
         anchors.fill: parent
         anchors.topMargin: window.px(8)
         anchors.bottomMargin: window.px(4)
@@ -944,7 +955,9 @@ PanelWindow {
         model: window.gridView ? rows : null
         cellWidth: Math.floor(width / columns)
         // Whole rows fill the height, so none is cut off at the bottom.
-        cellHeight: Math.floor(height / Math.max(1, Math.round(height / window.px(122))))
+        cellHeight: window.coverGrid
+          ? Math.floor(height / Math.max(1, Math.floor(height / coverCellHeight)))
+          : Math.floor(height / Math.max(1, Math.round(height / window.px(122))))
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: AppCell {
@@ -954,7 +967,8 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
+          covers: window.coverGrid
+          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, true) }
           onClicked: function(i) { window.perform("open", i) }
         }
       }

@@ -11,11 +11,13 @@ import os
 from pathlib import Path
 import shutil
 import ssl
+import struct
 import subprocess
 import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlparse
+import zlib
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get('FOAMY_KIT', Path.home() / 'GitHub/Personal/foamy-kit'))
@@ -95,6 +97,15 @@ def start_fetch_fixture(base):
     return server, f'https://127.0.0.1:{server.server_address[1]}', cert
 
 
+def png(width, height, rgb):
+    """A plain-colour PNG (the tests' cover and icon art)."""
+    row = b'\0' + bytes(rgb) * width
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(row * height)) + chunk(b'IEND', b''))
+
+
 def run_case(host, theme, width, language, shots, native=True):
     run = harness.Run(host, (PLUGIN / 'tests/qml/LauncherRuntime.qml').read_text(),
                       plugin=PLUGIN, theme=theme, language=language, prefix='foamy-menu-launcher-')
@@ -170,6 +181,21 @@ with open(path, "w") as f:
     json.dump(config, f)
 ''')
     (stubs / 'omarchy').chmod(0o755)
+    # Steam Games (off until the test turns it on): two installed games, one
+    # with a cover and a small icon, one with neither; a tool is left out.
+    # Enter goes through the uwsm-app stub.
+    steam = home / '.local/share/Steam'
+    (steam / 'steamapps').mkdir(parents=True)
+    (steam / 'steamapps/libraryfolders.vdf').write_text(f'"libraryfolders"\n{{\n\t"0"\n\t{{\n\t\t"path"\t\t"{steam}"\n\t}}\n}}\n')
+    for appid, name in ((548430, 'Deep Rock Galactic'), (8930, "Sid Meier's Civilization V"), (1493710, 'Proton Experimental')):
+        (steam / f'steamapps/appmanifest_{appid}.acf').write_text(
+            f'"AppState"\n{{\n\t"appid"\t\t"{appid}"\n\t"name"\t\t"{name}"\n\t"StateFlags"\t\t"4"\n}}\n')
+    art = steam / 'appcache/librarycache/548430'
+    art.mkdir(parents=True)
+    (art / 'library_600x900.jpg').write_bytes(png(60, 90, (200, 80, 40)))
+    (art / 'e033e23c29a192a17c16a7645a2b423ac64ff447.jpg').write_bytes(png(32, 32, (40, 120, 200)))
+    (stubs / 'uwsm-app').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
+    (stubs / 'uwsm-app').chmod(0o755)
     # Saved searches are opt-in; this turns them on for DuckDuckGo only.
     (scopes / 'duckduckgo.json').write_text(json.dumps({'id': 'duckduckgo', 'history': True}))
     # Rates and suggestions through BoundedFetch, from a local server.

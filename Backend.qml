@@ -44,7 +44,7 @@ Item {
     for (var i = 0; i < (waiting || []).length; i++) out[waiting[i].key] = waiting[i].value
     return out
   }
-  // Built-in scopes with the SSH and web-search settings applied.
+  // Built-in scopes with the SSH, Steam and web-search settings applied.
   readonly property var builtinScopes: Settings.applyToScopes(Scopes.BUILTINS, backend.settings)
   property bool directoriesReady: false
   readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded
@@ -57,8 +57,9 @@ Item {
   property var candidatesById: ({})
   property int candidatesRevision: 0
   readonly property bool loading: menuSource.loading || scopeSource.loading || nativeSearch.pending !== null
-  // Enabled scopes, for Tab on a keyword in the root search.
-  readonly property var scopes: scopeSource.scopes
+  // Offered scopes, for Tab on a keyword in the root search: enabled, and for
+  // a requireItems scope (Games) only once it has items.
+  readonly property var scopes: scopeSource.scopes.filter(function(s) { return Scopes.isShown(s, scopeSource.items[s.id]) })
   // Bumped when exchange rates or zone offsets arrive, so an open
   // calculator row re-evaluates.
   readonly property int calculatorRevision: (calculatorData.rates ? 1 : 0) + calculatorData.ratesFetchedAt + calculatorData.zonesAt
@@ -118,7 +119,14 @@ Item {
     for (var i = 0; i < apps.length; i++) if (apps[i] && apps[i].id) next.push(RootSearch.appCandidate(apps[i]))
     next = next.concat(RootSearch.menuCandidates(menuSource.tree, menuSource.guards, menuSource.providerItems, backend.deps))
     for (var b = 0; b < RootSearch.BUILTINS.length; b++) next.push(RootSearch.builtinCandidate(RootSearch.BUILTINS[b], backend.tr))
-    for (var s = 0; s < scopeSource.scopes.length; s++) next.push(Scopes.scopeCandidate(scopeSource.scopes[s], backend.tr))
+    for (var s = 0; s < scopeSource.scopes.length; s++) {
+      var scope = scopeSource.scopes[s]
+      if (!Scopes.isShown(scope, scopeSource.items[scope.id])) continue
+      next.push(Scopes.scopeCandidate(scope, backend.tr))
+      // A rootSearch scope's items (Steam games) are found from the root too.
+      var items = scope.rootSearch ? (scopeSource.items[scope.id] || []) : []
+      for (var it = 0; it < items.length; it++) next.push(Scopes.rootItemCandidate(scope, items[it], backend.tr))
+    }
     var byId = ({})
     for (var j = 0; j < next.length; j++) byId[next[j].id] = next[j]
     var entries = FleaSearch.entries(next, Ranker.transliterate)
@@ -666,7 +674,7 @@ Item {
         else if (view && view.kind === "scope") {
           var scope = scopeSource.scope(view.scopeId)
           if (scope && Scopes.isQuery(scope)) sections = backend.querySearch(scope, query, ctx)
-          else sections = scope ? RootSearch.scopeSections(backend.scopeItems(scope.id), query, ctx, backend.deps, backend.tr(scope.itemsTitle)) : []
+          else sections = scope ? RootSearch.scopeSections(backend.scopeItems(scope.id), query, ctx, backend.deps, backend.tr(scope.itemsTitle), Scopes.isGrid(scope)) : []
         }
         else if (view && view.kind === "settings") sections = RootSearch.settingsSections(backend.settings, query, ctx, backend.deps)
         else if (view && view.kind === "apps") sections = RootSearch.appGridSections(backend.candidates, query, ctx, backend.deps)
@@ -789,6 +797,7 @@ Item {
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       calculatorData.refresh()
+      backend.refreshRootScopes()
     }
   }
 
@@ -822,9 +831,18 @@ Item {
     directory: backend.directoriesReady ? backend.paths.scopes : ""
     pluginDir: backend.pluginDir
     builtins: backend.builtinScopes
-    onScopesChanged: rebuildTimer.restart()
+    onScopesChanged: { rebuildTimer.restart(); backend.refreshRootScopes() }
+    onItemsChanged: if (scopeSource.scopes.some(Scopes.loadsEarly)) rebuildTimer.restart()
     onRevisionChanged: backend.candidatesRevision++
     onMessage: function(level, text, metadata) { backend.log(level, "scopes", text, metadata) }
+  }
+
+  // Loads the items of rootSearch and requireItems scopes, at start and each
+  // time the launcher opens (a newly installed game shows up, Games appears
+  // once Steam has games); an unchanged list keeps its candidates.
+  function refreshRootScopes() {
+    for (var i = 0; i < scopeSource.scopes.length; i++)
+      if (Scopes.loadsEarly(scopeSource.scopes[i])) scopeSource.refresh(scopeSource.scopes[i].id)
   }
 
   // State of the scope on screen, for its empty and loading text.
@@ -836,7 +854,8 @@ Item {
       failure: scopeSource.failures[scopeId] || "",
       emptyText: scope ? scope.emptyText : "",
       placeholder: scope ? scope.placeholder : "",
-      keyword: scope ? scope.keyword : ""
+      keyword: scope ? scope.keyword : "",
+      layout: scope ? scope.layout : "list"
     }
   }
 

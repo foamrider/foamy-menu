@@ -97,9 +97,12 @@ Item {
   }
 
   function setItems(id, list, failure) {
-    var nextItems = Object.assign({}, source.items)
-    if (list) nextItems[id] = list
-    source.items = nextItems
+    // The same list again keeps the old one, so nothing rebuilds for it.
+    if (list && !(source.items[id] && JSON.stringify(source.items[id]) === JSON.stringify(list))) {
+      var nextItems = Object.assign({}, source.items)
+      nextItems[id] = list
+      source.items = nextItems
+    }
     var nextFailures = Object.assign({}, source.failures)
     if (failure) nextFailures[id] = failure
     else delete nextFailures[id]
