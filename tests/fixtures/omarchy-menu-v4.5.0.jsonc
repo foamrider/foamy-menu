@@ -1,4 +1,4 @@
-// Selected unchanged rows from omacom/omarchy v4.5.0-rc2, default/omarchy/omarchy-menu.jsonc.
+// Selected unchanged rows from omacom/omarchy v4.5.0 (identical in v4.5.0-rc2), default/omarchy/omarchy-menu.jsonc.
 {
   "apps": {"icon":"󰀻","label":"Apps","aliases":["app","applications"],"provider":"apps","action":"omarchy-shell omarchy.dock apps"},
   "appearance": {"icon":"󰏘","label":"Appearance","aliases":["style"]},
