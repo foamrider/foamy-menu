@@ -7,6 +7,8 @@ scope turn a keyword into a tag in the search field and list their own items.
 Search ranking learns from use. The launcher follows the current Omarchy theme
 and language (English and Norwegian).
 
+![The Foamy Menu launcher listing Omarchy commands and search scopes](preview.png)
+
 The implementation is adopted from [Omacast](https://github.com/typecraft-dev/oma-cast),
 snapshot `98bd0bb1cd1adf787afc704ff31f951d3c938708` (2026-11-02).
 It lives in this repository and does not require the Omacast plugin.
@@ -17,8 +19,11 @@ The bundled flea-search helper retains its license and provenance in `search/`.
 
 Requires Omarchy Quattro with Quickshell and the stock menu components.
 Search uses the bundled helper (`bin/x86_64/` and `bin/aarch64/foamy-menu-search`,
-static binaries, no Rust needed); on other CPUs, or if the helper fails, the
-menu falls back to its built-in matcher.
+static binaries, no Rust needed). It starts with the first search and keeps
+running; it receives the app and command list once, then one query per
+keystroke, and skips fields that cannot match before scoring them. On other
+CPUs, or when the helper exits or takes over a second to answer, the menu
+uses its built-in matcher for the rest of the shell session.
 
 ```sh
 omarchy plugin add https://github.com/foamrider/foamy-menu.git --enable
@@ -308,7 +313,7 @@ work offline. History stays local, with owner-only directories and files.
 ## CLI and development
 
 ```sh
-bin/foamy-menu show
+bin/foamy-menu show               # also: toggle, hide, ping, isOpen, run <id> (omarchy-shell foamy-menu …)
 bin/foamy-menu call calculator.calculate '{"query":"2+2"}'
 omarchy bar set foamy.menu windowMode compact
 bin/build-search                  # rebuild the bundled helper (developers; see below)
@@ -344,7 +349,9 @@ the new launcher, action panel, calculator, Apps grid, scopes (a fake
 `~/.ssh/config`, a user scope file, Enter through a stubbed
 `omarchy-launch-tui`), keyboard navigation, theme/width layouts and route
 handoffs in an isolated offscreen shell with stub commands. It runs the dark
-layout in English and the light layout in Norwegian.
+layout in English and the light layout in Norwegian. `preview.png` is
+`root.png` from the English dark run of
+`FOAMY_HOST_45=<4.5 shell> python3 -I tests/launcher.py --host 4.5 --shots DIR`.
 The tests use the sibling `foamy-kit` harness (`FOAMY_KIT` overrides its path).
 `--host 4.5` needs a reference shell (`FOAMY_HOST_45`); `--host 4.0` uses the
 installed shell (`FOAMY_HOST_40`). These are harness labels, not version detection.
