@@ -32,7 +32,6 @@ Item {
   // scopeId -> { query, items: [strings] }: the engine's last suggestions.
   property var suggestions: ({})
   property var pendingSuggestion: null
-  property var suggestionRequest: null
   property int revision: 0
   readonly property bool loading: proc.running || proc.scopeId !== "" || queue.length > 0
   property var queue: []
@@ -140,25 +139,8 @@ Item {
     source.pendingSuggestion = null
     var scope = job ? source.scope(job.id) : null
     if (!scope || !scope.suggest) return
-    if (source.suggestionRequest) {
-      // Cleared first: abort() can report DONE to the old request's handler.
-      var previous = source.suggestionRequest
-      source.suggestionRequest = null
-      previous.abort()
-    }
-    var xhr = new XMLHttpRequest()
-    source.suggestionRequest = xhr
-    xhr.onreadystatechange = function() {
-      // source is null once the plugin reloads with this request in flight.
-      if (!source || xhr.readyState !== XMLHttpRequest.DONE || source.suggestionRequest !== xhr) return
-      source.suggestionRequest = null
-      suggestTimeout.stop()
-      source.storeSuggestions(job.id, job.query, xhr.status === 200 ? Scopes.parseSuggestions(xhr.responseText) : [])
-    }
-    xhr.open("GET", Scopes.fillText(scope.suggestUrl, job.query))
-    xhr.send()
-    suggestTimeout.job = job
-    suggestTimeout.restart()
+    // Replaces a request still in flight; its reply is dropped.
+    suggestFetch.get(Scopes.fillText(scope.suggestUrl, job.query), job)
   }
 
   Timer {
@@ -167,16 +149,12 @@ Item {
     onTriggered: source.fetchSuggestions()
   }
 
-  Timer {
-    id: suggestTimeout
-    property var job: null
-    interval: 3000
-    onTriggered: {
-      if (!source.suggestionRequest) return
-      var request = source.suggestionRequest
-      source.suggestionRequest = null
-      request.abort()
-      if (job) source.storeSuggestions(job.id, job.query, [])
+  // A failed, slow or oversized reply leaves no suggestions for that text.
+  BoundedFetch {
+    id: suggestFetch
+    timeoutSeconds: 3
+    onFinished: function(job, text, failure) {
+      source.storeSuggestions(job.id, job.query, failure ? [] : Scopes.parseSuggestions(text))
     }
   }
 
