@@ -15,6 +15,8 @@ ShellRoot {
   readonly property var view: launcher.window
   // The light run picks Norwegian under Omarchy's language setting (4.5).
   readonly property bool norwegian: Quickshell.env("FOAMY_TEST_LANGUAGE") === "no"
+  // launcher.py's run without bin/<arch>/ (a CPU with no bundled helper).
+  readonly property bool nativeHelper: Quickshell.env("FOAMY_TEST_NATIVE") !== "0"
   function said(english, norwegian) { return test.norwegian ? norwegian : english }
   function check(ok, detail) {
     if (!ok) { console.log("FOAMY FAIL " + detail); Qt.exit(1); return }
@@ -155,6 +157,15 @@ ShellRoot {
         // backend.loading holds the stage until the host list is read.
         test.check(view.view.kind === "scope" && view.view.scopeId === "ssh" && view.query === "", "Tab on the keyword enters the SSH scope")
         test.check(view.placeholder === test.said("Search hosts…", "Søk etter verter…"), "scope placeholder")
+        if (!test.nativeHelper) {
+          // The host list comes from the bundled helper too.
+          var state = backend.scopeState("ssh")
+          test.check(state.failure === "This plugin's helper isn't available for this CPU." && view.emptyText[1] === state.failure, "without a bundled helper the SSH scope says so")
+          view.popToRoot()
+          view.setQuery("bookmarks")
+          test.stage = 15
+          break
+        }
         test.check(view.selectedRow && view.selectedRow.itemId === "scope-item:ssh:db", "hosts listed A–Z; wildcards skipped")
         test.check(view.selectedRow.subtitle === "db.internal", "host shows its HostName")
         test.capture("ssh", function() {

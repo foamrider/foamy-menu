@@ -28,6 +28,21 @@ var MAX_HISTORY = 100
 // A host name ssh accepts as one argument; never an option.
 var SSH_HOST_PATTERN = "^[A-Za-z0-9_.:@%+][A-Za-z0-9_.:@%+-]*$"
 
+// The bundled helper bin/<arch>/<name>, run as kit/FoamyNative.js command()
+// runs it (bash picks the arch and execs the helper, so one process; no
+// helper for this CPU exits 126/127). Kept in step with the kit by
+// tests/ssh-hosts.test.js.
+var NATIVE_SCRIPT = 'exec -- "$1/bin/$HOSTTYPE/$2" "${@:3}"'
+
+function nativeCommand(name, args) {
+  return ["bash", "-c", NATIVE_SCRIPT, "foamy-native", "{plugin}", name].concat(args || [])
+}
+
+// Whether a (filled) command, an array or a QML list, runs a bundled helper.
+function isNativeCommand(argv) {
+  return !!argv && argv.length > 5 && argv[0] === "bash" && argv[1] === "-c" && argv[2] === NATIVE_SCRIPT
+}
+
 var BUILTINS = [
   {
     id: "ssh",
@@ -39,7 +54,8 @@ var BUILTINS = [
     itemsTitle: "Hosts",
     placeholder: "Search hosts…",
     emptyText: "No hosts in ~/.ssh/config",
-    source: { type: "command", command: ["{plugin}/bin/foamy-ssh-hosts"] },
+    // Every concrete Host in ~/.ssh/config and its Includes (search/src/ssh_hosts.rs).
+    source: { type: "command", command: nativeCommand("foamy-menu-search", ["ssh-hosts"]) },
     open: ["omarchy-launch-tui", "--app-id=TUI.tile", "{plugin}/bin/foamy-ssh-connect", "{value}"],
     openTitle: "Connect",
     valuePattern: SSH_HOST_PATTERN,
@@ -431,6 +447,7 @@ if (typeof module !== "undefined") {
     BUILTINS: BUILTINS,
     MAX_ITEMS: MAX_ITEMS,
     SSH_HOST_PATTERN: SSH_HOST_PATTERN,
+    isNativeCommand: isNativeCommand,
     normalize: normalize,
     parseFile: parseFile,
     merge: merge,

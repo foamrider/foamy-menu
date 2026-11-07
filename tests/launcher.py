@@ -64,7 +64,8 @@ def run_case(host, theme, width, language, shots, native=True):
     (stubs / 'wl-copy').chmod(0o755)
     (stubs / 'wtype').write_text('#!/bin/sh\nexit 0\n')
     (stubs / 'wtype').chmod(0o755)
-    # Scopes: the built-in SSH scope reads this config; Enter runs the stub.
+    # Scopes: the built-in SSH scope reads this config (through the bundled
+    # helper's ssh-hosts); Enter runs the stub.
     ssh = home / '.ssh'
     ssh.mkdir(mode=0o700)
     (ssh / 'config').write_text('Host web\n  HostName 10.0.0.4\n  User deploy\nHost db\n  HostName db.internal\nHost *\n  ServerAliveInterval 30\n')
@@ -102,7 +103,8 @@ with open(path, "w") as f:
     # Saved searches are opt-in; this turns them on for DuckDuckGo only.
     (scopes / 'duckduckgo.json').write_text(json.dumps({'id': 'duckduckgo', 'history': True}))
     run.env.update({'FOAMY_TEST_WIDTH': str(width), 'FOAMY_COPY_FILE': str(run.base / 'copied'),
-                    'FOAMY_LAUNCH_FILE': str(run.base / 'launched'), 'FOAMY_BROWSER_FILE': str(run.base / 'browsed'), 'FOAMY_TEST_LANGUAGE': language})
+                    'FOAMY_LAUNCH_FILE': str(run.base / 'launched'), 'FOAMY_BROWSER_FILE': str(run.base / 'browsed'), 'FOAMY_TEST_LANGUAGE': language,
+                    'FOAMY_TEST_NATIVE': '1' if native else '0'})
     if shots:
         out = Path(shots) / f'{host}-{theme}-{width}-{language}'
         out.mkdir(parents=True, exist_ok=True)

@@ -23,7 +23,10 @@ static binaries, no Rust needed). It starts with the first search and keeps
 running; it receives the app and command list once, then one query per
 keystroke, and skips fields that cannot match before scoring them. On other
 CPUs, or when the helper exits or takes over a second to answer, the menu
-uses its built-in matcher for the rest of the shell session.
+uses its built-in matcher for the rest of the shell session. The same binary
+lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`, one short run each
+time the scope loads); on a CPU without it, the SSH scope says the helper isn't
+available.
 
 ```sh
 omarchy plugin add https://github.com/foamrider/foamy-menu.git --enable
@@ -137,12 +140,19 @@ used items come first; the rest follow in the source's order.
 
 Lists every concrete `Host` in `~/.ssh/config` and the files it `Include`s
 (patterns such as `*.internal` are skipped), with `user@hostname:port` from
-the host's block. Enter opens the default terminal through
-`omarchy-launch-tui --app-id=TUI.tile` and runs `ssh <host>`; if ssh fails,
-the window stays open until a key is pressed. Ctrl+K offers **Copy SSH
-Command**, **Copy Host Name** and **Open in Files (SFTP)**. Host names must be
-plain ssh destinations (letters, digits and `_.:@%+-`, not starting with `-`).
-Turn the scope off with `omarchy bar set foamy.menu sshScope false --json`.
+the host's own blocks, read the way ssh reads them: keywords in any case,
+`Key value` or `Key=value`, quotes and `#` comments; the first value of each
+setting wins; `Include` is read where it stands (globs, relative paths under
+`~/.ssh`, `~/`), each file once, so cycles are harmless. `Match` blocks and
+pattern blocks such as `Host *` are not applied. Files are read with bounds
+(1 MiB each, 256 files, Include depth 16) and only when they resolve to a
+regular file; `FOAMY_SSH_CONFIG` names another config (for tests). Enter opens
+the default terminal through `omarchy-launch-tui --app-id=TUI.tile` and runs
+`ssh <host>`; if ssh fails, the window stays open until a key is pressed.
+Ctrl+K offers **Copy SSH Command**, **Copy Host Name** and **Open in Files
+(SFTP)**. Host names must be plain ssh destinations (letters, digits and
+`_.:@%+-`, not starting with `-`). Turn the scope off with
+`omarchy bar set foamy.menu sshScope false --json`.
 
 ### Web search (built in)
 
@@ -336,20 +346,25 @@ pin with the source. The helper tests (`cargo test --test protocol` in `search/`
 `node --test tests/*.test.js`) run against another build when `FOAMY_HELPER` holds
 a JSON argv prefix with an absolute path, e.g.
 `FOAMY_HELPER="[\"$PWD/bin/aarch64/foamy-menu-search\"]"` (qemu-user binfmt).
+`tests/ssh-hosts.test.js` runs `foamy-menu-search ssh-hosts` next to the retired
+Bash lister (`tests/fixtures/foamy-ssh-hosts.sh`, a test fixture only) over
+fixture homes and requires the same bytes, or the documented ssh-correct
+difference where the script misread `ssh_config`.
 
 No Node runtime is needed by the plugin; Node is used only for tests. Core logic
 lives in `core/`, I/O in `services/`, and the launcher UI in `ui/`. `Menu.qml` routes between `Launcher.qml` and
 `StockMenu.qml`; `BarWidget.qml` retains Foamy's bar styling. Scopes are
 `core/Scopes.js` (definitions, merging, parsing) and `services/ScopeSource.qml`
-(files and commands); the SSH scope's helpers are `bin/foamy-ssh-hosts` and
+(files and commands); the SSH scope lists hosts with
+`foamy-menu-search ssh-hosts` (`search/src/ssh_hosts.rs`) and connects with
 `bin/foamy-ssh-connect`.
 
 `tests/runtime.py` exercises the stock adapter. `tests/launcher.py` exercises
 the new launcher, action panel, calculator, Apps grid, scopes (a fake
-`~/.ssh/config`, a user scope file, Enter through a stubbed
-`omarchy-launch-tui`), keyboard navigation, theme/width layouts and route
-handoffs in an isolated offscreen shell with stub commands. It runs the dark
-layout in English and the light layout in Norwegian. `preview.png` is
+`~/.ssh/config` read by the bundled helper, a user scope file, Enter through a
+stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts and
+route handoffs in an isolated offscreen shell with stub commands. It runs the
+dark layout in English and the light layout in Norwegian. `preview.png` is
 `root.png` from the English dark run of
 `python3 -I tests/launcher.py --shots DIR`.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).

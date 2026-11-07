@@ -15,8 +15,10 @@ const os = require("node:os")
 const path = require("node:path")
 const { execFileSync } = require("node:child_process")
 const helper = require("./search-helper.js")
+const Scopes = require("../core/Scopes.js")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
 
+const root = path.join(__dirname, "..")
 const script = path.join(__dirname, "fixtures/foamy-ssh-hosts.sh")
 const skip = helper.skip && "no bundled search helper for this CPU"
 const isRoot = typeof process.getuid === "function" && process.getuid() === 0
@@ -281,6 +283,25 @@ for (const fixture of DIFFERENT) {
     })
   })
 }
+
+test("the SSH scope runs the bundled helper's ssh-hosts, as FoamyNative launches it", { skip }, () => {
+  const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find((s) => s.id === "ssh")
+  const argv = Scopes.fill(ssh.source.command, "", root)
+  assert.deepEqual(argv, Array.from(FoamyNative.command(root, "foamy-menu-search", ["ssh-hosts"])))
+  assert.ok(Scopes.isNativeCommand(argv))
+  const fixture = SAME[0]
+  const home = makeHome(fixture)
+  try {
+    const out = runRust(home, fixture, helper.required ? undefined : argv)
+    assert.equal(out, fixture.out)
+    assert.deepEqual(Scopes.parseOutput(out).slice(0, 2), [
+      { title: "abs", value: "abs", subtitle: "abs:2022" },
+      { title: "cache", value: "cache", subtitle: "10.0.0.9" }
+    ])
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
 
 test("ssh-hosts rejects other arguments without the exits FoamyNative reserves", { skip }, () => {
   const [program, ...args] = [...helper.argv, "ssh-hosts", "extra"]
