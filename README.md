@@ -317,8 +317,8 @@ bin/foamy-menu show               # also: toggle, hide, ping, isOpen, run <id> (
 bin/foamy-menu call calculator.calculate '{"query":"2+2"}'
 omarchy bar set foamy.menu windowMode compact
 bin/build-search                  # rebuild the bundled helper (developers; see below)
-./test.sh --host 4.0               # JS tests and installed-host runtime checks
-python3 -I tests/launcher.py --host 4.0 --shots /tmp/foamy-menu-shots
+./test.sh                          # JS tests and runtime checks on the installed 4.5 shell
+python3 -I tests/launcher.py --shots /tmp/foamy-menu-shots
 omarchy plugin validate .
 ```
 
@@ -351,10 +351,12 @@ the new launcher, action panel, calculator, Apps grid, scopes (a fake
 handoffs in an isolated offscreen shell with stub commands. It runs the dark
 layout in English and the light layout in Norwegian. `preview.png` is
 `root.png` from the English dark run of
-`FOAMY_HOST_45=<4.5 shell> python3 -I tests/launcher.py --host 4.5 --shots DIR`.
-The tests use the sibling `foamy-kit` harness (`FOAMY_KIT` overrides its path).
-`--host 4.5` needs a reference shell (`FOAMY_HOST_45`); `--host 4.0` uses the
-installed shell (`FOAMY_HOST_40`). These are harness labels, not version detection.
+`python3 -I tests/launcher.py --shots DIR`.
+The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
+They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
+`$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.
+`--host 4.0` and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0
+shell and print a SKIP line otherwise. These are harness labels, not version detection.
 
 After source edits, restart the shell to clear Quickshell's QML cache.
 No upstream installation or migration scripts are included in Foamy's CLI.

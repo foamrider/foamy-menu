@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Exercise the adopted launcher offscreen, with private state and stubbed commands."""
+"""Exercise the adopted launcher offscreen, with private state and stubbed commands.
+
+Runs on Omarchy 4.5 by default (hosts as in tests/runtime.py: FOAMY_HOST_45,
+OMARCHY_TEST_ROOT or the installed shell); 4.0 only with FOAMY_HOST_40."""
 import argparse
 import importlib.util
 import json
@@ -11,6 +14,10 @@ import time
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get('FOAMY_KIT', Path.home() / 'GitHub/Personal/foamy-kit'))
+# Omarchy 4.5 only by default; set before the harness reads its hosts.
+if not os.environ.get('FOAMY_HOST_45'):
+    _root = os.environ.get('OMARCHY_TEST_ROOT')
+    os.environ['FOAMY_HOST_45'] = str(Path(_root) / 'shell') if _root else '/usr/share/omarchy/shell'
 sys.path.insert(0, str(KIT / 'preview'))
 import harness
 spec = importlib.util.spec_from_file_location('stock_runtime', PLUGIN / 'tests/runtime.py')
@@ -122,10 +129,10 @@ with open(path, "w") as f:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--host', choices=['4.0', '4.5', 'both'], default='4.0')
+    parser.add_argument('--host', choices=['4.5', '4.0', 'both'], default='4.5')
     parser.add_argument('--shots')
     args = parser.parse_args()
-    hosts = ['4.0', '4.5'] if args.host == 'both' else [args.host]
+    hosts = stock_runtime.selected_hosts(args.host)
     # English on the wide dark layout, Norwegian (Omarchy 4.5 language) on the narrow light one.
     results = [run_case(host, theme, width, language, args.shots) for host in hosts
                for theme, width, language in [('dark', 1280, 'en'), ('light', 600, 'no')]]
