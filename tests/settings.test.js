@@ -38,8 +38,8 @@ test("settings come from the shell.json entry; missing or invalid values use the
 test("the SSH and web-search settings reach the built-in scopes; scope files still override", () => {
   const off = Settings.applyToScopes(Scopes.BUILTINS, Settings.resolve(Prefs, { sshScope: false, webSearchHistory: true, webSearchSuggestions: true }))
   const merged = Scopes.merge(off, []).scopes
-  assert.deepEqual(merged.map((s) => s.id), ["google", "duckduckgo"])
-  assert.ok(merged.every((s) => s.history && s.suggest))
+  assert.deepEqual(merged.map((s) => s.id), ["google", "duckduckgo", "steam"])
+  assert.ok(merged.filter(Scopes.isQuery).every((s) => s.history && s.suggest))
   const fileWins = Scopes.merge(off, [{ name: "google.json", definition: { id: "google", suggest: false } }]).scopes
   assert.equal(fileWins.find((s) => s.id === "google").suggest, false)
   assert.notEqual(Scopes.BUILTINS[0].enabled, false, "the built-in definitions are not changed")
@@ -65,14 +65,16 @@ const ctx = { commands: {}, frecency: {}, nowMs: 0, sensitivity: "medium" }
 test("the settings view: sections in order, values where types go, log level left to shell.json", () => {
   const values = Settings.resolve(Prefs, { popToRootTimeout: 30, webSearchHistory: true })
   const sections = RS.settingsSections(values, "", ctx, deps)
-  assert.deepEqual(sections.map((s) => s.title), ["Window", "Scopes", "Calculator", "Bar Button", "More"])
+  assert.deepEqual(sections.map((s) => s.title), ["Window", "Search", "Web Search", "Calculator", "Bar Button"])
+  const ids = (title) => sections.find((s) => s.title === title).rows.map((r) => r.candidate.id)
+  assert.deepEqual(ids("Search"), ["setting:rootSearchSensitivity", "setting:sshScope", "setting:steamGames", "settings-action:open-scopes"])
+  assert.deepEqual(ids("Web Search"), ["setting:webSearchHistory", "setting:webSearchSuggestions", "settings-action:clear-searches"], "each command row ends its own section")
   const rows = sections.flatMap((s) => s.rows.map((r) => r.candidate))
   assert.ok(!rows.some((c) => c.settingKey === "logLevel"))
   const keep = rows.find((c) => c.settingKey === "popToRootTimeout")
   assert.deepEqual([keep.typeLabel, keep.typeLabelValues, keep.isDefault], ["%1 s", [30], false])
   assert.equal(rows.find((c) => c.settingKey === "webSearchHistory").typeLabel, "On")
   assert.equal(rows.find((c) => c.settingKey === "escapeKeyBehavior").typeLabel, "Go back")
-  assert.deepEqual(sections.at(-1).rows.map((r) => r.candidate.id), ["settings-action:open-scopes", "settings-action:clear-searches"])
   assert.equal(RS.settingsSections(values, "suggest", ctx, deps)[0].rows[0].candidate.settingKey, "webSearchSuggestions")
   assert.ok(RS.BUILTINS.some((b) => b.id === "builtin:settings" && b.run.push.kind === "settings"))
 })

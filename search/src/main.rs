@@ -7,6 +7,7 @@ mod backend;
 mod engine;
 mod protocol;
 mod ssh_hosts;
+mod steam_games;
 
 use std::io::{self, BufWriter};
 use std::process::ExitCode;
@@ -18,14 +19,16 @@ fn main() -> ExitCode {
     foamy_helper::process::exit_on_panic(101);
     // `foamy-menu-search` answers search requests on stdin (see protocol.rs);
     // `foamy-menu-search ssh-hosts` prints the SSH scope's hosts and exits
-    // (see ssh_hosts.rs). Exit codes stay clear of 126/127, which
+    // (see ssh_hosts.rs); `foamy-menu-search steam-games` prints the Steam
+    // Games scope's installed games and exits (see steam_games.rs). Exit codes stay clear of 126/127, which
     // FoamyNative reserves for "no helper for this CPU".
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.as_slice() {
         [] => {}
         [command] if command == "ssh-hosts" => return ssh_hosts::main(),
+        [command] if command == "steam-games" => return steam_games::main(),
         _ => {
-            eprintln!("usage: foamy-menu-search [ssh-hosts]");
+            eprintln!("usage: foamy-menu-search [ssh-hosts | steam-games]");
             return ExitCode::from(2);
         }
     }

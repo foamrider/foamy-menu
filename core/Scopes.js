@@ -6,7 +6,8 @@
 // past searches ("history": true) and the engine's suggestions
 // ("suggest": true) can fill the list; both are off unless turned on.
 //
-// A scope is one JSON object. The built-in SSH scope ships here; user scopes
+// A scope is one JSON object. The built-in SSH, Steam Games and web-search
+// scopes ship here; user scopes
 // live in ~/.config/foamy-menu/scopes/<id>.json. A user file whose id matches
 // a built-in overrides its fields, so {"id": "ssh", "enabled": false} turns the
 // built-in off. Commands are argv arrays, never shell strings: {value} is the
@@ -27,6 +28,12 @@ var MAX_HISTORY = 100
 
 // A host name ssh accepts as one argument; never an option.
 var SSH_HOST_PATTERN = "^[A-Za-z0-9_.:@%+][A-Za-z0-9_.:@%+-]*$"
+// A Steam app id.
+var STEAM_APPID_PATTERN = "^[0-9]{1,10}$"
+
+// How a scope lays its items out: a list, or a grid like Apps with each
+// item's icon ("icons") or portrait cover art ("covers").
+var LAYOUTS = ["list", "icons", "covers"]
 
 // The bundled helper bin/<arch>/<name>, run as kit/FoamyNative.js command()
 // runs it (bash picks the arch and execs the helper, so one process; no
@@ -69,7 +76,39 @@ var BUILTINS = [
   webSearch("google", "Google", "g", "\u{f1a0}", "https://www.google.com", "https://www.google.com/search?q={query}",
     "https://suggestqueries.google.com/complete/search?client=firefox&q={query}"),
   webSearch("duckduckgo", "DuckDuckGo", "ddg", "\u{f002}", "https://duckduckgo.com", "https://duckduckgo.com/?q={query}",
-    "https://duckduckgo.com/ac/?q={query}&type=list")
+    "https://duckduckgo.com/ac/?q={query}&type=list"),
+  {
+    id: "steam",
+    // Shown once the helper finds installed games (requireItems); the
+    // steamGames setting adds them to the root search (Settings.applyToScopes).
+    enabled: true,
+    requireItems: true,
+    // Shown like Apps: "Games" in the root search, a grid with no scope tag.
+    title: "Games",
+    subtitle: "Steam",
+    keyword: "steam",
+    icon: "\u{f04d3}",
+    // Grid cells without art show Steam's own icon.
+    iconName: "steam",
+    itemsTitle: "Games",
+    placeholder: "Search games…",
+    emptyText: "No installed Steam games",
+    // Installed games with their icons and covers (search/src/steam_games.rs).
+    source: { type: "command", command: nativeCommand("foamy-menu-search", ["steam-games"]) },
+    // Through the steam:// handler, so the Flatpak works too.
+    open: ["uwsm-app", "--", "xdg-open", "steam://rungameid/{value}"],
+    openTitle: "Play",
+    valuePattern: STEAM_APPID_PATTERN,
+    layout: "covers",
+    rootSearch: false,
+    itemLabel: "Game",
+    actions: [
+      { title: "Show in Library", open: ["uwsm-app", "--", "xdg-open", "steam://nav/games/details/{value}"] },
+      { title: "Open Store Page", open: ["uwsm-app", "--", "xdg-open", "steam://store/{value}"] },
+      { title: "Copy App ID", copy: "{value}" }
+    ],
+    builtin: true
+  }
 ]
 
 function webSearch(id, title, keyword, icon, home, url, suggestUrl) {
@@ -144,6 +183,10 @@ function source(value, errors) {
         value: text(raw.value, "source.items[" + i + "].value", itemErrors, false) || title,
         subtitle: text(raw.subtitle, "source.items[" + i + "].subtitle", itemErrors, false)
       }
+      var icon = imagePath(text(raw.icon, "source.items[" + i + "].icon", itemErrors, false), true)
+      var cover = imagePath(text(raw.cover, "source.items[" + i + "].cover", itemErrors, false), false)
+      if (icon) item.icon = icon
+      if (cover) item.cover = cover
       if (itemErrors.length) { errors.push(itemErrors[0]); return null }
       if (title) items.push(item)
     }
@@ -152,6 +195,15 @@ function source(value, errors) {
   if (value.type === "query") return { type: "query" }
   errors.push("source.type must be \"command\", \"list\" or \"query\"")
   return null
+}
+
+// An item's picture: an absolute file path, or nothing. An icon may also be
+// an icon theme name (letters, digits, ".", "_", "-").
+function imagePath(value, allowName) {
+  var v = String(value || "").trim()
+  if (/^\/[^\0-\x1f\x7f]*$/.test(v) && !/(^|\/)\.\.(\/|$)/.test(v)) return v
+  if (allowName && /^[A-Za-z0-9._-]+$/.test(v)) return v
+  return ""
 }
 
 function actions(value, errors) {
@@ -182,10 +234,14 @@ function normalize(raw) {
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") errors.push("enabled must be true or false")
   var keyword = raw.keyword === undefined ? id : raw.keyword
   var isQuery = isPlainObject(raw.source) && raw.source.type === "query"
-  for (var f = 0; f < 2; f++) {
-    var flag = ["history", "suggest"][f]
+  for (var f = 0; f < 4; f++) {
+    var flag = ["history", "suggest", "rootSearch", "requireItems"][f]
     if (raw[flag] !== undefined && typeof raw[flag] !== "boolean") errors.push(flag + " must be true or false")
   }
+  var layout = raw.layout === undefined ? "list" : raw.layout
+  if (LAYOUTS.indexOf(layout) < 0) { errors.push("layout must be \"list\", \"icons\" or \"covers\""); layout = "list" }
+  if (isQuery && layout !== "list") { errors.push("a query scope has no grid layout"); layout = "list" }
+  if (isQuery && (raw.rootSearch === true || raw.requireItems === true)) errors.push("a query scope has no items for rootSearch or requireItems")
   if (typeof keyword !== "string" || !KEYWORD_PATTERN.test(keyword)) errors.push("keyword must be 1–32 characters without spaces")
   var scope = {
     id: id,
@@ -206,6 +262,10 @@ function normalize(raw) {
     suggest: isQuery && raw.suggest === true,
     suggestUrl: text(raw.suggestUrl, "suggestUrl", errors, false),
     valuePattern: text(raw.valuePattern, "valuePattern", errors, false),
+    layout: layout,
+    rootSearch: !isQuery && raw.rootSearch === true,
+    requireItems: !isQuery && raw.requireItems === true,
+    itemLabel: text(raw.itemLabel, "itemLabel", errors, false),
     actions: actions(raw.actions, errors),
     builtin: raw.builtin === true
   }
@@ -285,23 +345,31 @@ function matchKeyword(scopes, query) {
   return null
 }
 
-// Command output: one item per line, "title<TAB>value<TAB>subtitle"; value
-// defaults to the title. Blank and over-long lines are skipped; at most
-// MAX_ITEMS items, duplicate values kept once.
+// Command output: one item per line,
+// "title<TAB>value<TAB>subtitle<TAB>icon<TAB>cover"; value defaults to the
+// title, the rest may be left out. icon is an image file or an icon name,
+// cover an image file (absolute paths; anything else is dropped). Blank and
+// over-long lines are skipped; at most MAX_ITEMS items, duplicate values kept
+// once.
 function parseOutput(output) {
   var lines = String(output || "").split("\n")
   var items = []
   var seen = {}
   for (var i = 0; i < lines.length && items.length < MAX_ITEMS; i++) {
     var line = lines[i].replace(/\r$/, "")
-    if (!line.trim() || line.length > MAX_TEXT * 3) continue
+    if (!line.trim() || line.length > MAX_TEXT * 5) continue
     var parts = line.split("\t")
     var title = parts[0].trim()
     if (!title || title.length > MAX_TEXT) continue
     var value = (parts[1] || "").trim() || title
     if (value.length > MAX_TEXT || seen[value]) continue
     seen[value] = true
-    items.push({ title: title, value: value, subtitle: (parts[2] || "").trim().slice(0, MAX_TEXT) })
+    var icon = (parts[3] || "").length <= MAX_TEXT ? imagePath(parts[3], true) : ""
+    var cover = (parts[4] || "").length <= MAX_TEXT ? imagePath(parts[4], false) : ""
+    var item = { title: title, value: value, subtitle: (parts[2] || "").trim().slice(0, MAX_TEXT) }
+    if (icon) item.icon = icon
+    if (cover) item.cover = cover
+    items.push(item)
   }
   return items
 }
@@ -323,7 +391,9 @@ function scopeCandidate(scope, t) {
     title: title,
     subtitle: tr(scope.subtitle),
     keywords: keywords,
-    typeLabel: "Scope",
+    // A grid opens like the Apps menu row does.
+    typeLabel: isGrid(scope) ? "Menu" : "Scope",
+    grid: isGrid(scope),
     scopeId: scope.id,
     scopeKeyword: scope.keyword,
     glyph: scope.icon,
@@ -341,15 +411,59 @@ function itemCandidate(scope, item, t) {
     title: item.title,
     subtitle: item.subtitle,
     keywords: item.value !== item.title ? [item.value] : [],
-    typeLabel: tr(scope.title),
+    typeLabel: tr(scope.itemLabel || scope.title),
     scopeId: scope.id,
     value: item.value,
     openTitle: scope.openTitle,
     scopeActions: scope.actions,
     glyph: scope.icon,
     iconName: scope.icon ? "" : scope.iconName,
+    // The grid's picture: the item's own, else the scope's icon name.
+    image: item.icon || "",
+    cover: item.cover || "",
+    fallbackIcon: scope.iconName || "",
     rootSearch: { when: "never" }
   }
+}
+
+// The URL an item's image file loads from: an .ico through Quickshell's icon
+// provider (which picks its largest size; a plain file URL shows its first,
+// often 32 px), anything else as a file URL. "" for an icon name, which the
+// app library resolves.
+function imageUrl(path) {
+  var p = String(path || "")
+  if (p.charAt(0) !== "/") return ""
+  if (/\.ico$/i.test(p)) return "image://icon/" + p
+  return "file://" + p.split("/").map(encodeURIComponent).join("/")
+}
+
+// An item of a rootSearch scope as a root search row: found while typing,
+// ranked and filtered as an application (Steam games next to apps), with the
+// scope's subtitle ("Steam") when the item has none. Its id is the item's id
+// inside the scope, so both share ranking and actions.
+function rootItemCandidate(scope, item, t) {
+  var tr = typeof t === "function" ? t : function(s) { return s }
+  var c = itemCandidate(scope, item, t)
+  c.type = "application"
+  c.subtitle = item.subtitle || tr(scope.subtitle)
+  c.rootSearch = { when: "searching" }
+  return c
+}
+
+// Whether a scope is offered (its row, its keyword): a requireItems scope only
+// once its source has listed something (Games: Steam is installed with games).
+function isShown(scope, items) {
+  return !!scope && (!scope.requireItems || (!!items && items.length > 0))
+}
+
+// Scopes whose items load without being entered: for the root search, or to
+// know whether a requireItems scope is shown.
+function loadsEarly(scope) {
+  return !!scope && (scope.rootSearch || scope.requireItems)
+}
+
+function isGrid(scope) {
+  return !!scope && scope.layout !== undefined && scope.layout !== "list"
 }
 
 function valueAllowed(scope, value) {
@@ -446,7 +560,13 @@ if (typeof module !== "undefined") {
   module.exports = {
     BUILTINS: BUILTINS,
     MAX_ITEMS: MAX_ITEMS,
+    LAYOUTS: LAYOUTS,
     SSH_HOST_PATTERN: SSH_HOST_PATTERN,
+    STEAM_APPID_PATTERN: STEAM_APPID_PATTERN,
+    isGrid: isGrid,
+    isShown: isShown,
+    loadsEarly: loadsEarly,
+    imageUrl: imageUrl,
     isNativeCommand: isNativeCommand,
     normalize: normalize,
     parseFile: parseFile,
@@ -456,6 +576,7 @@ if (typeof module !== "undefined") {
     itemId: itemId,
     scopeCandidate: scopeCandidate,
     itemCandidate: itemCandidate,
+    rootItemCandidate: rootItemCandidate,
     valueAllowed: valueAllowed,
     fill: fill,
     fillText: fillText,

@@ -32,15 +32,17 @@ var fields = [
     section: "Window", title: "Move keys", optionTitles: { emacs: "Ctrl+N/P", "vim-motions": "Ctrl+J/K" } },
   { key: "rootSearchSensitivity", type: "enum", label: "How loosely search matches typos",
     options: ["low", "medium", "high"], defaultValue: "medium",
-    section: "Window", title: "Typo tolerance", optionTitles: { low: "Low", medium: "Medium", high: "High" } },
+    section: "Search", title: "Typo tolerance", optionTitles: { low: "Low", medium: "Medium", high: "High" } },
   { key: "keepVisibleOnFocusLoss", type: "boolean", label: "Stay open when clicking outside", defaultValue: false,
     section: "Window", title: "Stay open when clicking outside" },
   { key: "sshScope", type: "boolean", label: "SSH scope (ssh + Tab)", defaultValue: true,
-    section: "Scopes", title: "SSH scope" },
+    section: "Search", title: "SSH hosts" },
+  { key: "steamGames", type: "boolean", label: "Find installed Steam games in the root search, as apps are", defaultValue: false,
+    section: "Search", title: "Steam games in search" },
   { key: "webSearchHistory", type: "boolean", label: "Save web searches and list them as Recent Searches", defaultValue: false,
-    section: "Scopes", title: "Save web searches" },
-  { key: "webSearchSuggestions", type: "boolean", label: "Show search suggestions while typing (sends what you type to the engine)", defaultValue: false,
-    section: "Scopes", title: "Search suggestions" },
+    section: "Web Search", title: "Save web searches" },
+  { key: "webSearchSuggestions", type: "boolean", label: "Show the search engine's suggestions while typing a web search (sends what you type to the engine)", defaultValue: false,
+    section: "Web Search", title: "Web search suggestions" },
   // Daily ECB reference rates from frankfurter.dev for currency conversion.
   { key: "currencyRates", type: "boolean", label: "Download exchange rates for currency conversion", defaultValue: true,
     section: "Calculator", title: "Exchange rates" },
@@ -55,8 +57,10 @@ var fields = [
     hidden: true }
 ]
 
-// The settings view's sections, in order.
-var SECTIONS = ["Window", "Scopes", "Calculator", "Bar Button"]
+// The settings view's sections, in order. Search holds what the root search
+// finds (typo tolerance, SSH hosts, Steam games); Web Search the Google and
+// DuckDuckGo scopes.
+var SECTIONS = ["Window", "Search", "Web Search", "Calculator", "Bar Button"]
 
 function field(key) {
   for (var i = 0; i < fields.length; i++) if (fields[i].key === key) return fields[i]
@@ -119,14 +123,16 @@ function resolve(Prefs, entry) {
   return Prefs.values(fields, entry && typeof entry === "object" ? entry : {})
 }
 
-// The built-in scopes with these settings applied: the SSH scope's switch and
-// the web searches' saved searches and suggestions. A scope file can still
+// The built-in scopes with these settings applied: the SSH switch, Steam
+// games in the root search, and the web searches' saved searches and
+// suggestions. A scope file can still
 // override a built-in afterwards.
 function applyToScopes(builtins, settings) {
   return builtins.map(function(scope) {
     var next = {}
     for (var k in scope) next[k] = scope[k]
     if (scope.id === "ssh") next.enabled = settings.sshScope
+    if (scope.id === "steam") next.rootSearch = settings.steamGames
     if (scope.source && scope.source.type === "query") {
       next.history = settings.webSearchHistory
       next.suggest = settings.webSearchSuggestions

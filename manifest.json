@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "foamy.menu",
   "name": "Foamy Menu",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "author": "foamrider",
-  "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH and web-search scopes",
+  "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH, Steam and web-search scopes",
   "license": "MIT",
   "kinds": [
     "menu",
@@ -17,7 +17,7 @@
   },
   "barWidget": {
     "displayName": "Menu",
-    "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH and web-search scopes",
+    "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH, Steam and web-search scopes",
     "category": "Compositor",
     "allowMultiple": false,
     "defaultSection": "left",
@@ -32,6 +32,7 @@
       "rootSearchSensitivity": "medium",
       "keepVisibleOnFocusLoss": false,
       "sshScope": true,
+      "steamGames": false,
       "webSearchHistory": false,
       "webSearchSuggestions": false,
       "currencyRates": true,
@@ -125,6 +126,12 @@
         "defaultValue": true
       },
       {
+        "key": "steamGames",
+        "type": "boolean",
+        "label": "Find installed Steam games in the root search, as apps are",
+        "defaultValue": false
+      },
+      {
         "key": "webSearchHistory",
         "type": "boolean",
         "label": "Save web searches and list them as Recent Searches",
@@ -133,7 +140,7 @@
       {
         "key": "webSearchSuggestions",
         "type": "boolean",
-        "label": "Show search suggestions while typing (sends what you type to the engine)",
+        "label": "Show the search engine's suggestions while typing a web search (sends what you type to the engine)",
         "defaultValue": false
       },
       {

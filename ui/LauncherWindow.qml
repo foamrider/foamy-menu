@@ -7,6 +7,7 @@ import qs.Ui
 import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
 import "../core/Scopes.js" as Scopes
+import "../core/QueryEdit.js" as QueryEdit
 import "../kit"
 
 // Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
@@ -88,8 +89,8 @@ PanelWindow {
 
   // Navigation bindings (ref 04 §2.8): emacs moves with Ctrl+N (Ctrl+P is the
   // dropdown); vim-motions with Ctrl+J/K, which moves the action panel to
-  // Alt+K. Ctrl+B/F and Ctrl+H/L move a text cursor in Raycast; our search
-  // field has none, so they do nothing here. [D]
+  // Alt+K. Ctrl+B/F (emacs) and Ctrl+H/L (vim-motions) move the search
+  // field's cursor, as in Raycast. [D]
   readonly property bool vim: window.general.navigationBindings === "vim-motions"
   readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
 
@@ -98,20 +99,22 @@ PanelWindow {
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
-  // The Apps view lays the same rows out as an icon grid.
-  readonly property bool gridView: window.view.kind === "apps"
-  readonly property int gridColumns: grid.columns
-  // The scope on screen: whether its items loaded, its failure and texts.
+  // The scope on screen: whether its items loaded, its failure, texts and layout.
   readonly property var scopeState: {
     window.backend.candidatesRevision
     return window.view.kind === "scope" ? window.backend.scopeState(window.view.scopeId) : null
   }
+  // The Apps view lays the same rows out as an icon grid, and so does a scope
+  // whose layout is "icons" or "covers" (Steam Games).
+  readonly property bool gridView: window.view.kind === "apps" || (!!window.scopeState && window.scopeState.layout !== "list")
+  readonly property bool coverGrid: !!window.scopeState && window.scopeState.layout === "covers"
+  readonly property int gridColumns: grid.columns
   // Views whose search field is a value being typed (no list below).
   readonly property bool editing: window.view.kind === "alias" || window.view.kind === "setting-edit"
   readonly property string placeholder: window.view.kind === "alias" ? window.t("Type an alias, then press ↵")
     : window.view.kind === "setting-edit" ? window.t("Type a value, then press ↵")
     : window.view.kind === "settings" ? window.t("Search settings…")
-    : window.gridView ? window.t("Search apps…")
+    : window.view.kind === "apps" ? window.t("Search apps…")
     : window.view.kind === "scope" ? (window.scopeState && window.scopeState.placeholder ? window.t(window.scopeState.placeholder) : window.t("Search %1…", [window.view.title]))
     : window.view.kind === "menu" ? window.t("Search %1…", [window.view.title])
     : window.view.kind === "calculator-history" ? window.t("Search calculations…")
@@ -221,7 +224,15 @@ PanelWindow {
   }
 
 
+  // Whether the search in flight resets the selection (a new query).
+  property bool resetPending: false
+
   function rebuild(resetSelection, restoreIndex) {
+    // A refresh (new candidates, a toast) while a new query's search is still
+    // in flight keeps that reset: the selection on screen belongs to the
+    // previous query and must not be carried over to the new results.
+    if (window.searchPending && window.resetPending) resetSelection = true
+    window.resetPending = !!resetSelection
     var serial = ++window.searchSerial
     window.backend.cancelSearch()
     pointerGate.reset()
@@ -234,6 +245,7 @@ PanelWindow {
       if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
       window.applySearch(result, keepId, restoreIndex)
       window.searchPending = false
+      window.resetPending = false
     })
   }
 
@@ -268,6 +280,9 @@ PanelWindow {
       glyph: String(c.glyph || ""),
       glyphFont: String(c.glyphFont || ""),
       iconName: String(c.iconName || ""),
+      image: String(c.image || ""),
+      cover: String(c.cover || ""),
+      fallbackIcon: String(c.fallbackIcon || ""),
       typeLabel: c.typeLabel ? window.t(c.typeLabel, c.typeLabelValues || undefined) : "",
       isSetting: c.kind === "setting",
       alias: String(c.alias || ""),
@@ -290,7 +305,9 @@ PanelWindow {
     return -1
   }
 
-  function select(index) {
+  // fromPointer: the mouse moved onto the row, which is on screen already;
+  // scrolling it fully into view would jump the list under the pointer.
+  function select(index, fromPointer) {
     if (index !== window.selectedIndex) {
       var previous = list.itemAtIndex(window.selectedIndex)
       if (previous) previous.selected = false
@@ -299,6 +316,7 @@ PanelWindow {
     var current = list.itemAtIndex(index)
     if (current) current.selected = true
     window.selectedRow = Rows.snapshot(rows, index)
+    if (fromPointer) return
     if (window.gridView) {
       if (index >= 0) grid.positionViewAtIndex(index, GridView.Contain)
       if (index === window.nextSelectable(-1, 1)) grid.positionViewAtBeginning()
@@ -500,6 +518,43 @@ PanelWindow {
     window.rebuild(true)
   }
 
+  // The search field's cursor (core/QueryEdit.js). Any other change of the
+  // query (a view, history, a scope keyword) puts it at the end.
+  property int cursorPos: 0
+  property bool keepCursor: false
+  onQueryChanged: if (!window.keepCursor) window.cursorPos = window.query.length
+
+  // Applies a QueryEdit result: the text (searching again when it changed)
+  // and the cursor.
+  function applyEdit(next) {
+    window.keepCursor = true
+    window.setQuery(next.text)
+    window.keepCursor = false
+    window.cursorPos = next.cursor
+  }
+
+  function queryState() { return QueryEdit.state(window.query, window.cursorPos) }
+
+  // Editing and cursor keys for the search field; false for keys it leaves
+  // to the list. Plain ←/→ belong to grids (cells) and the settings (values).
+  function handleQueryKey(event, ctrl, alt, shift, key) {
+    if (alt || (event.modifiers & Qt.MetaModifier)) return false
+    var s = window.queryState()
+    var arrowsMoveCursor = window.editing || (!window.gridView && window.view.kind !== "settings")
+    var charKey = window.vim ? (key === Qt.Key_H ? -1 : key === Qt.Key_L ? 1 : 0) : (key === Qt.Key_B ? -1 : key === Qt.Key_F ? 1 : 0)
+    if (key === Qt.Key_Home && !ctrl) { window.applyEdit(QueryEdit.home(s)); return true }
+    if (key === Qt.Key_End && !ctrl) { window.applyEdit(QueryEdit.end(s)); return true }
+    if (ctrl && !shift && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, true)); return true }
+    if (!ctrl && !shift && arrowsMoveCursor && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, false)); return true }
+    if (ctrl && !shift && charKey) { window.applyEdit(QueryEdit.move(s, charKey, false)); return true }
+    if (key === Qt.Key_Delete && !shift) { window.applyEdit(QueryEdit.deleteForward(s, ctrl)); return true }
+    if (!window.query) return false
+    if (key === Qt.Key_Backspace) { window.applyEdit(QueryEdit.backspace(s, ctrl)); return true }
+    // Ctrl+U only (Ctrl+Shift+U is Unicode input).
+    if (key === Qt.Key_U && event.modifiers === Qt.ControlModifier) { window.applyEdit(QueryEdit.killToStart(s)); return true }
+    return false
+  }
+
   function pasteClipboard() {
     clipboardInput.clear()
     clipboardInput.paste()
@@ -509,7 +564,7 @@ PanelWindow {
     if (window.actionPanelOpen) actionPanel.item.filter += text
     else {
       if (window.view.kind === "alias") text = text.replace(/\s/g, "")
-      window.setQuery(window.query + text)
+      window.applyEdit(QueryEdit.insert(window.queryState(), text))
     }
   }
 
@@ -622,6 +677,8 @@ PanelWindow {
       return window.handlePopupKey(event, actionPanel.item, ctrl, alt)
     }
 
+    if (window.handleQueryKey(event, ctrl, alt, shift, key)) return true
+
     if (window.view.kind === "setting-edit") {
       if (enter) { window.saveSettingEdit(); return true }
     } else if (window.view.kind === "alias") {
@@ -678,9 +735,8 @@ PanelWindow {
       }
     }
 
-    if (Util.editsFilter(event, window.query)) { window.setQuery(Util.editedFilter(event, window.query)); return true }
     if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.setQuery(window.query + event.text); return true }
+    if (window.isTyping(event)) { window.applyEdit(QueryEdit.insert(window.queryState(), event.text)); return true }
     return false
   }
 
@@ -763,12 +819,13 @@ PanelWindow {
       }
 
       // Room left of the filter button.
-      readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryText.x
+      readonly property real queryRoom: (filterButton.visible ? filterButton.x - window.px(12) : header.width - window.px(20)) - queryBox.x
 
       // The scope's tag, as typed into the search: click or Backspace removes it.
+      // A grid scope (Games) shows none, as Apps doesn't.
       Rectangle {
         id: scopeTag
-        visible: window.view.kind === "scope"
+        visible: window.view.kind === "scope" && !window.gridView
         x: lead.x + lead.width + window.px(8)
         anchors.verticalCenter: parent.verticalCenter
         height: window.px(28)
@@ -810,30 +867,77 @@ PanelWindow {
         }
       }
 
-      Text {
-        id: queryText
-        textFormat: Text.PlainText
+      // The query in a clipped box: a query wider than the room scrolls so
+      // the cursor stays in view (QueryEdit.scrollFor), as a text field does.
+      Item {
+        id: queryBox
         x: (scopeTag.visible ? scopeTag.x + scopeTag.width : lead.x + lead.width) + window.px(12)
-        width: Math.min(implicitWidth, header.queryRoom)
-        anchors.verticalCenter: parent.verticalCenter
-        text: window.query || window.placeholder
-        color: window.look.foreground
-        opacity: window.query ? 1 : 0.45
-        font.family: window.look.fontFamily
-        font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
-        elide: Text.ElideLeft
+        width: Math.min(queryText.implicitWidth, header.queryRoom)
+        height: parent.height
+        clip: true
+
+        property real scroll: 0
+        function keepCursorVisible() {
+          queryBox.scroll = QueryEdit.scrollFor(queryBox.scroll, queryFont.advanceWidth(window.query.slice(0, window.cursorPos)),
+                                                queryFont.advanceWidth(window.query), queryBox.width)
+        }
+        onWidthChanged: queryBox.keepCursorVisible()
+        Connections {
+          target: window
+          function onQueryChanged() { queryBox.keepCursorVisible() }
+          function onCursorPosChanged() { queryBox.keepCursorVisible() }
+        }
+
+        // Where a prefix of the query ends inside the box.
+        function offsetOf(prefix) {
+          return queryFont.advanceWidth(prefix) - queryBox.scroll
+        }
+
+        FontMetrics { id: queryFont; font: queryText.font }
+
+        Text {
+          id: queryText
+          textFormat: Text.PlainText
+          x: -queryBox.scroll
+          anchors.verticalCenter: parent.verticalCenter
+          text: window.query || window.placeholder
+          color: window.look.foreground
+          opacity: window.query ? 1 : 0.45
+          font.family: window.look.fontFamily
+          font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
+        }
+
+        // A click puts the cursor at the nearest character boundary.
+        MouseArea {
+          anchors.fill: parent
+          enabled: window.query.length > 0
+          cursorShape: Qt.IBeamCursor
+          onClicked: function(mouse) {
+            window.applyEdit({ text: window.query, cursor: QueryEdit.indexAt(window.query, mouse.x, queryBox.offsetOf) })
+            window.closePopups()
+            keyCatcher.forceActiveFocus()
+          }
+        }
       }
 
       Rectangle {
         id: caret
+        readonly property bool atEnd: window.cursorPos >= window.query.length
         width: Math.max(1, Style.space(2))
         height: queryText.font.pixelSize + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
-        x: queryText.x + (window.query ? Math.min(queryText.contentWidth, queryText.width) + Style.space(1) : 0)
+        x: queryBox.x + (window.query
+          ? queryBox.offsetOf(window.query.slice(0, window.cursorPos)) + (caret.atEnd ? Style.space(1) : -Math.round(caret.width / 2))
+          : 0)
         color: window.look.accent
         visible: window.shown && !window.actionPanelOpen
 
-        // The caret blinks unless motion is reduced; then it stays lit.
+        // The caret blinks unless motion is reduced; then it stays lit. It
+        // shows solid again whenever it moves.
+        Connections {
+          target: window
+          function onCursorPosChanged() { if (caretBlink.running) caretBlink.restart() }
+        }
         SequentialAnimation on opacity {
           id: caretBlink
           running: window.shown && !FoamyMotion.reduceMotion
@@ -928,14 +1032,16 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
+          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, true) }
           onClicked: function(i) { window.perform("open", i) }
         }
       }
 
       GridView {
         id: grid
-        readonly property int columns: Math.max(1, Math.floor(width / window.px(104)))
+        readonly property int columns: Math.max(1, Math.floor(width / window.px(window.coverGrid ? 120 : 104)))
+        // A cover cell: the 2:3 cover, its margins and two lines of name.
+        readonly property int coverCellHeight: Math.round((Math.floor(width / columns) - window.px(16)) * 1.5) + window.px(8 + 8 + 34)
         anchors.fill: parent
         anchors.topMargin: window.px(8)
         anchors.bottomMargin: window.px(4)
@@ -944,7 +1050,9 @@ PanelWindow {
         model: window.gridView ? rows : null
         cellWidth: Math.floor(width / columns)
         // Whole rows fill the height, so none is cut off at the bottom.
-        cellHeight: Math.floor(height / Math.max(1, Math.round(height / window.px(122))))
+        cellHeight: window.coverGrid
+          ? Math.floor(height / Math.max(1, Math.floor(height / coverCellHeight)))
+          : Math.floor(height / Math.max(1, Math.round(height / window.px(122))))
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: AppCell {
@@ -954,7 +1062,8 @@ PanelWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i) }
+          covers: window.coverGrid
+          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, true) }
           onClicked: function(i) { window.perform("open", i) }
         }
       }

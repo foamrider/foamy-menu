@@ -39,6 +39,54 @@ ShellRoot {
     for (var i = 0; i < 40 && view.selectedRow && view.selectedRow.itemId !== id; i++) view.move(1)
     check(view.selectedRow && view.selectedRow.itemId === id, "select " + id)
   }
+  // Setting row ids in the settings view.
+  function settingIds() {
+    return backend.callSync("rootSearch.search", { query: "", view: { kind: "settings" } }).data
+      .reduce(function(all, s) { return all.concat(s.rows.map(function(r) { return r.id })) }, [])
+  }
+  // The grid cell (AppCell) showing a row, found through the item tree.
+  function findCell(index, item) {
+    var node = item || view.cardItem
+    if (node.coverStatus !== undefined && node.index === index && node.visible) return node
+    for (var i = 0; i < node.children.length; i++) {
+      var found = test.findCell(index, node.children[i])
+      if (found) return found
+    }
+    return null
+  }
+  // The visible GridView (the Apps or scope grid).
+  function findGrid(item) {
+    var node = item || view.cardItem
+    if (node.cellHeight !== undefined && node.visible) return node
+    for (var i = 0; i < node.children.length; i++) {
+      var found = test.findGrid(node.children[i])
+      if (found) return found
+    }
+    return null
+  }
+  // Whether the header shows the scope tag (its text is the view title).
+  function findTag(item) {
+    var node = item || view.cardItem
+    if (node.text === view.view.title && node.visible && node.font && node.font.weight === Font.DemiBold) {
+      for (var p = node.parent; p; p = p.parent) if (!p.visible) return false
+      return true
+    }
+    for (var i = 0; i < node.children.length; i++) if (test.findTag(node.children[i])) return true
+    return false
+  }
+  // The search field's clipped box (LauncherWindow queryBox).
+  function findQueryBox(item) {
+    var node = item || view.cardItem
+    if (node.keepCursorVisible !== undefined) return node
+    for (var i = 0; i < node.children.length; i++) {
+      var found = test.findQueryBox(node.children[i])
+      if (found) return found
+    }
+    return null
+  }
+  function type(text) {
+    for (var i = 0; i < text.length; i++) view.handleKey({ key: 0, modifiers: Qt.NoModifier, text: text.charAt(i) })
+  }
   function key(code, modifiers) {
     view.handleKey({key: code, modifiers: modifiers || Qt.NoModifier, text: ""})
   }
@@ -68,7 +116,7 @@ ShellRoot {
   FileView { id: ratesCache; path: Quickshell.env("FOAMY_FETCH_CACHE") + "/currencies.json"; printErrors: false; blockLoading: true }
   FoamyServices.ScopeSource {
     id: suggestProbe
-    builtins: [Object.assign({}, Scopes.BUILTINS[2], { suggest: true, suggestUrl: test.fetchUrl + "/ac?q={query}" })]
+    builtins: [Object.assign({}, Scopes.BUILTINS.filter(function(s) { return s.id === "duckduckgo" })[0], { suggest: true, suggestUrl: test.fetchUrl + "/ac?q={query}" })]
     property var stored: []
     onSuggestionsChanged: if (suggestions.duckduckgo) stored = stored.concat([suggestions.duckduckgo.query])
   }
@@ -100,7 +148,10 @@ ShellRoot {
         test.check(view.placeholder === test.said("Search for apps and commands…", "Søk etter apper og kommandoer…"), "placeholder follows the language")
         test.check(backend.candidatesById["omarchy:apps"].title === test.said("Apps", "Apper"), "Omarchy menu labels use Omarchy's catalog")
         test.check(backend.candidatesById["builtin:calculator-history"].title === test.said("Calculator History", "Kalkulatorhistorikk"), "built-in titles are translated")
-        test.check(backend.scopes.map(function(s) { return s.id }).join() === "ssh,google,duckduckgo,bookmarks", "built-in and user scopes load; enabled:false is skipped")
+        test.check(backend.scopes.map(function(s) { return s.id }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,shelf" : "ssh,google,duckduckgo,bookmarks,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
+        test.check(backend.callSync("rootSearch.search", { query: "kettle", view: { kind: "root" } }).data.some(function(s) {
+          return s.rows.some(function(r) { return r.id === "scope-item:shelf:Kettle" })
+        }), "a list source's items survive the scope rebuild (rootSearch, requireItems)")
         test.capture("root", function() { view.setQuery("2 + 3 * 4") })
         break
       case 2:
@@ -335,6 +386,94 @@ ShellRoot {
         if (test.waitFor(normal && normal.query === "pasta")) break
         test.check(normal.items.join() === "pasta one,pasta two", "a normal suggestion reply still parses")
         test.check(suggestProbe.stored.join() === "huge pasta,pasta", "a replaced request's reply is dropped: " + suggestProbe.stored)
+        // Games: offered once the helper lists Steam games (none without it);
+        // the one switch only adds the games to the root search.
+        test.check(backend.scopes.some(function(s) { return s.id === "steam" }) === test.nativeHelper, "Games is offered when Steam has games, and only then")
+        test.check(test.settingIds().includes("setting:steamGames") && !test.settingIds().some(function(id) { return /Art$/.test(id) }), "one Steam switch, no art choice")
+        menu.open('{"menu":"root"}')
+        view.popToRoot()
+        // The search field edits at its cursor.
+        view.setQuery("gmes")
+        test.check(view.cursorPos === 4, "the cursor follows a query set from outside to its end")
+        for (var l = 0; l < 3; l++) key(Qt.Key_Left)
+        test.type("a")
+        test.check(view.query === "games" && view.cursorPos === 2, "← moves the cursor and typing inserts there: " + view.query + " " + view.cursorPos)
+        key(Qt.Key_Home)
+        key(Qt.Key_Delete)
+        test.check(view.query === "ames" && view.cursorPos === 0, "Home, then Delete removes the first character")
+        test.type("g")
+        key(Qt.Key_End)
+        test.check(view.query === "games" && view.cursorPos === 5, "End moves to the end")
+        key(Qt.Key_Left, Qt.ControlModifier)
+        test.check(view.cursorPos === 0, "Ctrl+← jumps a word")
+        key(Qt.Key_Backspace)
+        test.check(view.query === "games", "Backspace at the start removes nothing")
+        // A query wider than the field scrolls to keep the cursor in view.
+        view.setQuery("convert " + "1234567890 ".repeat(30) + "usd to nok")
+        var box = test.findQueryBox()
+        test.check(box && box.scroll > 0 && box.offsetOf(view.query) <= box.width + 1, "a long query shows its end, where the cursor is")
+        key(Qt.Key_Home)
+        test.check(box.scroll === 0, "Home scrolls back to the start")
+        key(Qt.Key_End)
+        test.check(box.scroll > 0, "End scrolls to the end again")
+        view.setQuery("games")
+        break
+      case 30:
+        if (test.waitFor(!view.searchPending)) break
+        if (!test.nativeHelper) {
+          test.check(!view.selectedRow || view.selectedRow.itemId !== "scope:steam", "no Games row without Steam games")
+          view.setQuery("steam")
+          key(Qt.Key_Tab)
+          test.check(view.atRoot, "and no steam keyword either")
+          test.stage = 35
+          break
+        }
+        if (test.waitFor(view.selectedRow && view.selectedRow.itemId === "scope:steam")) break
+        test.check(view.selectedRow.title === test.said("Games", "Spill"), "Games is a root row")
+        test.check(view.selectedRow.typeLabel === test.said("Menu", "Meny") && view.actionsForSelected()[0].title === "Run", "Games reads and runs like Apps")
+        test.check(!backend.callSync("rootSearch.search", { query: "deep rock", view: { kind: "root" } }).data.some(function(s) {
+          return s.rows.some(function(r) { return r.kind === "scope-item" })
+        }), "games stay out of the root search until the switch is on")
+        backend.callSync("rootSearch.performAction", { id: "setting:steamGames", action: "open" })
+        break
+      case 31:
+        if (test.waitFor(backend.scopes.some(function(s) { return s.id === "steam" && s.rootSearch }))) break
+        view.setQuery("deep rock")
+        break
+      case 32:
+        if (test.waitFor(!view.searchPending && view.selectedRow && view.selectedRow.itemId === "scope-item:steam:548430")) break
+        test.check(view.selectedRow.subtitle === "Steam" && view.selectedRow.typeLabel === test.said("Game", "Spill"), "with the switch on, games are found from the root search, like apps")
+        test.capture("games-root", function() {
+          view.setQuery("steam")
+          key(Qt.Key_Tab)
+        })
+        break
+      case 33:
+        test.check(view.view.kind === "scope" && view.view.scopeId === "steam", "steam + Tab enters Games")
+        test.check(view.gridView && view.coverGrid, "Games is a grid of covers")
+        test.check(!test.findTag(), "a grid scope shows no tag, as Apps doesn't")
+        test.check(view.placeholder === test.said("Search games…", "Søk etter spill…"), "Games placeholder")
+        if (test.waitFor(view.selectedRow && view.selectedRow.title === "Deep Rock Galactic")) break
+        test.check(/\/library_600x900\.jpg$/.test(view.selectedRow.cover) && /\.jpg$/.test(view.selectedRow.image), "a game carries its cover and icon")
+        var cell = test.findCell(view.selectedIndex)
+        if (test.waitFor(cell && cell.coverStatus === Image.Ready)) break
+        test.check(cell.covers && cell.hasCover, "the cover art shows in the grid")
+        test.check(view.nthItem(2) >= 0 && test.findCell(view.nthItem(2)) && !test.findCell(view.nthItem(2)).hasCover, "a game without a cover shows its icon on a tile")
+        var flick = test.findGrid()
+        flick.contentY = 40
+        view.select(view.nthItem(1), true)
+        test.check(flick.contentY === 40, "selecting under the pointer does not scroll the grid")
+        view.select(view.nthItem(1))
+        test.check(flick.contentY === 0, "keyboard selection still scrolls into view")
+        test.capture("steam", function() { key(Qt.Key_Return) })
+        break
+      case 34:
+        launched.reload()
+        if (test.waitFor(launched.text().indexOf("steam://") >= 0)) break
+        test.check(launched.text().trim().split("\n").join(" ") === "-- xdg-open steam://rungameid/548430", "Enter plays the game through steam://: " + launched.text())
+        test.check(!menu.opened, "playing dismisses the launcher")
+        break
+      case 35:
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

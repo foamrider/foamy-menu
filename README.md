@@ -24,8 +24,9 @@ running; it receives the app and command list once, then one query per
 keystroke, and skips fields that cannot match before scoring them. On other
 CPUs, or when the helper exits or takes over a second to answer, the menu
 uses its built-in matcher for the rest of the shell session. The same binary
-lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`, one short run each
-time the scope loads); on a CPU without it, the SSH scope says the helper isn't
+lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`) and the Games
+scope's Steam games (`foamy-menu-search steam-games`), one short run each time
+the scope loads; on a CPU without it, those scopes say the helper isn't
 available.
 
 ```sh
@@ -39,9 +40,18 @@ Right-clicking the bar button opens the default terminal.
 - Enter opens the selected result; Shift+Enter opens a new application window.
 - Ctrl+K opens actions; Ctrl+Shift+F toggles a favorite; Ctrl+, opens the settings.
 - Arrow keys navigate; Esc goes back or closes; Shift+Esc returns to root.
+- The search field edits at its cursor: ← → move it (in grids they move
+  between cells, in the settings they change values), Ctrl+← → jump a word,
+  Home/End go to either end, Ctrl+B/F (or Ctrl+H/L with vim motions) move one
+  character, and clicking the text places it. Backspace/Delete remove a
+  character, with Ctrl a word; Ctrl+U clears up to the cursor. Typing and
+  pasting insert at the cursor.
 - **Apps** opens an icon grid of every application inside the launcher, A–Z,
   with the search field on top. Typing narrows and ranks the grid; arrow keys
   move in two dimensions; Esc clears the search, then goes back.
+- **Games** (shown when Steam is installed) opens a grid of your installed
+  Steam games' cover art, like Apps; Enter plays. `steam` + Tab too. Turn on
+  **Steam games in search** to find games by name next to your apps.
 - Type `ssh` and press Tab to search your SSH hosts; Enter connects.
   `g rust async` + Tab searches Google (`ddg` for DuckDuckGo). See
   [Scopes](#scopes) for adding your own.
@@ -78,7 +88,10 @@ Open **Foamy Menu Settings** with **Ctrl+,** or by searching "settings":
   Enter saves, Esc cancels. Empty means the default.
 - Typing filters the list. Ctrl+K offers **Reset to Default** and **Copy
   Setting Command** (the `omarchy bar set` line, for your dotfiles).
-- **Open Scopes Folder** and **Clear Saved Web Searches** sit at the end.
+- Sections: **Window**, **Search** (typo tolerance, SSH hosts, Steam games
+  in search, **Open Scopes Folder**), **Web Search** (save web searches, web
+  search suggestions, **Clear Saved Web Searches**), **Calculator** and
+  **Bar Button**.
 
 Settings are the `foamy.menu` entry in `~/.config/omarchy/shell.json`, as for
 every Omarchy shell plugin: `manifest.json` declares them
@@ -107,8 +120,9 @@ omarchy bar get foamy.menu webSearchHistory
 | `rootSearchSensitivity` | `"medium"` | `low` / `medium` / `high` | How loosely search matches typos |
 | `keepVisibleOnFocusLoss` | `false` | boolean | Stay open when clicking outside |
 | `sshScope` | `true` | boolean | SSH scope (ssh + Tab) |
+| `steamGames` | `false` | boolean | Find installed Steam games in the root search, as apps are (the Games grid shows whenever Steam is installed) |
 | `webSearchHistory` | `false` | boolean | Save web searches and list them as Recent Searches |
-| `webSearchSuggestions` | `false` | boolean | Show search suggestions while typing (sends what you type to the engine) |
+| `webSearchSuggestions` | `false` | boolean | Show the search engine's suggestions while typing a web search (sends what you type to the engine) |
 | `currencyRates` | `true` | boolean | Download exchange rates for currency conversion |
 | `clockFormat` | `"auto"` | `auto` / `12h` / `24h` | Clock in time calculations (auto follows the system) |
 | `remToPxRate` | `16` | 1–1000 | Pixels per rem in unit conversions |
@@ -133,7 +147,8 @@ list for the scope's own items. Enter one in either of two ways:
   and aliases, like any command) and press **Tab** or **Enter**.
 
 Backspace on an empty search, Esc or a click on the tag leaves the scope.
-Items are searched only inside their scope, never in the root search. Recently
+Items are searched only inside their scope, not in the root search, unless
+the scope sets `rootSearch` (Games does when `steamGames` is on). Recently
 used items come first; the rest follow in the source's order.
 
 ### SSH (built in)
@@ -153,6 +168,42 @@ Ctrl+K offers **Copy SSH Command**, **Copy Host Name** and **Open in Files
 (SFTP)**. Host names must be plain ssh destinations (letters, digits and
 `_.:@%+-`, not starting with `-`). Turn the scope off with
 `omarchy bar set foamy.menu sshScope false --json`.
+
+### Games (Steam, built in)
+
+When Steam is installed with at least one game, **Games** (subtitle Steam)
+sits in the root search like **Apps**, and opens your installed games as a
+grid of their cover art the same way, A–Z, with no scope tag in the search
+field; typing narrows and ranks it, Esc or Backspace goes back. `steam` + Tab
+opens it too. Without Steam (or without installed games) there is no Games
+row and no `steam` keyword. A game without a cover shows its icon on a tile,
+or Steam's icon.
+
+Enter plays the game (`uwsm-app -- xdg-open steam://rungameid/<appid>`, so
+Steam starts if it is not running, and the Flatpak works too). Ctrl+K offers
+**Show in Library**, **Open Store Page** and **Copy App ID**.
+
+**Steam games in search** (`steamGames`, off by default) also lists the games
+in the root search, as apps are: typing a name shows the game (subtitle
+Steam, type Game, its own icon) among the results, ranked like an application
+and kept under the Applications filter, and Enter plays it:
+
+```sh
+omarchy bar set foamy.menu steamGames true --json
+```
+
+Everything is read locally, with nothing downloaded, by the bundled helper
+(`foamy-menu-search steam-games`, Rust like the rest of the helper; one short
+run, about 10 ms, when the launcher starts and each time it opens, so a newly
+installed game shows up). It finds Steam in `~/.steam/steam`,
+`~/.local/share/Steam` or the Flatpak's folder, reads every library in
+`steamapps/libraryfolders.vdf` and its `appmanifest_*.acf` files, and takes
+from `appcache/appinfo.vdf` what each app is (tools such as Proton and the
+Steam Linux Runtime are left out) and its high-resolution icon
+(`steam/games/<hash>.ico`). Covers come from Steam's own cache,
+`appcache/librarycache/<appid>/`, so a game shows its cover once Steam has
+shown it. Only installed games are listed. `FOAMY_STEAM_ROOT` names another
+Steam folder (for tests).
 
 ### Web search (built in)
 
@@ -247,10 +298,18 @@ or a fixed list of bookmarks:
 | `suggest` | `false` | Query scopes: list the engine's suggestions while typing |
 | `suggestUrl` | none | Required for `suggest`: an https URL with `{query}` that returns OpenSearch suggestions (`["q", ["one", "two"]]`) |
 | `valuePattern` | none | Regular expression a value must match before it is used |
+| `rootSearch` | `false` | `true` lists the items in the root search while typing, ranked as applications (read at start and each time the launcher opens); not for query scopes |
+| `requireItems` | `false` | `true` offers the scope (its row and keyword) only once its source lists something (Games: Steam installed with games); loads at start and each time the launcher opens |
+| `itemLabel` | the title | The type shown beside each item ("Game") |
+| `layout` | `"list"` | `list`, or a grid like Apps: `icons` (each item's icon) or `covers` (portrait cover art); not for query scopes. A grid scope opens like Apps: its row reads "Menu", and the search field shows no tag |
 | `actions` | `[]` | Ctrl+K extras: `{"title", "copy": "text"}` or `{"title", "open": [argv]}` |
 
-A command source prints one item per line, `title<TAB>value<TAB>subtitle`
-(value defaults to the title). It runs when the scope is entered, with a
+A command source prints one item per line,
+`title<TAB>value<TAB>subtitle<TAB>icon<TAB>cover` (value defaults to the
+title; the rest may be left out). `icon` is an absolute image path or an icon
+name, `cover` an absolute image path; a grid layout shows them, and a list
+shows the icon in place of the scope's. A `list` source's items take `icon`
+and `cover` too. It runs when the scope is entered, with a
 10-second default timeout (`timeout` 100–60000 ms); the previous list stays
 on screen while it refreshes, and a failed run keeps it. At most 5000 items.
 

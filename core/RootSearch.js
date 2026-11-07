@@ -338,7 +338,7 @@ function appGridSections(candidates, query, ctx, deps) {
   var apps = []
   for (var i = 0; i < candidates.length; i++) {
     var c = candidates[i]
-    if (c.type === "application" && isEnabled(c, ctx)) apps.push(decorate(c, ctx, deps))
+    if (c.kind === "app" && isEnabled(c, ctx)) apps.push(decorate(c, ctx, deps))
   }
   var rows
   if (q) rows = deps.Ranker.rank(apps, q, rankOptions(ctx))
@@ -354,9 +354,15 @@ function isAppGridItem(candidate) {
 
 // Inside a scope: recently used items first, then all of them in the
 // source's order; a query ranks them instead. Items never reach root search.
-function scopeSections(itemCandidates, query, ctx, deps, itemsTitle) {
+// A grid scope (layout icons or covers) is one untitled section, as the Apps
+// grid is: the source's order, or ranked by the query.
+function scopeSections(itemCandidates, query, ctx, deps, itemsTitle, grid) {
   var q = String(query || "").trim()
   var decorated = itemCandidates.map(function(c) { return decorate(c, ctx, deps) })
+  if (grid) {
+    var rows = q ? deps.Ranker.rank(decorated, q, rankOptions(ctx)) : decorated.map(function(c) { return { candidate: c, record: null } })
+    return rows.length ? [{ id: "items", title: "", rows: rows }] : []
+  }
   if (q) {
     var ranked = deps.Ranker.rank(decorated, q, rankOptions(ctx))
     return ranked.length ? [{ id: "results", title: "Results", rows: ranked }] : []
@@ -420,10 +426,11 @@ function settingCandidate(f, value, t, deps) {
   }
 }
 
-// The two rows under the settings: the scopes folder and saved web searches.
+// The two command rows among the settings, each at the end of its section:
+// the scopes folder (Search) and saved web searches (Web Search).
 var SETTINGS_ACTIONS = [
-  { id: "settings-action:open-scopes", title: "Open Scopes Folder", glyph: "\uf07c", keywords: ["scopes", "folder", "files"] },
-  { id: "settings-action:clear-searches", title: "Clear Saved Web Searches", glyph: "\uf1f8", keywords: ["history", "clear", "web", "search"] }
+  { id: "settings-action:open-scopes", title: "Open Scopes Folder", glyph: "\uf07c", keywords: ["scopes", "folder", "files"], section: "Search" },
+  { id: "settings-action:clear-searches", title: "Clear Saved Web Searches", glyph: "\uf1f8", keywords: ["history", "clear", "web", "search"], section: "Web Search" }
 ]
 
 function settingsActionCandidate(a, t) {
@@ -447,6 +454,8 @@ function settingsSections(values, query, ctx, deps) {
     ;(bySection[f.section] = bySection[f.section] || []).push(c)
   }
   var extras = SETTINGS_ACTIONS.map(function(a) { return settingsActionCandidate(a, ctx.t) })
+  for (var e = 0; e < SETTINGS_ACTIONS.length; e++)
+    (bySection[SETTINGS_ACTIONS[e].section] = bySection[SETTINGS_ACTIONS[e].section] || []).push(extras[e])
   if (q) {
     var ranked = deps.Ranker.rank(rows.concat(extras), q, rankOptions(ctx))
     return ranked.length ? [{ id: "results", title: "Results", rows: ranked }] : []
@@ -456,7 +465,6 @@ function settingsSections(values, query, ctx, deps) {
     var name = deps.Settings.SECTIONS[s]
     if (bySection[name]) out.push({ id: "settings-" + s, title: name, rows: bySection[name].map(function(c) { return { candidate: c, record: null } }) })
   }
-  out.push({ id: "settings-more", title: "More", rows: extras.map(function(c) { return { candidate: c, record: null } }) })
   return out
 }
 
@@ -514,7 +522,8 @@ function actionsFor(candidate) {
     case "omarchy-action": primary = { id: "open", title: "Run", icon: "\uf04b" }; break
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "\uf054" }; break
-    case "scope": primary = { id: "open", title: "Open Scope", icon: "\uf002" }; break
+    // A grid scope (Games) opens like Apps, whose row runs.
+    case "scope": primary = candidate.grid ? { id: "open", title: "Run", icon: "\uf04b" } : { id: "open", title: "Open Scope", icon: "\uf002" }; break
     default: primary = { id: "open", title: "Open Command", icon: "\uf054" }
   }
   primary.shortcut = "↵"

@@ -71,8 +71,10 @@ Item {
       if (old && JSON.stringify(old) === JSON.stringify(merged.scopes[s]) && source.items[id]) kept[id] = source.items[id]
     }
     if (JSON.stringify(merged.scopes) !== before) {
-      source.scopes = merged.scopes
+      // Items first: a scopesChanged handler may load a list source at once
+      // (Backend.refreshRootScopes), and that must not be reset afterwards.
       source.items = kept
+      source.scopes = merged.scopes
       source.revision++
     }
   }
@@ -97,9 +99,12 @@ Item {
   }
 
   function setItems(id, list, failure) {
-    var nextItems = Object.assign({}, source.items)
-    if (list) nextItems[id] = list
-    source.items = nextItems
+    // The same list again keeps the old one, so nothing rebuilds for it.
+    if (list && !(source.items[id] && JSON.stringify(source.items[id]) === JSON.stringify(list))) {
+      var nextItems = Object.assign({}, source.items)
+      nextItems[id] = list
+      source.items = nextItems
+    }
     var nextFailures = Object.assign({}, source.failures)
     if (failure) nextFailures[id] = failure
     else delete nextFailures[id]
