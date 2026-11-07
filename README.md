@@ -17,7 +17,7 @@ The bundled flea-search helper retains its license and provenance in `search/`.
 
 ## Install and use
 
-Requires Omarchy Quattro with Quickshell and the stock menu components.
+Requires Omarchy 4.5 with Quickshell and the stock menu components.
 Search uses the bundled helper (`bin/x86_64/` and `bin/aarch64/foamy-menu-search`,
 static binaries, no Rust needed). It starts with the first search and keeps
 running; it receives the app and command list once, then one query per
@@ -283,7 +283,7 @@ English. Omarchy's own menu items use Omarchy's catalogs
 English names stay searchable ("apps" still finds "Apper"). The calculator
 reads and writes numbers and dates as the language does, names time units in
 it, and understands Norwegian words as well as English; symbols (cm, kg, USD)
-and the plain copy stay as they are. Omarchy 4.0 shows English.
+and the plain copy stay as they are.
 
 Catalogs are `i18n/<code>.json`, keyed by the English text. Another language
 is one file next to `no.json`; `tests/i18n.test.js` checks that every key has
