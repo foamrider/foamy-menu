@@ -441,6 +441,40 @@ shell and print a SKIP line otherwise. These are harness labels, not version det
 After source edits, restart the shell to clear Quickshell's QML cache.
 No upstream installation or migration scripts are included in Foamy's CLI.
 
+## Verifying the helper binaries
+
+`bin/x86_64/foamy-menu-search` and `bin/aarch64/foamy-menu-search` are compiled from the Rust
+source in this repository: `search/`, the shared crate in
+`kit/rust/foamy-helper/`, the dependencies locked in `Cargo.lock` and the
+toolchain pinned in `rust-toolchain.toml`. The build is reproducible, so you
+can rebuild both binaries yourself and check that they are byte-identical to
+the committed files.
+
+`search/native.pin` records the foamy-kit release that built them (`kit`), the
+Rust toolchain (`toolchain`), a hash of every build input (`source`) and the
+SHA-256 of each binary. The rebuild uses that foamy-kit release's
+`tools/build-native.sh`. You need `git`, `rustup`, Python 3.11 or newer and
+`file`; Omarchy isn't needed.
+
+```sh
+git clone https://github.com/foamrider/foamy-menu.git
+cd foamy-menu
+pin=search/native.pin
+rustup toolchain install "$(awk '$1 == "toolchain" { print $2 }' $pin)" \
+  --profile minimal --target x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+git clone https://github.com/foamrider/foamy-kit.git ../foamy-kit
+git -C ../foamy-kit checkout -q "v$(awk '$1 == "kit" { print $2 }' $pin)"
+../foamy-kit/tools/build-native.sh . --verify
+```
+
+The last command builds both binaries from scratch in `~/.cache/foamy-native/`
+(nothing is written to the checkout) and compares them byte for byte with
+`bin/`. It also checks that the kit files are unmodified copies of that
+foamy-kit release and that `native.pin` matches the source. It ends with
+`verify OK (foamy-menu-search, <toolchain>, both arches reproducible)`; any
+difference is reported with both hashes. To check a release the marketplace
+lists, run `git checkout <commit>` before the last command.
+
 ## Remove
 
 ```sh
