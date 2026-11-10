@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "foamy.menu",
   "name": "Foamy Menu",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "author": "foamrider",
   "description": "Omacast-based launcher with Foamy Arch styling: apps, Omarchy actions, calculator, SSH, Steam and web-search scopes",
   "license": "MIT",
