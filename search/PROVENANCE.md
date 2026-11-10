@@ -93,8 +93,8 @@ panic exit); edition is 2024. The crate is
 the `search` member of the plugin's root Cargo workspace; `Cargo.lock` and
 `rust-toolchain.toml` (foamy-kit, Rust 1.99.1) sit at the plugin root. The release
 binaries `bin/x86_64/foamy-menu-search` and `bin/aarch64/foamy-menu-search` are
-committed, static musl, built reproducibly by foamy-kit's `tools/build-native.sh`
-(through `bin/build-search`) with the kit's release profile (`kit/rust/release.toml`:
+committed, static musl, built reproducibly by the plugin's `kit/native/build-native.sh`
+(through `bin/build-search`; CI rebuilds and attests them, see the README) with the kit's release profile (`kit/rust/release.toml`:
 opt-level "s", fat LTO, `panic = "abort"`; `main` installs the kit's
 `process::exit_on_panic(101)`, so a panic exits 101), and
 recorded in `native.pin`. `bin/build-search --test` runs `cargo fmt --check`, clippy
