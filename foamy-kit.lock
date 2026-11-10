@@ -1,8 +1,8 @@
 # foamy-kit.lock: written by foamy-kit sync.sh; do not edit.
 # Hashes are of each file's body (the file without its stamp line);
 # notices are hashed whole. tests/kit-check.sh verifies them.
-version 0.7.0
-source 70c273dec6d6
+version 0.8.1
+source 049fd989c0b0
 components FoamyI18n,FoamyIpc,FoamyMotion,FoamyNative,FoamyPrefs
 98bd9e4430551129a6f4c309ee8ba59b66514db5ca1d4c5b7151ec308f6d632b  .github/workflows/verify-native.yml
 1823e930a714d5adabc6349dc4e43ca810b971939970c5c503cb219fe96533b9  kit/FoamyI18n.qml
@@ -11,10 +11,10 @@ components FoamyI18n,FoamyIpc,FoamyMotion,FoamyNative,FoamyPrefs
 429b18a7c00baf4488c6792a95e4be71207aefa1a237436cef34e33122956915  kit/FoamyIpcResolver.js
 79218200ee2dbe5d1bdfd6ef41768bce029e136f8640f8f5f0833a97d8371d5a  kit/FoamyMotion.qml
 16b017e91ba960a867a1c5cc056f7f8d7bad07c07722714b32765d7c6d53920a  kit/FoamyNative.js
-aeaf0e29f6d83d27bac96614f33f843116dbbd070a675b82f0301773f105624c  kit/FoamyPrefs.js
-e8ac5bbe9a79ea4202f637017e7eb9e438f41bbfcf43a5c91f372e8190af7d91  kit/FoamyPrefsQueue.qml
+7836f63f858f18559db0cef11b66ff46098192247fa1a0a80bf0a7c396698f13  kit/FoamyPrefs.js
+a7f61051a5f703d35cc890a4304bd761fb53f4e8cd0895357bdda7121310b7b9  kit/FoamyPrefsQueue.qml
 31cd6228f43b6b189e993ba517cbf8f18c4ba2681a4e71be49b853a39d6114ba  kit/native/build-native.sh
-eb004fb2f3a5ff6bc56fdd1dfba32c3aafcc8905f5f11b53c92370a8e77b9cc4  kit/native/native.py
+4ddafaa0e228ff4d5298740369ca5afb397cabc50fb50e0660a05b184d540616  kit/native/native.py
 90b1a10f5f5005c94031f36fef0ad3d8e705cf4e13372dd8362ef4579e0a93df  kit/node-loader.cjs
 76e34d6aa5a7af3dd8a4db85c4b83c5b3f07e4660c2d5aefd418c4bf1f64c9c2  kit/qmldir
 a9b3009e14bc6ada2e83c131678566268d4fd987891925fd75739a61912a36f7  kit/rust/foamy-helper/Cargo.toml
@@ -35,4 +35,4 @@ b5f018d5c973f1115da2ae6c35c7eb8700e6cc24d97cb7b917a04ca05560d45c  kit/rust/foamy
 1f90a4df7260b1c57e6dd972ca68fc82191f94cc8a1e47082e4f26154c0e24aa  kit/rust/foamy-helper/src/tls.rs
 0aab5b4b47dd8c8530849b0c9540e4c945789e58661f12480d832348786aee6e  kit/rust/release.toml
 868af8f99d78154f4ab510eaa594ed9833639b763939a7f47fb38a0070ea6f6e  rust-toolchain.toml
-dc69e77dff312e43bf037de031f36688aa527c39b07fcdca7affdcc0f99abdae  tests/kit-check.sh
+b245f22fb02e191f3ce0f3d7d44050bbfde33a68caf86c3fa745260ecbaed322  tests/kit-check.sh

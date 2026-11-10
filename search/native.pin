@@ -5,7 +5,7 @@
 crate search
 binary foamy-menu-search
 toolchain 1.99.1
-kit 0.7.0
+kit 0.8.0
 source f2b9052a0c85080a60f41c5b4338b8a6248ed27b966577e326066ad73f187305
 690399eb5e6c13bde7b5a1f42923a7abc22c0b6b6aea65515e703c57847dcfab  bin/aarch64/foamy-menu-search
 20b1bfd9697f12cd5208cdfec637b1bb9cc998a2f9fb7aba8c6d9db476c8637c  bin/x86_64/foamy-menu-search
