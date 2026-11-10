@@ -1,19 +1,13 @@
 #!/bin/bash
 # Rebuild the bundled search helper, bin/<arch>/foamy-menu-search, for x86_64
-# and aarch64 with foamy-kit's build tool (static musl, pinned toolchain,
-# reproducible), and update search/native.pin. Extra arguments go to the tool:
-# --verify (clean rebuild, byte compare) or --test (fmt, clippy, cargo test).
-# Cargo output goes to ${FOAMY_NATIVE_CACHE:-~/.cache/foamy-native}/foamy-menu,
-# never into the plugin folder, which omarchy-shell watches and would reload
-# for every file cargo writes. Users never need this: the binaries are committed.
+# and aarch64 with the plugin's own build tool (kit/native/build-native.sh:
+# static musl, pinned toolchain, reproducible), and update search/native.pin.
+# Extra arguments go to the tool: --verify (clean rebuild, byte compare) or
+# --test (fmt, clippy, cargo test). Cargo output goes to
+# ${FOAMY_NATIVE_CACHE:-~/.cache/foamy-native}/foamy-menu, never into the plugin
+# folder, which omarchy-shell watches and would reload for every file cargo
+# writes. Users never need this: the binaries are committed.
 set -euo pipefail
 
 repo=$(cd -- "$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")/.." && pwd -P)
-kit=${FOAMY_KIT:-$(dirname -- "$repo")/foamy-kit}
-tool=$kit/tools/build-native.sh
-[[ -x $tool ]] || {
-  echo "foamy-menu: building search needs foamy-kit 0.5.0 or later with tools/build-native.sh" >&2
-  echo "  (clone https://github.com/foamrider/foamy-kit next to this plugin, or set FOAMY_KIT)" >&2
-  exit 1
-}
-exec "$tool" "$repo" --crate search --bin foamy-menu-search "$@"
+exec bash "$repo/kit/native/build-native.sh" "$repo" --crate search --bin foamy-menu-search "$@"
