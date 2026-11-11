@@ -19,8 +19,9 @@ Item {
 
   function get(url, tag) {
     fetch.next = { url: String(url), tag: tag }
+    // A running request is stopped; its onExited starts the next one.
     if (!proc.running) Qt.callLater(fetch.start)
-    else if (proc.job) { proc.job = null; proc.signal(15) }   // onExited starts the next
+    else if (proc.job) { proc.job = null; proc.signal(15) }
   }
 
   function start() {
