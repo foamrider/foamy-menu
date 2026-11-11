@@ -133,10 +133,27 @@ def run_case(host, theme, width, language, shots, native=True):
         # A CPU without a bundled helper: the built-in matcher must carry every check.
         for arch in ('x86_64', 'aarch64'):
             shutil.rmtree(local / 'bin' / arch)
+    # The launcher draws in the host's Ui/OverlayWindow, which build() made a
+    # FakeMenuWindow; its own WlrLayershell.namespace line goes too.
     window = local / 'ui/LauncherWindow.qml'
     text, count = stock_runtime.transform_windows(window.read_text())
-    assert count == 1, 'launcher window structure changed'
+    assert count == 0 and '\nOverlayWindow {\n' in text, 'launcher window structure changed'
     window.write_text(text)
+    # OverlayWindow maps only once Hyprland reports the target screen's
+    # monitor and its scale, and reveals its content once the window is the
+    # screen's size. Offscreen there is no Hyprland, so the screen stands in
+    # for its monitor at the window's own scale, and the size the test gives
+    # the window (FOAMY_TEST_WIDTH, a narrow screen) stands in for the
+    # screen's. The reveal logic itself runs as written.
+    overlay = run.root / 'Ui/OverlayWindow.qml'
+    text = overlay.read_text()
+    start = text.index('  readonly property var targetMonitor: {')
+    end = text.index('\n  }\n', start) + len('\n  }\n')
+    text = (text[:start] + '  readonly property var targetMonitor: targetScreen ? '
+            '({ name: targetScreen.name, scale: targetScreen.devicePixelRatio }) : null\n' + text[end:])
+    size = '&& width === targetScreen.width && height === targetScreen.height'
+    assert text.count(size) == 1, 'OverlayWindow reveal changed shape'
+    overlay.write_text(text.replace(size, '&& width === implicitWidth && height === implicitHeight'))
     # No compositor is present offscreen. IPC/lifecycle is tested through the actual entry point.
     launcher = local / 'Launcher.qml'
     text = launcher.read_text()

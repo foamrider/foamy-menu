@@ -10,9 +10,12 @@ import "../core/Scopes.js" as Scopes
 import "../core/QueryEdit.js" as QueryEdit
 import "../kit"
 
-// Omarchy 4.0.x dropped qs.Ui.OverlayWindow; this is the same full-screen
-// overlay layer the shell's own emoji picker uses.
-PanelWindow {
+// The shell's own full-screen overlay (qs.Ui.OverlayWindow, as the stock
+// menu uses): a fresh layer surface on the focused monitor each time it is
+// shown, its content revealed once the output's scale arrives, overlay layer
+// and exclusive keyboard focus. The layer namespace stays "foamy-menu":
+// AppFocuser waits for it to unmap before focusing an app's window.
+OverlayWindow {
   id: window
 
   required property var backend
@@ -21,7 +24,6 @@ PanelWindow {
   property string brandFont: Style.font.family
   property int minimumWidth: 0
   readonly property alias cardItem: card
-  property bool shown: false
   readonly property bool busy: window.shown && window.backend.loading
   readonly property int loadingFeedbackDelay: 500
   property bool loadingVisible: false
@@ -40,13 +42,7 @@ PanelWindow {
 
   signal dismissRequested()
 
-  visible: window.shown
-  anchors { top: true; bottom: true; left: true; right: true }
-  color: "transparent"
-  exclusionMode: ExclusionMode.Ignore
   WlrLayershell.namespace: "foamy-menu"
-  WlrLayershell.layer: WlrLayer.Overlay
-  WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
   readonly property var general: {
     window.backend.storeRevision

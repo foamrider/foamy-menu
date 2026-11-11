@@ -175,6 +175,8 @@ ShellRoot {
         test.check(view.brandIcon === "\u{f08c7}", "Arch header icon")
         test.check(view.cardWidth <= view.width, "card fits viewport")
         test.check(view.cardItem.activeFocus || view.activeFocusItem !== null, "launcher receives keyboard focus")
+        test.check(view.visible && view.contentRevealed && view.contentItem.opacity === 1,
+          "the overlay maps and reveals its content")
         test.check(view.placeholder === test.said("Search for apps and commands…", "Søk etter apper og kommandoer…"), "placeholder follows the language")
         test.check(backend.candidatesById["omarchy:apps"].title === test.said("Apps", "Apper"), "Omarchy menu labels use Omarchy's catalog")
         test.check(backend.candidatesById["builtin:calculator-history"].title === test.said("Calculator History", "Kalkulatorhistorikk"), "built-in titles are translated")
