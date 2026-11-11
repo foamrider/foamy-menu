@@ -95,7 +95,9 @@ Item {
       source.setItems(id, scope.source.items.slice(0, Scopes.MAX_ITEMS), "")
       return
     }
-    if (proc.scopeId === id || source.queue.indexOf(id) >= 0) return
+    // A run for this definition, queued or running, answers this request too;
+    // one for a definition edited since then can't, so the new one queues.
+    if (source.queue.indexOf(id) >= 0 || (proc.scopeId === id && proc.definition === JSON.stringify(scope))) return
     source.queue = source.queue.concat([id])
     source.next()
   }
@@ -121,6 +123,7 @@ Item {
     var scope = source.scope(id)
     if (!scope) { source.next(); return }
     proc.scopeId = id
+    proc.definition = JSON.stringify(scope)
     proc.scopeCommand = Scopes.fill(scope.source.command, "", source.pluginDir)
     proc.timeoutMs = scope.source.timeout
     proc.lines = []
@@ -137,13 +140,18 @@ Item {
   // The one way a scope load ends: exited, couldn't start, or given up on by
   // the watchdog. Later calls for the same run (running -> false after
   // exited(), the exit of a run the watchdog gave up on) find no scopeId.
-  // A failed refresh keeps the items it had.
+  // A failed refresh keeps the items it had. A run whose scope was edited or
+  // removed while it ran is stale: its result is dropped (refresh() queued
+  // the new definition's run).
   function finish(failure) {
     if (proc.scopeId === "") return
     watchdog.stop()
     var id = proc.scopeId
-    if (failure) source.message("warning", "scope " + id + ": " + failure, { command: proc.scopeCommand })
-    source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n")), failure)
+    var current = source.scope(id)
+    if (current && JSON.stringify(current) === proc.definition) {
+      if (failure) source.message("warning", "scope " + id + ": " + failure, { command: proc.scopeCommand })
+      source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n")), failure)
+    }
     proc.scopeId = ""
     proc.lines = []
     Qt.callLater(source.next)
@@ -220,6 +228,8 @@ Item {
   Process {
     id: proc
     property string scopeId: ""
+    // The scope definition this run is for (JSON), to tell a stale result.
+    property string definition: ""
     // The scope's own command (proc.command is it under timeout).
     property var scopeCommand: []
     property int timeoutMs: 0

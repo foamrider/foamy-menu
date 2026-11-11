@@ -52,7 +52,7 @@ function harness(scopes) {
     source, proc, watchdog, Scopes, FoamyNative, Date,
     Qt: { callLater: fn => { if (!later.includes(fn)) later.push(fn) } }
   })
-  for (const name of ["next", "finish", "keepLine", "keepStderr"]) {
+  for (const name of ["refresh", "next", "finish", "keepLine", "keepStderr"]) {
     vm.runInContext(block("function " + name + "(", 2), context)
     source[name] = context[name]
   }
@@ -171,6 +171,39 @@ test("output past MAX_OUTPUT stops the command and keeps the lines before it", (
   h.enqueue("flood")
   for (let i = 0; i < 10; i++) h.source.keepStderr("e".repeat(1000))
   assert.equal(h.proc.stderrHead.length, Scopes.MAX_STDERR)
+})
+
+test("a run whose scope changed while it ran is dropped, and the new definition runs", () => {
+  const scopes = [scope("hosts", ["old-lister"]), scope("other", ["true"])]
+  const h = harness(scopes)
+  h.source.refresh("hosts")
+  assert.deepEqual(Array.from(h.proc.scopeCommand), ["old-lister"])
+  h.proc.running = true
+  // The scope file is saved with another command while the old one runs;
+  // entering the scope again asks for its items.
+  scopes[0] = scope("hosts", ["new-lister"])
+  h.source.refresh("hosts")
+  assert.deepEqual(Array.from(h.source.queue), ["hosts"], "the new definition is queued")
+  h.proc.lines = ["stale"]
+  h.exit(0)
+  h.stopped()
+  assert.deepEqual(h.loads, [], "the old command's list is not the new scope's")
+  h.flush()
+  assert.deepEqual(Array.from(h.proc.scopeCommand), ["new-lister"])
+  h.proc.lines = ["fresh"]
+  h.exit(0)
+  assert.deepEqual(h.loads.map(l => l.list.map(i => i.title)), [["fresh"]])
+  // An unchanged scope is not queued twice while it runs; a removed one's
+  // result goes nowhere.
+  h.flush()
+  h.source.refresh("other")
+  h.proc.running = true
+  h.source.refresh("other")
+  assert.deepEqual(Array.from(h.source.queue), [])
+  scopes.splice(1, 1)
+  h.exit(1)
+  assert.equal(h.loads.length, 1)
+  assert.deepEqual(h.messages, [])
 })
 
 // Real processes under Scopes.bounded(): the pid file lists every process
