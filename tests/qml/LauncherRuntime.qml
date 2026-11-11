@@ -121,8 +121,9 @@ ShellRoot {
     onSuggestionsChanged: if (suggestions.duckduckgo) stored = stored.concat([suggestions.duckduckgo.query])
   }
   // Command scope runs, one at a time: a command that can't start, one that
-  // hangs (ended at its deadline, its sh -c child too), one that floods its
-  // output (stopped at Scopes.MAX_OUTPUT), then an ordinary one. The hung
+  // hangs (ended at its deadline, its sh -c child too), two that flood their
+  // output, in lines and without a newline (stopped at Scopes.MAX_OUTPUT
+  // bytes, long before their deadline), then an ordinary one. The hung
   // processes' pids go to FOAMY_SCOPE_PIDS; launcher.py checks none is left.
   readonly property string pidFile: Quickshell.env("FOAMY_SCOPE_PIDS")
   function commandScope(id, command, timeout) {
@@ -134,6 +135,7 @@ ShellRoot {
       test.commandScope("broken", ["/nonexistent/foamy-no-such-command"]),
       test.commandScope("hung", ["sh", "-c", 'sleep 300 & echo $! >> "$0"; echo $$ >> "$0"; sleep 300', test.pidFile], 2000),
       test.commandScope("flood", ["seq", "100000000"]),
+      test.commandScope("unbroken", ["sh", "-c", "yes | tr -d '\\n'"], 60000),
       test.commandScope("fine", ["printf", "one\\ntwo\\n"])
     ]
     property var said: []
@@ -511,17 +513,21 @@ ShellRoot {
         runProbe.refresh("broken")
         runProbe.refresh("hung")
         runProbe.refresh("flood")
+        runProbe.refresh("unbroken")
         runProbe.refresh("fine")
         test.check(runProbe.loading, "command scopes queue up")
         break
       case 36:
         if (test.waitFor(!runProbe.loading && !guardProbe.loading && guardProbe.said.length > 0)) break
-        test.check(/^failed to run command/.test(runProbe.failures.broken || "") && !runProbe.items.broken,
+        test.check(/^\/nonexistent\/foamy-no-such-command: /.test(runProbe.failures.broken || "") && !runProbe.items.broken,
           "a command that can't run fails its scope: " + runProbe.failures.broken)
         test.check(runProbe.failures.hung === "timed out" && !runProbe.items.hung, "a hung command scope times out at its deadline")
         test.check(!runProbe.failures.flood && runProbe.items.flood.length === Scopes.MAX_ITEMS && runProbe.items.flood[0].title === "1"
           && runProbe.said.some(function(t) { return t.indexOf("scope flood: output is over") === 0 }),
           "a flood of output is stopped at the cap and its first items kept")
+        test.check(!runProbe.failures.unbroken && runProbe.items.unbroken.length === 0
+          && runProbe.said.some(function(t) { return t.indexOf("scope unbroken: output is over " + Scopes.MAX_OUTPUT + " bytes") === 0 }),
+          "output without a newline stops at the cap, not at its 60 s deadline")
         test.check(!runProbe.failures.fine && runProbe.items.fine.map(function(i) { return i.title }).join() === "one,two",
           "the queue goes on after them")
         test.check(guardProbe.said.indexOf("Menu guard refresh failed; keeping previous results.") >= 0

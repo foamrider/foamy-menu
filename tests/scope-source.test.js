@@ -1,7 +1,9 @@
 // ScopeSource's command runs: one completion per run whatever Quickshell
 // reports (exited, running -> false without exited for a command that can't
-// start, both), the watchdog, the output cap, and Scopes.bounded() against
-// real processes (a hung `sh -c` and its children end at the deadline).
+// start, both), the watchdog, the output cap, and the command ScopeSource
+// builds (Scopes.bounded() around Scopes.capped()) against real processes: a
+// hung `sh -c` and its children end at the deadline, and a flood of output
+// stops at MAX_OUTPUT bytes, newlines or not.
 // The QML functions and handlers run as written, in a vm context.
 const test = require("node:test")
 const assert = require("node:assert/strict")
@@ -39,7 +41,7 @@ function harness(scopes) {
   const watchdog = { interval: 0, active: false, restart() { this.active = true }, stop() { this.active = false } }
   const proc = {
     running: false, scopeId: "", scopeCommand: [], timeoutMs: 0, startedAt: 0, lines: [],
-    outputSize: 0, capped: false, stderrHead: "", command: [], starts: 0,
+    stderrHead: "", command: [], starts: 0,
     signal(n) { signals.push(n) }
   }
   const source = {
@@ -87,7 +89,7 @@ test("a command scope that can't start fails once and the queue goes on", () => 
   const h = harness([scope("broken", ["no-such-command"]), scope("hosts", ["printf", "a\\nb\\n"])])
   h.enqueue("broken", "hosts")
   assert.equal(h.proc.scopeId, "broken")
-  assert.deepEqual(Array.from(h.proc.command), ["timeout", "--kill-after=1s", "10s", "no-such-command"])
+  assert.deepEqual(Array.from(h.proc.command), ["timeout", "--kill-after=1s", "10s", "bash", "-c", Scopes.CAPPED_SCRIPT, "foamy-scope", "no-such-command"])
   assert.equal(h.watchdog.interval, 10000 + Scopes.WATCHDOG_GRACE_MS)
   // Quickshell: no started, no exited; only running -> false.
   h.stopped()
@@ -150,22 +152,15 @@ test("the watchdog ends a run whose exit never comes, or whose start was lost", 
   assert.deepEqual(h.signals, [9])
 })
 
-test("output past MAX_OUTPUT stops the command and keeps the lines before it", () => {
+test("a run cut at MAX_OUTPUT keeps the whole lines before the cut", () => {
   const h = harness([scope("flood", ["yes"])])
   h.enqueue("flood")
   h.proc.running = true
-  // 1024 characters a line with its newline: an id, then a long subtitle.
-  const line = i => (i + "\t\t").padEnd(1023, "x")
-  const fit = Scopes.MAX_OUTPUT / 1024
-  for (let i = 0; i < fit + 50; i++) h.source.keepLine(line(i))
-  assert.equal(h.proc.capped, true)
-  assert.equal(h.proc.lines.length, fit)
-  assert.deepEqual(h.signals, [15], "stopped once")
-  // timeout passes the SIGTERM on and dies of it: a crash, not a failure.
-  h.exit(15, 1)
-  assert.equal(h.loads[0].failure, "")
-  assert.equal(h.loads[0].list.length, Scopes.MAX_ITEMS)
-  assert.ok(h.messages[0].includes("output is over"))
+  for (const line of ["one", "two", "thr"]) h.source.keepLine(line)
+  // head -c closed the pipe; the command died of SIGPIPE (pipefail: 141).
+  h.exit(Scopes.CAPPED_EXIT)
+  assert.deepEqual(h.loads.map(l => [l.failure, l.list.map(i => i.title)]), [["", ["one", "two"]]], "the cut line is dropped")
+  assert.ok(h.messages[0].includes("output is over " + Scopes.MAX_OUTPUT + " bytes"))
   // At most MAX_STDERR of stderr is kept.
   h.flush()
   h.enqueue("flood")
@@ -206,13 +201,20 @@ test("a run whose scope changed while it ran is dropped, and the new definition 
   assert.deepEqual(h.messages, [])
 })
 
-// Real processes under Scopes.bounded(): the pid file lists every process
-// the command started; none may be left after it ends.
+// The command ScopeSource runs for a scope.
+function scopeCommand(command, ms) {
+  const h = harness([scope("probe", command, ms)])
+  h.enqueue("probe")
+  return Array.from(h.proc.command)
+}
+
+// Real processes run as ScopeSource runs them: the pid file lists every
+// process the command started; none may be left after it ends.
 function runBounded(t, script, ms) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-bounded-"))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
   const pids = path.join(dir, "pids")
-  const [cmd, ...args] = Scopes.bounded(["sh", "-c", script, "probe", pids], ms)
+  const [cmd, ...args] = scopeCommand(["sh", "-c", script, "probe", pids], ms)
   const started = Date.now()
   const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000 })
   const elapsed = Date.now() - started
@@ -245,4 +247,37 @@ test("a command that ignores SIGTERM is SIGKILLed a second later, children too",
   assert.equal(r.result.signal, "SIGKILL")
   assert.ok(Scopes.timedOut(9, 1, r.elapsed, 300))
   assert.deepEqual(r.alive, [])
+})
+
+// Quickshell's line reader holds a line until its newline arrives, so output
+// without newlines used to grow in the shell until the deadline (a 300 MB
+// probe: one read, the shell past 345 MB). The wrapper stops it at the cap.
+for (const [name, flood] of [["without newlines", "yes | tr -d '\\n'"], ["in lines", "yes"]]) {
+  test("output " + name + " stops at MAX_OUTPUT bytes, and the run reads as capped", () => {
+    const [cmd, ...args] = scopeCommand(["sh", "-c", flood], 20000)
+    const started = Date.now()
+    const result = spawnSync(cmd, args, { maxBuffer: 2 * Scopes.MAX_OUTPUT, timeout: 30000 })
+    assert.equal(result.error, undefined, "the output stayed under twice the cap")
+    assert.equal(result.stdout.length, Scopes.MAX_OUTPUT)
+    assert.ok(Scopes.wasCapped(result.status, 0), "exit " + result.status + " " + result.signal)
+    assert.ok(Date.now() - started < 15000, "stopped at the cap, not at the deadline")
+  })
+}
+
+test("output under the cap and the command's own exit pass through the wrapper", () => {
+  const run = (command) => {
+    const [cmd, ...args] = scopeCommand(command, 10000)
+    return spawnSync(cmd, args, { encoding: "utf8", timeout: 15000 })
+  }
+  // Values stay arguments: nothing in them is shell code.
+  const odd = "$(touch nope) `id` ; | \"quoted\" 'single'"
+  const echo = run(["printf", "%s\\t%s\\n", odd, "é"])
+  assert.equal(echo.status, 0)
+  assert.equal(echo.stdout, odd + "\té\n")
+  assert.equal(run(["sh", "-c", "exit 3"]).status, 3)
+  const missing = run(["foamy-no-such-command"])
+  assert.equal(missing.status, 127)
+  assert.ok(FoamyNative.unavailable(missing.status))
+  // bash's report without the wrapper's "foamy-scope: line 1: " (localized).
+  assert.match(Scopes.exitFailure(missing.status, missing.stderr), /^foamy-no-such-command: \S/)
 })

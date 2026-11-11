@@ -313,9 +313,10 @@ and `cover` too. It runs when the scope is entered, with a
 10-second default timeout (`timeout` 100–60000 ms): at the deadline the
 command's process group (the command and what it started) gets SIGTERM, and
 SIGKILL a second later. The previous list stays on screen while it
-refreshes, and a failed run keeps it. At most 5000 items; a command that
-prints more than 8 Mi characters is stopped there, and the lines before that
-are its list.
+refreshes, and a failed run keeps it. At most 5000 items; the launcher reads
+at most 8 MiB of a command's output (a fixed `bash` wrapper pipes it through
+`head -c`), so a command that prints more is stopped there by SIGPIPE, and
+the whole lines before the cut are its list.
 
 A query scope is one more search engine, for example the Arch Wiki:
 
@@ -328,7 +329,9 @@ A query scope is one more search engine, for example the Arch Wiki:
 }
 ```
 
-Commands are argv arrays and never pass through a shell. `{value}` (the
+Commands are argv arrays, and their arguments never become shell code: an
+`open` command runs directly, and a `source` command runs as the arguments of
+the fixed output-capping `bash` wrapper above. `{value}` (the
 item's value, or a query scope's typed text), `{query}` (the same,
 URL-encoded) and `{plugin}` (this plugin's directory) are replaced inside
 single arguments, so a value with spaces or `;` stays one argument; `{value}`

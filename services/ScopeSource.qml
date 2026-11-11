@@ -8,9 +8,11 @@ import "../kit/FoamyNative.js" as FoamyNative
 // The scopes the launcher offers: built-ins merged with the JSON files in
 // ~/.config/foamy-menu/scopes/, watched so an edit applies without a restart.
 // A scope's items load when it is entered (the last list stays on screen
-// while it refreshes). Commands run as argv, never through a shell, one at a
-// time, each under `timeout` (Scopes.bounded) so a hung one and its children
-// end at the scope's deadline and the queue moves on. A query
+// while it refreshes). Commands run as argv, one at a time, each under
+// `timeout` (Scopes.bounded) so a hung one and its children end at the
+// scope's deadline and the queue moves on, and behind a fixed bash wrapper
+// (Scopes.capped) that cuts stdout at MAX_OUTPUT bytes; the argv stays the
+// wrapper's arguments, never shell text. A query
 // scope that asks for suggestions fetches them while typing, one request at a
 // time; nothing is sent for scopes that leave "suggest" off.
 Item {
@@ -127,11 +129,9 @@ Item {
     proc.scopeCommand = Scopes.fill(scope.source.command, "", source.pluginDir)
     proc.timeoutMs = scope.source.timeout
     proc.lines = []
-    proc.outputSize = 0
-    proc.capped = false
     proc.stderrHead = ""
     proc.startedAt = Date.now()
-    proc.command = Scopes.bounded(proc.scopeCommand, scope.source.timeout)
+    proc.command = Scopes.bounded(Scopes.capped(proc.scopeCommand), scope.source.timeout)
     watchdog.interval = scope.source.timeout + Scopes.WATCHDOG_GRACE_MS
     proc.running = true
     watchdog.restart()
@@ -157,19 +157,10 @@ Item {
     Qt.callLater(source.next)
   }
 
-  // Output arrives a line at a time (whole lines, so no character is split).
-  // Past MAX_OUTPUT the command is stopped (timeout passes the SIGTERM on to
-  // its group) and what came before is the list.
+  // Output arrives a line at a time (whole lines, so no character is split;
+  // Scopes.capped bounds what a line can hold).
   function keepLine(line) {
-    if (proc.scopeId === "" || proc.capped) return
-    proc.outputSize += line.length + 1
-    if (proc.outputSize > Scopes.MAX_OUTPUT) {
-      proc.capped = true
-      source.message("warning", "scope " + proc.scopeId + ": output is over " + Scopes.MAX_OUTPUT + " characters; keeping the lines before that", { command: proc.scopeCommand })
-      if (proc.running) proc.signal(15)
-      return
-    }
-    proc.lines.push(line)
+    if (proc.scopeId !== "") proc.lines.push(line)
   }
 
   function keepStderr(data) {
@@ -235,8 +226,6 @@ Item {
     property int timeoutMs: 0
     property double startedAt: 0
     property var lines: []
-    property double outputSize: 0
-    property bool capped: false
     property string stderrHead: ""
     stdout: SplitParser { onRead: function(line) { source.keepLine(line) } }
     // Chunks as they arrive (no split), so at most MAX_STDERR is ever kept.
@@ -246,8 +235,12 @@ Item {
     }
     onExited: function(exitCode, exitStatus) {
       var failure = ""
-      // Stopped at MAX_OUTPUT: the lines read so far are the list.
-      if (proc.capped) failure = ""
+      if (Scopes.wasCapped(exitCode, exitStatus)) {
+        // Cut at MAX_OUTPUT bytes, most likely inside a line: the whole lines
+        // before it are the list.
+        proc.lines.pop()
+        source.message("warning", "scope " + proc.scopeId + ": output is over " + Scopes.MAX_OUTPUT + " bytes; keeping the lines before that", { command: proc.scopeCommand })
+      }
       else if (Scopes.timedOut(exitCode, exitStatus, Date.now() - proc.startedAt, proc.timeoutMs)) failure = "timed out"
       // The bundled helper (the SSH scope's) has no binary for this CPU.
       else if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.scopeCommand)) failure = FoamyNative.UNAVAILABLE_TEXT
