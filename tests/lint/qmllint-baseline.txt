@@ -1,0 +1,358 @@
+# qmllint findings accepted when the check was adopted. tests/validate.sh fails on any
+# finding not listed here. Regenerate with `tests/validate.sh --update-baseline qmllint`
+# only to drop fixed entries or after reviewing every added one; never to pass a check.
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var b = 0; b < RootSearch.BUILTINS.length; b++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < (waiting || []).length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < apps.length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < candidates.length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < list.length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < overflow.length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < prefixes.length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < scopeSource.scopes.length; i++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var it = 0; it < items.length; it++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var j = 0; j < next.length; j++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var k in next)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var key in doc.items)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var key in doc.items)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var key in orders) {
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var key in patch) {
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var other in commands) {
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var r = 0; r < sections[s].rows.length; r++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var s = 0; s < scopeSource.scopes.length; s++) {
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var s = 0; s < sections.length; s++)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var a = RootSearch.SETTINGS_ACTIONS.filter(function (x) {
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var alias = String(data.alias).trim().toLowerCase()
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var cached = scopeSource.suggestions[scope.id]
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var calc = backend.calculate(String(data.query || ""))
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var calc = backend.calculate(String(data.query || ""))
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var command = "omarchy bar set foamy.menu " + f.key + " " + (typeof f.defaultValue === "string" ? "'" + shown.replace(/'/g, "'\\''") + "'" : shown + " --json")
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var commands = settingsStore.doc.commands
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var confirm = RootSearch.confirmationFor(String(data && data.id || ""), String(data && data.action || "open"))
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entry = backend.historyEntry(data.id)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entry = backend.historyEntry(rowId)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entry = doc.commands[key] || {}
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var f = Settings.field(text.slice("setting:".length))
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var hint = Settings.hint(f)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var item = menuSource.tree.items[candidate.menuId]
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var items = scope.rootSearch ? (scopeSource.items[scope.id] || []) : []
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var next = Settings.stepped(f, value, action === "setting-next" ? 1 : -1)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var orders = RootSearch.reorderFavorites(settingsStore.doc.commands, id, action)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parsed = Settings.parse(f, data && data.value)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var prefix = Scopes.itemId(scope.id, "")
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var prefixes = scopeSource.queryScopeIds.map(function (id) {
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var queryScope = scopeSource.scope(String(id).slice("scope-query:".length))
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var range = Settings.hint(f)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var saved = backend.saveSetting(f, parsed)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var scope = scopeSource.scope(view.scopeId)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var scope = scopeSource.scopes[s]
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var shown = typeof f.defaultValue === "string" ? String(value) : JSON.stringify(value)
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var target = menuSource.tree.items[candidate.target]
+Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var titles = {
+BarWidget.qml: incompatible-type: Cannot assign binding of type QObject to QQuickItem | readonly property Item buttonItem: button.item
+BarWidget.qml: missing-property: Member "family" not found on type "QObject" | readonly property string iconFont: String(setting("iconFont", "")) || (bar ? bar.fontFamily : Style.font.family)
+BarWidget.qml: missing-property: Member "fontFamily" not found on type "QObject" | readonly property string iconFont: String(setting("iconFont", "")) || (bar ? bar.fontFamily : Style.font.family)
+BarWidget.qml: missing-property: Member "implicitHeight" not found on type "QObject" | implicitHeight: button.item ? button.item.implicitHeight : 0
+BarWidget.qml: missing-property: Member "implicitWidth" not found on type "QObject" | implicitWidth: button.item ? button.item.implicitWidth : 0
+BarWidget.qml: missing-property: Member "run" not found on type "QObject" | bar.run("omarchy-shell shell toggle omarchy.menu '" + rootPayload + "'")
+BarWidget.qml: missing-property: Member "run" not found on type "QObject" | bar.run("xdg-terminal-exec")
+BarWidget.qml: missing-property: Member "shell" not found on type "QObject" | var shell = bar ? bar.shell : null
+BarWidget.qml: unqualified: Unqualified access | bar: root.bar
+BarWidget.qml: unqualified: Unqualified access | bar: root.bar
+BarWidget.qml: unqualified: Unqualified access | fontFamily: root.iconFont
+BarWidget.qml: unqualified: Unqualified access | fontFamily: root.iconFont
+BarWidget.qml: unqualified: Unqualified access | root.activate(mouseButton)
+BarWidget.qml: unqualified: Unqualified access | root.activate(mouseButton)
+BarWidget.qml: unqualified: Unqualified access | text: root.icon
+BarWidget.qml: unqualified: Unqualified access | text: root.icon
+Launcher.qml: import: PostReloadHook was not found. Did you add all imports and dependencies? | var wasOpen = root.opened
+Launcher.qml: missing-property: Member "family" not found on type "QObject" | property string brandFont: Style.font.family
+Launcher.qml: unresolved-type: Type GlobalShortcut is used but it is not resolved | GlobalShortcut {
+Menu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var payload = JSON.parse(payloadJson || "{}")
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < entries.length; i++)
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < entries.length; i++) {
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < item.data.length; i++) {
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var j = 0; j < window.contentItem.children.length; j++) {
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var s = 0; layout && s < sections.length; s++) {
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var s = 0; layout && s < sections.length; s++) {
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var config = JSON.parse(text())
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entries = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entries = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var entry = entries[i]
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var surface = window.contentItem.children[j]
+StockMenu.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var window = item.data[i]
+StockMenu.qml: missing-property: Member "cardWidth" not found on type "QObject" | return Math.min(Math.max(menu.item.cardWidth, Style.space(root.configuredWidth)), Math.max(0, root.menuWindow.width - Style.gapsOut * 2))
+StockMenu.qml: missing-property: Member "cardWidth" not found on type "QObject" | return menu.item.cardWidth
+StockMenu.qml: missing-property: Member "close" not found on type "QObject" | menu.item.close()
+StockMenu.qml: missing-property: Member "data" not found on type "QObject" | for (var i = 0; i < item.data.length; i++) {
+StockMenu.qml: missing-property: Member "data" not found on type "QObject" | var window = item.data[i]
+StockMenu.qml: missing-property: Member "dmenuActive" not found on type "QObject" | if (menu.item.dmenuActive || root.configuredWidth === 0)
+StockMenu.qml: missing-property: Member "family" not found on type "QObject" | readonly property string brandFont: String(configuredEntry.iconFont || "") || Style.font.family
+StockMenu.qml: missing-property: Member "manifest" not found on type (component in StockMenu.qml)::item with type QObject | item.manifest = Qt.binding(function () {
+StockMenu.qml: missing-property: Member "open" not found on type "QObject" | menu.item.open(payloadJson)
+StockMenu.qml: missing-property: Member "opened" not found on type "QObject" | readonly property bool opened: menu.item ? menu.item.opened : false
+StockMenu.qml: missing-property: Member "ping" not found on type "QObject" | return menu.item ? menu.item.ping() : "stock menu unavailable"
+StockMenu.qml: missing-property: Member "refresh" not found on type "QObject" | return menu.item ? menu.item.refresh() : "stock menu unavailable"
+StockMenu.qml: missing-property: Member "shell" not found on type (component in StockMenu.qml)::item with type QObject | item.shell = menuServices
+services/AppFocuser.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var list = JSON.parse(text)
+services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var code in doc.rates)
+services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < lines.length; i++) {
+services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var doc = JSON.parse(text())
+services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var m = /^(\S+) ([+-])(\d\d)(\d\d)$/.exec(lines[i])
+services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parsed = service.validRates(doc)
+services/NativeSearch.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var data = FleaSearch.reply(line)
+services/NativeSearch.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var matches = FleaSearch.hits(data, service.ids)
+services/NativeSearch.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var request = service.pending
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < lines.length; i++) {
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < source.tree.order.length; i++) {
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < tree.order.length; i++) {
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var id in items) {
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var j = 0; j < expected.length; j++) {
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var k in source.pendingProviderItems)
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var id = tree.order[i]
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var item = source.tree.items[source.tree.order[i]]
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var item = tree.items[id]
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var items = source.guardItems(source.tree)
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var match = /^([A-Za-z0-9._-]+:[wcd]):[01]$/.exec(lines[i].trim())
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var next = ({})
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var path = source.omarchyPath + "/shell/plugins/menu/MenuModel.js";
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var script = source.compileGuards(source.tree, items)
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var script = source.guardCompiler.compile(items)
+services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var url = "file://" + path.split("/").map(encodeURIComponent).join("/")
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < files_.count; i++) {
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < source.scopes.length; i++)
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var p = 0; p < merged.errors.length; p++) {
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var s = 0; s < merged.scopes.length; s++) {
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var id = merged.scopes[s].id
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var nextItems = Object.assign({}, source.items)
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var old = source.scope(id)
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parsed = Scopes.parseFile(view.fileName, view.text())
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var problem = merged.errors[p]
+services/ScopeSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var view = files_.objectAt(i)
+services/ScopeSource.qml: missing-property: Member "failed" not found on type "QObject" | if (view.failed) {
+services/ScopeSource.qml: missing-property: Member "fileName" not found on type "QObject" | name: view.fileName,
+services/ScopeSource.qml: missing-property: Member "fileName" not found on type "QObject" | name: view.fileName,
+services/ScopeSource.qml: missing-property: Member "fileName" not found on type "QObject" | name: view.fileName,
+services/ScopeSource.qml: missing-property: Member "fileName" not found on type "QObject" | var parsed = Scopes.parseFile(view.fileName, view.text())
+services/ScopeSource.qml: missing-property: Member "loadedOnce" not found on type "QObject" | if (!view || !view.loadedOnce)
+services/ScopeSource.qml: missing-property: Member "text" not found on type "QObject" | var parsed = Scopes.parseFile(view.fileName, view.text())
+services/ScopeSource.qml: unqualified: Unqualified access | rebuildTimer.restart()
+services/ScopeSource.qml: unqualified: Unqualified access | rebuildTimer.restart()
+ui/ActionPanel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * panel.zoom)
+ui/ActionPanel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * panel.zoom)
+ui/ActionPanel.qml: unqualified: Unqualified access | anchors.leftMargin: panel.px(10)
+ui/ActionPanel.qml: unqualified: Unqualified access | anchors.leftMargin: panel.px(8)
+ui/ActionPanel.qml: unqualified: Unqualified access | anchors.rightMargin: panel.px(8)
+ui/ActionPanel.qml: unqualified: Unqualified access | anchors.rightMargin: panel.px(8)
+ui/ActionPanel.qml: unqualified: Unqualified access | anchors.topMargin: panel.px(4)
+ui/ActionPanel.qml: unqualified: Unqualified access | color: Util.alpha(panel.look.foreground, 0.1)
+ui/ActionPanel.qml: unqualified: Unqualified access | color: index === panel.selectedIndex ? panel.look.selectedBackground : "transparent"
+ui/ActionPanel.qml: unqualified: Unqualified access | color: index === panel.selectedIndex ? panel.look.selectedBackground : "transparent"
+ui/ActionPanel.qml: unqualified: Unqualified access | color: index === panel.selectedIndex ? panel.look.selectedBackground : "transparent"
+ui/ActionPanel.qml: unqualified: Unqualified access | color: panel.look.foreground
+ui/ActionPanel.qml: unqualified: Unqualified access | color: panel.look.foreground
+ui/ActionPanel.qml: unqualified: Unqualified access | color: panel.look.foreground
+ui/ActionPanel.qml: unqualified: Unqualified access | font.family: modelData.icon === "\ue900" ? "omarchy" : panel.look.fontFamily
+ui/ActionPanel.qml: unqualified: Unqualified access | font.family: modelData.icon === "\ue900" ? "omarchy" : panel.look.fontFamily
+ui/ActionPanel.qml: unqualified: Unqualified access | font.family: panel.look.fontFamily
+ui/ActionPanel.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.body * panel.zoom)
+ui/ActionPanel.qml: unqualified: Unqualified access | font.pixelSize: panel.px(13)
+ui/ActionPanel.qml: unqualified: Unqualified access | fontFamily: panel.look.fontFamily
+ui/ActionPanel.qml: unqualified: Unqualified access | height: panel.px(34)
+ui/ActionPanel.qml: unqualified: Unqualified access | height: panel.px(34) + (newSection ? panel.px(9) : 0)
+ui/ActionPanel.qml: unqualified: Unqualified access | height: panel.px(34) + (newSection ? panel.px(9) : 0)
+ui/ActionPanel.qml: unqualified: Unqualified access | keys: modelData.shortcut || ""
+ui/ActionPanel.qml: unqualified: Unqualified access | onPositionChanged: panel.selectedIndex = index
+ui/ActionPanel.qml: unqualified: Unqualified access | onPositionChanged: panel.selectedIndex = index
+ui/ActionPanel.qml: unqualified: Unqualified access | panel.activateSelected()
+ui/ActionPanel.qml: unqualified: Unqualified access | panel.selectedIndex = index
+ui/ActionPanel.qml: unqualified: Unqualified access | panel.selectedIndex = index
+ui/ActionPanel.qml: unqualified: Unqualified access | radius: Math.max(Style.cornerRadius, panel.px(6))
+ui/ActionPanel.qml: unqualified: Unqualified access | readonly property bool newSection: index > 0 && panel.visibleActions[index - 1].section !== modelData.section
+ui/ActionPanel.qml: unqualified: Unqualified access | text: modelData.icon || ""
+ui/ActionPanel.qml: unqualified: Unqualified access | text: modelData.title
+ui/ActionPanel.qml: unqualified: Unqualified access | width: panel.px(18)
+ui/ActionPanel.qml: unqualified: Unqualified access | zoom: panel.zoom
+ui/Alert.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * alert.zoom)
+ui/Alert.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * alert.zoom)
+ui/Alert.qml: missing-property: Member "danger" not found on type "QQuickItem" | color: parent.parent.danger ? alert.danger : alert.look.foreground
+ui/Alert.qml: missing-property: Member "danger" not found on type "QQuickItem" | color: parent.parent.danger ? alert.danger : alert.look.foreground
+ui/Alert.qml: missing-property: Member "scrim" not found on type "QObject" | color: Commons.Color.menu.scrim
+ui/Alert.qml: missing-property: Member "title" not found on type "QObject" | font.pixelSize: Math.round(Style.font.title * alert.zoom)
+ui/Alert.qml: unqualified: Unqualified access | border.color: alert.danger
+ui/Alert.qml: unqualified: Unqualified access | color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
+ui/Alert.qml: unqualified: Unqualified access | color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
+ui/Alert.qml: unqualified: Unqualified access | color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
+ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
+ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
+ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
+ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
+ui/Alert.qml: unqualified: Unqualified access | font.family: alert.look.fontFamily
+ui/Alert.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.body * alert.zoom)
+ui/Alert.qml: unqualified: Unqualified access | fontFamily: alert.look.fontFamily
+ui/Alert.qml: unqualified: Unqualified access | height: alert.px(34)
+ui/Alert.qml: unqualified: Unqualified access | keys: modelData.key
+ui/Alert.qml: unqualified: Unqualified access | onClicked: modelData.primary ? alert.confirmed() : alert.cancelled()
+ui/Alert.qml: unqualified: Unqualified access | onClicked: modelData.primary ? alert.confirmed() : alert.cancelled()
+ui/Alert.qml: unqualified: Unqualified access | onClicked: modelData.primary ? alert.confirmed() : alert.cancelled()
+ui/Alert.qml: unqualified: Unqualified access | radius: Math.max(Style.cornerRadius, alert.px(6))
+ui/Alert.qml: unqualified: Unqualified access | readonly property bool danger: modelData.primary && alert.spec && alert.spec.destructive
+ui/Alert.qml: unqualified: Unqualified access | readonly property bool danger: modelData.primary && alert.spec && alert.spec.destructive
+ui/Alert.qml: unqualified: Unqualified access | spacing: alert.px(8)
+ui/Alert.qml: unqualified: Unqualified access | text: modelData.title
+ui/Alert.qml: unqualified: Unqualified access | width: (column.width - alert.px(10)) / 2
+ui/Alert.qml: unqualified: Unqualified access | width: (column.width - alert.px(10)) / 2
+ui/Alert.qml: unqualified: Unqualified access | zoom: alert.zoom
+ui/AppCell.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * cell.zoom)
+ui/AppCell.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * cell.zoom)
+ui/AppCell.qml: unqualified: Unqualified access | maskSource: coverMask
+ui/InfoPanel.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * panel.zoom)
+ui/InfoPanel.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * panel.zoom)
+ui/InfoPanel.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * panel.zoom)
+ui/InfoPanel.qml: unqualified: Unqualified access | color: panel.look.foreground
+ui/InfoPanel.qml: unqualified: Unqualified access | color: panel.look.foreground
+ui/InfoPanel.qml: unqualified: Unqualified access | font.family: panel.look.fontFamily
+ui/InfoPanel.qml: unqualified: Unqualified access | font.family: panel.look.fontFamily
+ui/InfoPanel.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.bodySmall * panel.zoom)
+ui/InfoPanel.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.bodySmall * panel.zoom)
+ui/InfoPanel.qml: unqualified: Unqualified access | spacing: panel.px(10)
+ui/InfoPanel.qml: unqualified: Unqualified access | text: modelData.label
+ui/InfoPanel.qml: unqualified: Unqualified access | text: modelData.value
+ui/InfoPanel.qml: unqualified: Unqualified access | width: content.width
+ui/InfoPanel.qml: unqualified: Unqualified access | width: content.width - panel.px(110)
+ui/InfoPanel.qml: unqualified: Unqualified access | width: content.width - panel.px(110)
+ui/InfoPanel.qml: unqualified: Unqualified access | width: panel.px(100)
+ui/KeyHint.qml: missing-property: Member "caption" not found on type "QObject" | property int pixelSize: Style.font.caption
+ui/KeyHint.qml: missing-property: Member "menuFamily" not found on type "QObject" | property string fontFamily: Style.font.menuFamily
+ui/KeyHint.qml: unqualified: Unqualified access | color: Util.alpha(hint.color, 0.1)
+ui/KeyHint.qml: unqualified: Unqualified access | color: hint.color
+ui/KeyHint.qml: unqualified: Unqualified access | font.family: hint.fontFamily
+ui/KeyHint.qml: unqualified: Unqualified access | font.pixelSize: hint.pixelSize
+ui/KeyHint.qml: unqualified: Unqualified access | height: label.implicitHeight + Math.round(Style.space(4) * hint.zoom)
+ui/KeyHint.qml: unqualified: Unqualified access | radius: Math.round(Style.space(4) * hint.zoom)
+ui/KeyHint.qml: unqualified: Unqualified access | width: Math.max(height, label.implicitWidth + Math.round(Style.space(10) * hint.zoom))
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < list.length; i++)
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < rows.count; i++) {
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = from + direction; i >= 0 && i < rows.count; i += direction)
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var n = 0; n < Math.abs(delta); n++) {
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var r = 0; r < section.rows.length; r++) {
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var s = 0; s < result.data.length; s++) {
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var c = section.rows[r]
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var dir = window.direction(event, ctrl, alt, false)
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var next = window.nextSelectable(target, step)
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var previous = list.itemAtIndex(window.selectedIndex)
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var section = result.data[s]
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var spec = Object.assign({}, outcome.confirm, {
+ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var target = window.nthItem(key - Qt.Key_0)
+ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.candidatesRevision
+ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.settings
+ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.storeRevision
+ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.storeRevision
+ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.selectedRow
+ui/LauncherWindow.qml: missing-property: Member "background" not found on type "QObject" | background: Commons.Color.menu.background,
+ui/LauncherWindow.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "border" not found on type "QObject" | readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
+ui/LauncherWindow.qml: missing-property: Member "family" not found on type "QObject" | property string brandFont: Style.font.family
+ui/LauncherWindow.qml: missing-property: Member "filter" not found on type "QObject" | actionPanel.item.filter += text
+ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | actionPanel.item.filter += text
+ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | actionPanel.item.filter = ""
+ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | dropdown.item.filter = ""
+ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | toastPanel.item.filter = ""
+ui/LauncherWindow.qml: missing-property: Member "hairline" not found on type "QObject" | height: Style.spacing.hairline
+ui/LauncherWindow.qml: missing-property: Member "hairline" not found on type "QObject" | height: Style.spacing.hairline
+ui/LauncherWindow.qml: missing-property: Member "heading" not found on type "QObject" | font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
+ui/LauncherWindow.qml: missing-property: Member "menuFamily" not found on type "QObject" | fontFamily: Style.font.menuFamily
+ui/LauncherWindow.qml: missing-property: Member "selected" not found on type call to method itemAtIndex, returning QQuickItem | current.selected = true
+ui/LauncherWindow.qml: missing-property: Member "selected" not found on type call to method itemAtIndex, returning QQuickItem | previous.selected = false
+ui/LauncherWindow.qml: missing-property: Member "selectedBackground" not found on type "QObject" | selectedBackground: Commons.Color.menu.selectedBackground,
+ui/LauncherWindow.qml: missing-property: Member "selectedIndex" not found on type QQuickLoader::item with type QObject | dropdown.item.selectedIndex = Math.max(0, at)
+ui/LauncherWindow.qml: missing-property: Member "selectedText" not found on type "QObject" | accent: Commons.Color.menu.selectedText,
+ui/LauncherWindow.qml: missing-property: Member "text" not found on type "QObject" | foreground: Commons.Color.menu.text,
+ui/LauncherWindow.qml: missing-property: Member "title" not found on type "QObject" | font.pixelSize: Math.round(Style.font.title * window.zoom)
+ui/LauncherWindow.qml: unqualified: Unqualified access | Component.onCompleted: selected = index === window.selectedIndex
+ui/LauncherWindow.qml: unqualified: Unqualified access | ListView.onReused: selected = index === window.selectedIndex
+ui/LauncherWindow.qml: unqualified: Unqualified access | actions: (window.toast ? window.toast.actions : []).map(function (a) {
+ui/LauncherWindow.qml: unqualified: Unqualified access | actions: (window.toast ? window.toast.actions : []).map(function (a) {
+ui/LauncherWindow.qml: unqualified: Unqualified access | actions: window.actions
+ui/LauncherWindow.qml: unqualified: Unqualified access | appLibrary: window.appLibrary
+ui/LauncherWindow.qml: unqualified: Unqualified access | appLibrary: window.appLibrary
+ui/LauncherWindow.qml: unqualified: Unqualified access | covers: window.coverGrid
+ui/LauncherWindow.qml: unqualified: Unqualified access | height: grid.cellHeight
+ui/LauncherWindow.qml: unqualified: Unqualified access | icon: f.id === window.rootFilter ? "✓" : " "
+ui/LauncherWindow.qml: unqualified: Unqualified access | if (!window.actionPanelOpen && pointerGate.moved(item, mouse))
+ui/LauncherWindow.qml: unqualified: Unqualified access | if (!window.actionPanelOpen && pointerGate.moved(item, mouse))
+ui/LauncherWindow.qml: unqualified: Unqualified access | if (!window.actionPanelOpen && pointerGate.moved(item, mouse))
+ui/LauncherWindow.qml: unqualified: Unqualified access | if (!window.actionPanelOpen && pointerGate.moved(item, mouse))
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | look: window.look
+ui/LauncherWindow.qml: unqualified: Unqualified access | onCancelled: window.alert = null
+ui/LauncherWindow.qml: unqualified: Unqualified access | onConfirmed: window.confirmAlert()
+ui/LauncherWindow.qml: unqualified: Unqualified access | placeholder: window.t("Filter…")
+ui/LauncherWindow.qml: unqualified: Unqualified access | placeholder: window.t("Search toast actions…")
+ui/LauncherWindow.qml: unqualified: Unqualified access | rows: window.aboutRows
+ui/LauncherWindow.qml: unqualified: Unqualified access | selected: index === window.selectedIndex
+ui/LauncherWindow.qml: unqualified: Unqualified access | spec: window.alert ? window.alert.spec : null
+ui/LauncherWindow.qml: unqualified: Unqualified access | spec: window.alert ? window.alert.spec : null
+ui/LauncherWindow.qml: unqualified: Unqualified access | title: window.selectedRow ? window.selectedRow.title : ""
+ui/LauncherWindow.qml: unqualified: Unqualified access | title: window.selectedRow ? window.selectedRow.title : ""
+ui/LauncherWindow.qml: unqualified: Unqualified access | title: window.t(f.title),
+ui/LauncherWindow.qml: unqualified: Unqualified access | width: grid.cellWidth
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.perform("open", i)
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.perform("open", i)
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.perform(actionId)
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.runToastAction(id)
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.select(i, true)
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.select(i, true)
+ui/LauncherWindow.qml: unqualified: Unqualified access | window.setRootFilter(id)
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/LauncherWindow.qml: unqualified: Unqualified access | zoom: window.zoom
+ui/ResultRow.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round((row.isSetting ? Style.font.body : Style.font.bodySmall) * row.zoom)
+ui/ResultRow.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * row.zoom)
+ui/ResultRow.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * row.zoom)
+ui/ResultRow.qml: missing-property: Member "body" not found on type "QObject" | minimumPixelSize: Math.round(Style.font.body * row.zoom)
+ui/ResultRow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round((row.isSetting ? Style.font.body : Style.font.bodySmall) * row.zoom)
+ui/ResultRow.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: Math.round(Style.font.caption * row.zoom)
+ui/ResultRow.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: Math.round(Style.font.caption * row.zoom)
+ui/ResultRow.qml: missing-property: Member "caption" not found on type "QObject" | font.pixelSize: Math.round(Style.font.caption * row.zoom)
+ui/ResultRow.qml: missing-property: Member "heading" not found on type "QObject" | font.pixelSize: Math.round(Style.font.heading * 1.8 * row.zoom)
+ui/ResultRow.qml: missing-property: Member "heading" not found on type "QObject" | font.pixelSize: Math.round(Style.font.heading * row.zoom)
+ui/ResultRow.qml: missing-property: Member "title" not found on type "QObject" | font.pixelSize: Math.round(Style.font.title * row.zoom)
+ui/ResultRow.qml: unqualified: Unqualified access | anchors.bottomMargin: row.px(10)
+ui/ResultRow.qml: unqualified: Unqualified access | anchors.leftMargin: row.px(16)
+ui/ResultRow.qml: unqualified: Unqualified access | anchors.rightMargin: row.px(16)
+ui/ResultRow.qml: unqualified: Unqualified access | anchors.rightMargin: row.px(16)
+ui/ResultRow.qml: unqualified: Unqualified access | anchors.topMargin: row.px(12)
+ui/ResultRow.qml: unqualified: Unqualified access | border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
+ui/ResultRow.qml: unqualified: Unqualified access | border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.look.foreground
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.selected ? row.look.accent : row.look.foreground
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.selected ? row.look.accent : row.look.foreground
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.selected ? row.look.accent : row.look.foreground
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+ui/ResultRow.qml: unqualified: Unqualified access | color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
+ui/ResultRow.qml: unqualified: Unqualified access | font.family: row.look.fontFamily
+ui/ResultRow.qml: unqualified: Unqualified access | font.family: row.look.fontFamily
+ui/ResultRow.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.heading * 1.8 * row.zoom)
+ui/ResultRow.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.heading * row.zoom)
+ui/ResultRow.qml: unqualified: Unqualified access | minimumPixelSize: Math.round(Style.font.body * row.zoom)
+ui/ResultRow.qml: unqualified: Unqualified access | radius: Math.max(Style.cornerRadius, row.px(6))
+ui/ResultRow.qml: unqualified: Unqualified access | text: row.calcContext
+ui/ResultRow.qml: unqualified: Unqualified access | text: row.calcResult
+ui/ResultRow.qml: unqualified: Unqualified access | visible: row.calcContext.length > 0
+ui/ResultRow.qml: unqualified: Unqualified access | width: Math.min(implicitWidth, (parent.width - row.px(32)) * 2 / 3)
