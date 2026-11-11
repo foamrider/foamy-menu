@@ -21,6 +21,7 @@ The test also checks that foamy.menu still finds the stock menu internals it
 depends on (the window, its BorderSurface card, cardWidth, dmenuActive), so a
 host release that changes them fails here first.
 """
+
 import argparse
 import os
 from pathlib import Path
@@ -102,28 +103,34 @@ def build(run):
         (stubs / name).chmod(0o755)
     actions = run.base / "actions.log"
     actions.write_text("")
-    run.env.update({
-        "PATH": f"{stubs}:{os.environ.get('PATH', '/usr/bin')}",
-        "FOAMY_MENU_TEST_ACTION_LOG": str(actions),
-    })
+    run.env.update(
+        {
+            "PATH": f"{stubs}:{os.environ.get('PATH', '/usr/bin')}",
+            "FOAMY_MENU_TEST_ACTION_LOG": str(actions),
+        }
+    )
 
 
 def run_host(host_name, shots, plugin, shell_path):
     sys.path.insert(0, str(KIT / "preview"))
     import harness
+
     extra = {
         "menu.jsonc": '{"apps":{"label":"Apps","provider":"apps"}}\n',
         "shell.json": '{"version":1,"bar":{"layout":{"left":[{"id":"foamy.menu","width":360}]}}}\n',
     }
-    run = harness.Run(host_name, Path(shell_path).read_text(), plugin=plugin, extra=extra,
-                      prefix=f"foamy-menu-runtime-{host_name}-")
+    run = harness.Run(
+        host_name, Path(shell_path).read_text(), plugin=plugin, extra=extra, prefix=f"foamy-menu-runtime-{host_name}-"
+    )
     build(run)
     if shots:
         out = Path(shots) / host_name
         out.mkdir(parents=True, exist_ok=True)
         run.env["FOAMY_MENU_SHOTS"] = str(out)
     run.run(timeout=120)
-    result = next((line.split("FOAMY RESULT ", 1)[1] for line in run.log.splitlines() if "FOAMY RESULT" in line), "no result")
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in run.log.splitlines() if "FOAMY RESULT" in line), "no result"
+    )
     # Every host command the QML runs has a stand-in here; the harness
     # refuses (and logs) any other.
     refused = run.host_commands()

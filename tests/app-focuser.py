@@ -9,6 +9,7 @@ launched; only the app without a window launches.
 
 Uses the foamy-kit harness (FOAMY_KIT, default ~/GitHub/Personal/foamy-kit).
 """
+
 import os
 from pathlib import Path
 import sys
@@ -73,7 +74,9 @@ def main():
     run.env["FOAMY_HYPRCTL_LOG"] = str(log)
     run.run(timeout=40)
     problems = run.failures()
-    launched = next((line.split("FOAMY LAUNCHED ", 1)[1] for line in run.log.splitlines() if "FOAMY LAUNCHED " in line), None)
+    launched = next(
+        (line.split("FOAMY LAUNCHED ", 1)[1] for line in run.log.splitlines() if "FOAMY LAUNCHED " in line), None
+    )
     if launched != '["app:signal"]':
         problems.append(f"launched {launched}, expected only app:signal")
 

@@ -3,6 +3,7 @@
 
 Runs on the Omarchy shell tests/runtime.py picks: FOAMY_HOST_45,
 OMARCHY_TEST_ROOT or the installed shell."""
+
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -20,14 +21,15 @@ from urllib.parse import parse_qs, urlparse
 import zlib
 
 PLUGIN = Path(__file__).resolve().parents[1]
-KIT = Path(os.environ.get('FOAMY_KIT', Path.home() / 'GitHub/Personal/foamy-kit'))
+KIT = Path(os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit"))
 # Set before the harness reads its hosts.
-if not os.environ.get('FOAMY_HOST_45'):
-    _root = os.environ.get('OMARCHY_TEST_ROOT')
-    os.environ['FOAMY_HOST_45'] = str(Path(_root) / 'shell') if _root else '/usr/share/omarchy/shell'
-sys.path.insert(0, str(KIT / 'preview'))
+if not os.environ.get("FOAMY_HOST_45"):
+    _root = os.environ.get("OMARCHY_TEST_ROOT")
+    os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
+sys.path.insert(0, str(KIT / "preview"))
 import harness
-spec = importlib.util.spec_from_file_location('stock_runtime', PLUGIN / 'tests/runtime.py')
+
+spec = importlib.util.spec_from_file_location("stock_runtime", PLUGIN / "tests/runtime.py")
 stock_runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stock_runtime)
 
@@ -37,15 +39,16 @@ class FetchFixture(BaseHTTPRequestHandler):
     /v1/latest (rates), /endless (a reply that never ends, no length) and
     /ac?q= (suggestions; a query starting with "huge" never ends, one
     starting with "slow" takes 2 s)."""
-    protocol_version = 'HTTP/1.1'
+
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, *args):
         pass
 
     def reply(self, body):
         self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Content-Length', str(len(body)))
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -54,29 +57,32 @@ class FetchFixture(BaseHTTPRequestHandler):
 
     def endless(self):
         self.send_response(200)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Transfer-Encoding', 'chunked')
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Transfer-Encoding", "chunked")
         self.end_headers()
-        chunk = b'[' * 65536
+        chunk = b"[" * 65536
         try:
             while True:
-                self.wfile.write(b'%x\r\n%s\r\n' % (len(chunk), chunk))
+                self.wfile.write(b"%x\r\n%s\r\n" % (len(chunk), chunk))
         except OSError:
             pass
         self.close_connection = True
 
     def do_GET(self):
         url = urlparse(self.path)
-        query = parse_qs(url.query).get('q', [''])[0]
-        if url.path == '/v1/latest':
-            self.reply(json.dumps({'amount': 1, 'base': 'EUR', 'date': '2026-11-06',
-                                   'rates': {'USD': 1.08, 'NOK': 11.7}}).encode())
-        elif url.path == '/endless' or (url.path == '/ac' and query.startswith('huge')):
+        query = parse_qs(url.query).get("q", [""])[0]
+        if url.path == "/v1/latest":
+            self.reply(
+                json.dumps(
+                    {"amount": 1, "base": "EUR", "date": "2026-11-06", "rates": {"USD": 1.08, "NOK": 11.7}}
+                ).encode()
+            )
+        elif url.path == "/endless" or (url.path == "/ac" and query.startswith("huge")):
             self.endless()
-        elif url.path == '/ac':
-            if query.startswith('slow'):
+        elif url.path == "/ac":
+            if query.startswith("slow"):
                 time.sleep(2)
-            self.reply(json.dumps([query, [query + ' one', query + ' two']]).encode())
+            self.reply(json.dumps([query, [query + " one", query + " two"]]).encode())
         else:
             self.send_error(404)
 
@@ -84,60 +90,95 @@ class FetchFixture(BaseHTTPRequestHandler):
 def start_fetch_fixture(base):
     """An HTTPS server on 127.0.0.1 with a throwaway certificate; curl trusts
     it through CURL_CA_BUNDLE."""
-    key, cert = base / 'fixture-key.pem', base / 'fixture-cert.pem'
-    subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:P-256', '-nodes',
-                    '-keyout', str(key), '-out', str(cert), '-days', '1', '-subj', '/CN=127.0.0.1',
-                    '-addext', 'subjectAltName=IP:127.0.0.1'], check=True, capture_output=True)
-    server = ThreadingHTTPServer(('127.0.0.1', 0), FetchFixture)
+    key, cert = base / "fixture-key.pem", base / "fixture-cert.pem"
+    subprocess.run(
+        [
+            "openssl",
+            "req",
+            "-x509",
+            "-newkey",
+            "ec",
+            "-pkeyopt",
+            "ec_paramgen_curve:P-256",
+            "-nodes",
+            "-keyout",
+            str(key),
+            "-out",
+            str(cert),
+            "-days",
+            "1",
+            "-subj",
+            "/CN=127.0.0.1",
+            "-addext",
+            "subjectAltName=IP:127.0.0.1",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FetchFixture)
     server.daemon_threads = True
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert, key)
     server.socket = context.wrap_socket(server.socket, server_side=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server, f'https://127.0.0.1:{server.server_address[1]}', cert
+    return server, f"https://127.0.0.1:{server.server_address[1]}", cert
 
 
 def png(width, height, rgb):
     """A plain-colour PNG (the tests' cover and icon art)."""
-    row = b'\0' + bytes(rgb) * width
+    row = b"\0" + bytes(rgb) * width
+
     def chunk(kind, data):
-        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 2, 0, 0, 0))
-            + chunk(b'IDAT', zlib.compress(row * height)) + chunk(b'IEND', b''))
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(row * height))
+        + chunk(b"IEND", b"")
+    )
 
 
 def left_running(pids):
     """The listed pids still running (a zombie waiting for its new parent to
     reap it is gone), after up to a second for the kills to land."""
+
     def running(pid):
         try:
-            return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] != 'Z'
+            return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
         except (OSError, IndexError):
             return False
 
     def left():
         return [pid for pid in pids if running(pid)]
+
     harness.wait_for(lambda: not left(), 1)
     return left()
 
 
 def run_case(host, theme, width, language, shots, native=True):
-    run = harness.Run(host, (PLUGIN / 'tests/qml/LauncherRuntime.qml').read_text(),
-                      plugin=PLUGIN, theme=theme, language=language, prefix='foamy-menu-launcher-')
+    run = harness.Run(
+        host,
+        (PLUGIN / "tests/qml/LauncherRuntime.qml").read_text(),
+        plugin=PLUGIN,
+        theme=theme,
+        language=language,
+        prefix="foamy-menu-launcher-",
+    )
     stock_runtime.build(run)
     # Only window plumbing is replaced. Production logic, services and UI run unchanged.
-    (run.root / 'plugin').unlink()
-    local = run.root / 'plugin'
-    shutil.copytree(PLUGIN, local, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+    (run.root / "plugin").unlink()
+    local = run.root / "plugin"
+    shutil.copytree(PLUGIN, local, ignore=shutil.ignore_patterns(".git", "__pycache__"))
     if not native:
         # A CPU without a bundled helper: the built-in matcher must carry every check.
-        for arch in ('x86_64', 'aarch64'):
-            shutil.rmtree(local / 'bin' / arch)
+        for arch in ("x86_64", "aarch64"):
+            shutil.rmtree(local / "bin" / arch)
     # The launcher draws in the host's Ui/OverlayWindow, which build() made a
     # FakeMenuWindow; its own WlrLayershell.namespace line goes too.
-    window = local / 'ui/LauncherWindow.qml'
+    window = local / "ui/LauncherWindow.qml"
     text, count = stock_runtime.transform_windows(window.read_text())
-    assert count == 0 and '\nOverlayWindow {\n' in text, 'launcher window structure changed'
+    assert count == 0 and "\nOverlayWindow {\n" in text, "launcher window structure changed"
     window.write_text(text)
     # OverlayWindow maps only once Hyprland reports the target screen's
     # monitor and its scale, and reveals its content once the window is the
@@ -145,61 +186,95 @@ def run_case(host, theme, width, language, shots, native=True):
     # for its monitor at the window's own scale, and the size the test gives
     # the window (FOAMY_TEST_WIDTH, a narrow screen) stands in for the
     # screen's. The reveal logic itself runs as written.
-    overlay = run.root / 'Ui/OverlayWindow.qml'
+    overlay = run.root / "Ui/OverlayWindow.qml"
     text = overlay.read_text()
-    start = text.index('  readonly property var targetMonitor: {')
-    end = text.index('\n  }\n', start) + len('\n  }\n')
-    text = (text[:start] + '  readonly property var targetMonitor: targetScreen ? '
-            '({ name: targetScreen.name, scale: targetScreen.devicePixelRatio }) : null\n' + text[end:])
-    size = '&& width === targetScreen.width && height === targetScreen.height'
-    assert text.count(size) == 1, 'OverlayWindow reveal changed shape'
-    overlay.write_text(text.replace(size, '&& width === implicitWidth && height === implicitHeight'))
+    start = text.index("  readonly property var targetMonitor: {")
+    end = text.index("\n  }\n", start) + len("\n  }\n")
+    text = (
+        text[:start] + "  readonly property var targetMonitor: targetScreen ? "
+        "({ name: targetScreen.name, scale: targetScreen.devicePixelRatio }) : null\n" + text[end:]
+    )
+    size = "&& width === targetScreen.width && height === targetScreen.height"
+    assert text.count(size) == 1, "OverlayWindow reveal changed shape"
+    overlay.write_text(text.replace(size, "&& width === implicitWidth && height === implicitHeight"))
     # No compositor is present offscreen. IPC/lifecycle is tested through the actual entry point.
-    launcher = local / 'Launcher.qml'
+    launcher = local / "Launcher.qml"
     text = launcher.read_text()
-    start = text.index('  GlobalShortcut {')
-    end = text.index('\n  }', start) + len('\n  }')
+    start = text.index("  GlobalShortcut {")
+    end = text.index("\n  }", start) + len("\n  }")
     launcher.write_text(text[:start] + text[end:])
-    home = Path(run.env['HOME'])
-    config = home / '.config/foamy-menu'
+    home = Path(run.env["HOME"])
+    config = home / ".config/foamy-menu"
     config.mkdir(parents=True)
-    cache = home / '.cache/foamy-menu'
+    cache = home / ".cache/foamy-menu"
     cache.mkdir(parents=True)
-    (cache / 'currencies.json').write_text(json.dumps({
-        'base': 'EUR', 'rates': {'USD': 1.1, 'NOK': 11.5}, 'date': '2026-11-05',
-        'fetchedAt': time.time() * 1000}))
-    shell_config = home / '.config/omarchy/shell.json'
+    (cache / "currencies.json").write_text(
+        json.dumps(
+            {"base": "EUR", "rates": {"USD": 1.1, "NOK": 11.5}, "date": "2026-11-05", "fetchedAt": time.time() * 1000}
+        )
+    )
+    shell_config = home / ".config/omarchy/shell.json"
     shell_config.parent.mkdir(parents=True, exist_ok=True)
-    shell_config.write_text(json.dumps({'bar': {'layout': {'left': [
-        {'id': 'foamy.menu', 'icon': '\U000f08c7', 'width': 360, 'currencyRates': False}]}}}))
-    stubs = run.base / 'stubs'
-    (stubs / 'wl-copy').write_text('#!/bin/sh\ncat > "$FOAMY_COPY_FILE"\n')
-    (stubs / 'wl-copy').chmod(0o755)
-    (stubs / 'wtype').write_text('#!/bin/sh\nexit 0\n')
-    (stubs / 'wtype').chmod(0o755)
+    shell_config.write_text(
+        json.dumps(
+            {
+                "bar": {
+                    "layout": {
+                        "left": [{"id": "foamy.menu", "icon": "\U000f08c7", "width": 360, "currencyRates": False}]
+                    }
+                }
+            }
+        )
+    )
+    stubs = run.base / "stubs"
+    (stubs / "wl-copy").write_text('#!/bin/sh\ncat > "$FOAMY_COPY_FILE"\n')
+    (stubs / "wl-copy").chmod(0o755)
+    (stubs / "wtype").write_text("#!/bin/sh\nexit 0\n")
+    (stubs / "wtype").chmod(0o755)
     # Scopes: the built-in SSH scope reads this config (through the bundled
     # helper's ssh-hosts); Enter runs the stub.
-    ssh = home / '.ssh'
+    ssh = home / ".ssh"
     ssh.mkdir(mode=0o700)
-    (ssh / 'config').write_text('Host web\n  HostName 10.0.0.4\n  User deploy\nHost db\n  HostName db.internal\nHost *\n  ServerAliveInterval 30\n')
-    scopes = config / 'scopes'
+    (ssh / "config").write_text(
+        "Host web\n  HostName 10.0.0.4\n  User deploy\nHost db\n  HostName db.internal\nHost *\n  ServerAliveInterval 30\n"
+    )
+    scopes = config / "scopes"
     scopes.mkdir()
-    (scopes / 'bookmarks.json').write_text(json.dumps({
-        'title': 'Bookmarks', 'keyword': 'bm', 'source': {'type': 'list', 'items': ['Omarchy']},
-        'open': ['omarchy-launch-browser', 'https://omarchy.org/{value}']}))
+    (scopes / "bookmarks.json").write_text(
+        json.dumps(
+            {
+                "title": "Bookmarks",
+                "keyword": "bm",
+                "source": {"type": "list", "items": ["Omarchy"]},
+                "open": ["omarchy-launch-browser", "https://omarchy.org/{value}"],
+            }
+        )
+    )
     # A list source loads at once: its items must survive the scope rebuild
     # (requireItems shows the scope, rootSearch finds the item).
-    (scopes / 'shelf.json').write_text(json.dumps({'title': 'Shelf', 'requireItems': True, 'rootSearch': True,
-                                                   'source': {'type': 'list', 'items': ['Kettle']}, 'open': ['true']}))
-    (scopes / 'off.json').write_text(json.dumps({'id': 'off', 'enabled': False, 'title': 'Off',
-                                                 'source': {'type': 'list', 'items': []}, 'open': ['true']}))
-    (stubs / 'omarchy-launch-tui').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
-    (stubs / 'omarchy-launch-tui').chmod(0o755)
-    (stubs / 'omarchy-launch-browser').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_BROWSER_FILE"\n')
-    (stubs / 'omarchy-launch-browser').chmod(0o755)
+    (scopes / "shelf.json").write_text(
+        json.dumps(
+            {
+                "title": "Shelf",
+                "requireItems": True,
+                "rootSearch": True,
+                "source": {"type": "list", "items": ["Kettle"]},
+                "open": ["true"],
+            }
+        )
+    )
+    (scopes / "off.json").write_text(
+        json.dumps(
+            {"id": "off", "enabled": False, "title": "Off", "source": {"type": "list", "items": []}, "open": ["true"]}
+        )
+    )
+    (stubs / "omarchy-launch-tui").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
+    (stubs / "omarchy-launch-tui").chmod(0o755)
+    (stubs / "omarchy-launch-browser").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_BROWSER_FILE"\n')
+    (stubs / "omarchy-launch-browser").chmod(0o755)
     # No shell facade offscreen, so settings save through `omarchy bar set`:
     # this stand-in writes the value into the test shell.json entry.
-    (stubs / 'omarchy').write_text('''#!/usr/bin/env python3
+    (stubs / "omarchy").write_text("""#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
 if args[:2] != ["bar", "set"] or len(args) < 5:
@@ -215,75 +290,100 @@ for entries in config["bar"]["layout"].values():
             entry[key] = value
 with open(path, "w") as f:
     json.dump(config, f)
-''')
-    (stubs / 'omarchy').chmod(0o755)
+""")
+    (stubs / "omarchy").chmod(0o755)
     # Steam Games (off until the test turns it on): two installed games, one
     # with a cover and a small icon, one with neither; a tool is left out.
     # Enter goes through the uwsm-app stub.
-    steam = home / '.local/share/Steam'
-    (steam / 'steamapps').mkdir(parents=True)
-    (steam / 'steamapps/libraryfolders.vdf').write_text(f'"libraryfolders"\n{{\n\t"0"\n\t{{\n\t\t"path"\t\t"{steam}"\n\t}}\n}}\n')
-    for appid, name in ((548430, 'Deep Rock Galactic'), (8930, "Sid Meier's Civilization V"), (1493710, 'Proton Experimental')):
-        (steam / f'steamapps/appmanifest_{appid}.acf').write_text(
-            f'"AppState"\n{{\n\t"appid"\t\t"{appid}"\n\t"name"\t\t"{name}"\n\t"StateFlags"\t\t"4"\n}}\n')
-    art = steam / 'appcache/librarycache/548430'
+    steam = home / ".local/share/Steam"
+    (steam / "steamapps").mkdir(parents=True)
+    (steam / "steamapps/libraryfolders.vdf").write_text(
+        f'"libraryfolders"\n{{\n\t"0"\n\t{{\n\t\t"path"\t\t"{steam}"\n\t}}\n}}\n'
+    )
+    for appid, name in (
+        (548430, "Deep Rock Galactic"),
+        (8930, "Sid Meier's Civilization V"),
+        (1493710, "Proton Experimental"),
+    ):
+        (steam / f"steamapps/appmanifest_{appid}.acf").write_text(
+            f'"AppState"\n{{\n\t"appid"\t\t"{appid}"\n\t"name"\t\t"{name}"\n\t"StateFlags"\t\t"4"\n}}\n'
+        )
+    art = steam / "appcache/librarycache/548430"
     art.mkdir(parents=True)
-    (art / 'library_600x900.jpg').write_bytes(png(60, 90, (200, 80, 40)))
-    (art / 'e033e23c29a192a17c16a7645a2b423ac64ff447.jpg').write_bytes(png(32, 32, (40, 120, 200)))
-    (stubs / 'uwsm-app').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
-    (stubs / 'uwsm-app').chmod(0o755)
+    (art / "library_600x900.jpg").write_bytes(png(60, 90, (200, 80, 40)))
+    (art / "e033e23c29a192a17c16a7645a2b423ac64ff447.jpg").write_bytes(png(32, 32, (40, 120, 200)))
+    (stubs / "uwsm-app").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
+    (stubs / "uwsm-app").chmod(0o755)
     # The runtime's hung command scope and hung guard batch write their pids
     # here; every one must be gone once they time out.
-    pids = run.base / 'hung-pids'
-    pids.write_text('')
-    guard_menu = run.base / 'guard-omarchy/default/omarchy'
+    pids = run.base / "hung-pids"
+    pids.write_text("")
+    guard_menu = run.base / "guard-omarchy/default/omarchy"
     guard_menu.mkdir(parents=True)
-    (guard_menu / 'omarchy-menu.jsonc').write_text(json.dumps({'hung': {
-        'label': 'Hung', 'action': 'true',
-        'when': 'sleep 300 & echo $! >> "$FOAMY_SCOPE_PIDS"; echo $BASHPID >> "$FOAMY_SCOPE_PIDS"; wait'}}))
-    run.env.update({'FOAMY_SCOPE_PIDS': str(pids), 'FOAMY_GUARD_OMARCHY': str(run.base / 'guard-omarchy')})
+    (guard_menu / "omarchy-menu.jsonc").write_text(
+        json.dumps(
+            {
+                "hung": {
+                    "label": "Hung",
+                    "action": "true",
+                    "when": 'sleep 300 & echo $! >> "$FOAMY_SCOPE_PIDS"; echo $BASHPID >> "$FOAMY_SCOPE_PIDS"; wait',
+                }
+            }
+        )
+    )
+    run.env.update({"FOAMY_SCOPE_PIDS": str(pids), "FOAMY_GUARD_OMARCHY": str(run.base / "guard-omarchy")})
     # Saved searches are opt-in; this turns them on for DuckDuckGo only.
-    (scopes / 'duckduckgo.json').write_text(json.dumps({'id': 'duckduckgo', 'history': True}))
+    (scopes / "duckduckgo.json").write_text(json.dumps({"id": "duckduckgo", "history": True}))
     # Rates and suggestions through BoundedFetch, from a local server.
     fixture, fixture_url, fixture_cert = start_fetch_fixture(run.base)
-    fetch_cache = run.base / 'fetch-cache'
+    fetch_cache = run.base / "fetch-cache"
     fetch_cache.mkdir()
-    run.env.update({'FOAMY_FETCH_URL': fixture_url, 'FOAMY_FETCH_CACHE': str(fetch_cache), 'CURL_CA_BUNDLE': str(fixture_cert)})
-    run.env.update({'FOAMY_TEST_WIDTH': str(width), 'FOAMY_COPY_FILE': str(run.base / 'copied'),
-                    'FOAMY_LAUNCH_FILE': str(run.base / 'launched'), 'FOAMY_BROWSER_FILE': str(run.base / 'browsed'), 'FOAMY_TEST_LANGUAGE': language,
-                    'FOAMY_TEST_NATIVE': '1' if native else '0'})
+    run.env.update(
+        {"FOAMY_FETCH_URL": fixture_url, "FOAMY_FETCH_CACHE": str(fetch_cache), "CURL_CA_BUNDLE": str(fixture_cert)}
+    )
+    run.env.update(
+        {
+            "FOAMY_TEST_WIDTH": str(width),
+            "FOAMY_COPY_FILE": str(run.base / "copied"),
+            "FOAMY_LAUNCH_FILE": str(run.base / "launched"),
+            "FOAMY_BROWSER_FILE": str(run.base / "browsed"),
+            "FOAMY_TEST_LANGUAGE": language,
+            "FOAMY_TEST_NATIVE": "1" if native else "0",
+        }
+    )
     if shots:
-        out = Path(shots) / f'{host}-{theme}-{width}-{language}'
+        out = Path(shots) / f"{host}-{theme}-{width}-{language}"
         out.mkdir(parents=True, exist_ok=True)
-        run.env['FOAMY_MENU_SHOTS'] = str(out)
+        run.env["FOAMY_MENU_SHOTS"] = str(out)
     try:
         run.run(timeout=120)
     finally:
         fixture.shutdown()
         fixture.server_close()
-    result = next((line.split('FOAMY RESULT ', 1)[1] for line in run.log.splitlines()
-                   if 'FOAMY RESULT ' in line), 'no result')
+    result = next(
+        (line.split("FOAMY RESULT ", 1)[1] for line in run.log.splitlines() if "FOAMY RESULT " in line), "no result"
+    )
     # The bundled helper answers every root search; without one, NativeSearch
     # says so once and the built-in matcher takes over.
-    helper_lines = [line for line in run.log.splitlines() if 'Search helper' in line]
+    helper_lines = [line for line in run.log.splitlines() if "Search helper" in line]
     unavailable = "Search helper isn't available for this CPU; using the built-in matcher"
     if helper_lines if native else len(helper_lines) != 1 or unavailable not in helper_lines[0]:
         run.ok = False
-        result += f'; unexpected search helper log: {helper_lines!r}'
+        result += f"; unexpected search helper log: {helper_lines!r}"
     refused = run.host_commands()
     if refused:
         run.ok = False
-        result += f'; host commands without a stand-in: {refused!r}'
+        result += f"; host commands without a stand-in: {refused!r}"
     listed = pids.read_text().split()
     left = left_running(listed)
     if len(listed) < 4 or left:
         run.ok = False
-        result += f'; hung scope/guard processes: listed {listed!r}, still running {left!r}'
-    label = '' if native else '/no-native-helper'
-    print(f'{"PASS" if run.ok else "FAIL"} launcher {host}/{theme}/{width}/{language}{label}: {result}')
+        result += f"; hung scope/guard processes: listed {listed!r}, still running {left!r}"
+    label = "" if native else "/no-native-helper"
+    print(f"{'PASS' if run.ok else 'FAIL'} launcher {host}/{theme}/{width}/{language}{label}: {result}")
     if not run.ok:
         print(run.log[-12000:])
-        print(f'log kept at {run.base}')
+        print(f"log kept at {run.base}")
     else:
         run.cleanup()
     return run.ok
@@ -291,16 +391,18 @@ with open(path, "w") as f:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--shots')
+    parser.add_argument("--shots")
     args = parser.parse_args()
     host = stock_runtime.HOST
     # English on the wide dark layout, Norwegian on the narrow light one.
-    results = [run_case(host, theme, width, language, args.shots)
-               for theme, width, language in [('dark', 1280, 'en'), ('light', 600, 'no')]]
+    results = [
+        run_case(host, theme, width, language, args.shots)
+        for theme, width, language in [("dark", 1280, "en"), ("light", 600, "no")]
+    ]
     # The same checks with no bundled helper (JS matcher fallback).
-    results.append(run_case(host, 'dark', 1280, 'en', None, native=False))
+    results.append(run_case(host, "dark", 1280, "en", None, native=False))
     return 0 if all(results) else 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     raise SystemExit(main())
