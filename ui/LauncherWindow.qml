@@ -693,10 +693,10 @@ OverlayWindow {
   }
 
   function hud(text) {
-    // foamy-lint: allow bare-duration — how long the OSD stays up, not motion
     Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({
         icon: "\uf00c",
         message: window.t(text),
+        // foamy-lint: allow bare-duration — how long the OSD stays up, not motion
         duration: 1500
       })])
   }
