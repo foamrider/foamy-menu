@@ -1,0 +1,6 @@
+# Names Vulture can't see used: `<name>  # reason` (tests/validate.sh).
+do_GET  # http.server.BaseHTTPRequestHandler calls it for each GET (launcher.py's fetch fixture)
+log_message  # BaseHTTPRequestHandler's logging hook, overridden to keep the test output quiet
+protocol_version  # BaseHTTPRequestHandler reads it: HTTP/1.1 keeps the chunked endless reply
+close_connection  # BaseHTTPRequestHandler reads it after each request
+daemon_threads  # socketserver.ThreadingMixIn reads it: request threads don't block exit

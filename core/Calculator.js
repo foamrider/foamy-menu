@@ -232,7 +232,7 @@ defPrefixed("Wh", "watt hour", ENERGY, 3600, ["k", "M", "G"])
 def(["eV"], ["electronvolt", "electronvolts"], ENERGY, 1.602176634e-19)
 def(["BTU", "btu"], ["british thermal unit", "british thermal units"], ENERGY, 1055.05585262)
 defPrefixed("W", "watt", POWER, 1, ["m", "k", "M", "G"])
-def(["hp"], ["horsepower", "horsepower"], POWER, 745.69987158227022)
+def(["hp"], ["horsepower", "horsepower"], POWER, 745.6998715822702)
 defPrefixed("Pa", "pascal", PRESSURE, 1, ["h", "k", "M"])
 def(["bar"], ["bar", "bars"], PRESSURE, 1e5)
 def(["mbar"], ["millibar", "millibars"], PRESSURE, 100)
@@ -1267,7 +1267,7 @@ function pad2(n) { return (n < 10 ? "0" : "") + n }
 // { display, plain, context } for a value. display is written as the
 // language writes it (Enter copies it); plain is the machine form (Ctrl+Shift+C).
 // context is [English template, values] for the line under the answer, or null.
-function present(v, state) {
+function present(v) {
   if (v.type === "date") {
     var d = new Date(v.ms)
     var text = ENV && typeof ENV.formatDate === "function"
@@ -1478,12 +1478,12 @@ function evaluate(query, env) {
     if (state.ops === 0 && !(value.type === "date" && isBareDate(q))) return null
     if (value.type === "num" && !isFinite(value.n)) return null
     if (value.type === "date" && !isFinite(value.ms)) return null
-    var shown = present(value, state)
+    var shown = present(value)
     var kind = value.type === "date" ? "date" : state.kind
     var context = shown.context
     if (kind === "currency" && state.fromUnit && state.toUnit && state.fromUnit !== state.toUnit) {
       // The rate the answer used: 1 USD = 10.46 NOK.
-      context = ["%1 = %2", ["1 " + state.fromUnit.currency, present(convert(num(1, state.fromUnit), state.toUnit), state).display]]
+      context = ["%1 = %2", ["1 " + state.fromUnit.currency, present(convert(num(1, state.fromUnit), state.toUnit)).display]]
     }
     if (!context) context = ["%1", [pretty(typed, kind === "conversion" || kind === "currency")]]
     return {

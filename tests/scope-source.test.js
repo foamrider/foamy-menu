@@ -47,7 +47,7 @@ function harness(scopes) {
   const source = {
     pluginDir: "/plugin", queue: [],
     scope: id => scopes.find(s => s.id === id) || null,
-    message: (level, message, metadata) => messages.push(message),
+    message: (level, message) => messages.push(message),
     setItems: (id, list, failure) => loads.push({ id, list, failure })
   }
   const context = vm.createContext({
