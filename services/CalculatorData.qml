@@ -6,7 +6,8 @@ import "../core/Fetch.js" as Fetch
 // Live inputs for core/Calculator.js: ECB exchange rates (SPEC §8: cached
 // daily, frankfurter.dev, size-capped by BoundedFetch) and the current UTC
 // offset of every time zone the calculator knows. QML's JS engine has no
-// Intl, so one bash process asks strftime for all of them (~40 ms).
+// Intl, so one bash process asks strftime for all of them (~40 ms), under
+// a deadline like every launcher process (zoneTimeout).
 Item {
   id: data
 
@@ -27,6 +28,9 @@ Item {
   readonly property double ratesMaxAgeMs: 12 * 3600 * 1000     // ECB publishes once a working day
   readonly property double retryAfterMs: 30 * 60 * 1000
   readonly property double zonesMaxAgeMs: 10 * 60 * 1000       // catches DST switches
+  // timeout's deadline for the zone run: SIGTERM to its group, SIGKILL a
+  // second later. It only runs builtins, so this is a backstop.
+  property string zoneTimeout: "5s"
 
   signal message(string level, string text, var metadata)
 
@@ -49,6 +53,28 @@ Item {
   function fetchRates() {
     data.ratesTriedAt = Date.now()
     ratesFetch.get(data.ratesUrl, null)
+  }
+
+  // Offsets are stored only when every zone answered. A run that ended early
+  // (at its deadline, or killed) keeps the previous ones and leaves zonesAt
+  // alone, so the next launcher open tries again.
+  function storeZones(text) {
+    var next = ({})
+    var count = 0
+    var lines = String(text).split("\n")
+    for (var i = 0; i < lines.length; i++) {
+      var m = /^(\S+) ([+-])(\d\d)(\d\d)$/.exec(lines[i])
+      if (!m || Object.prototype.hasOwnProperty.call(next, m[1])) continue
+      next[m[1]] = (m[2] === "-" ? -1 : 1) * (Number(m[3]) * 60 + Number(m[4]))
+      count++
+    }
+    var expected = Calculator.zoneList().length
+    if (count < expected) {
+      data.message("warning", "time zone offsets are incomplete; trying again on the next open", { zones: count, expected: expected })
+      return
+    }
+    data.zones = next
+    data.zonesAt = Date.now()
   }
 
   // A real reply is under 1 KB. One over Fetch.MAX_BYTES is stopped there and
@@ -95,18 +121,10 @@ Item {
 
   Process {
     id: zoneProcess
-    command: ["bash", "-c", "for z in \"$@\"; do TZ=$z printf '%s %(%z)T\\n' \"$z\" -1; done", "foamy-menu-zones"].concat(Calculator.zoneList())
+    command: ["timeout", "--kill-after=1s", data.zoneTimeout,
+      "bash", "-c", "for z in \"$@\"; do TZ=$z printf '%s %(%z)T\\n' \"$z\" -1; done", "foamy-menu-zones"].concat(Calculator.zoneList())
     stdout: StdioCollector {
-      onStreamFinished: {
-        var next = ({})
-        var lines = text.split("\n")
-        for (var i = 0; i < lines.length; i++) {
-          var m = /^(\S+) ([+-])(\d\d)(\d\d)$/.exec(lines[i])
-          if (m) next[m[1]] = (m[2] === "-" ? -1 : 1) * (Number(m[3]) * 60 + Number(m[4]))
-        }
-        data.zones = next
-        data.zonesAt = Date.now()
-      }
+      onStreamFinished: data.storeZones(text)
     }
   }
 
