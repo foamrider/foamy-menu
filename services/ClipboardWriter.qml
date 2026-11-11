@@ -17,9 +17,24 @@ Item {
   function send(text, paste) {
     if (proc.running) { writer.queued = { text: text, paste: paste }; return }
     proc.text = text
-    proc.command = ["bash", "-c", paste ? writer.pasteScript : writer.copyScript]
+    proc.exitSeen = false
+    // Under timeout, so a stuck wl-copy or wtype can't hold back later copies.
+    proc.command = ["timeout", "--kill-after=1s", "5s", "bash", "-c", paste ? writer.pasteScript : writer.copyScript]
     proc.stdinEnabled = true
     proc.running = true
+  }
+
+  // The one way a copy ends: exited, or couldn't start (then Quickshell emits
+  // no exited(), only running -> false). The next queued copy goes after it.
+  function finish(ok) {
+    if (proc.exitSeen) return
+    proc.exitSeen = true
+    proc.text = ""
+    proc.stdinEnabled = false
+    if (!ok) writer.failed("Could not copy to the clipboard")
+    var next = writer.queued
+    writer.queued = null
+    if (next) writer.send(next.text, next.paste)
   }
 
   // Constant scripts: no caller data ever reaches the command line.
@@ -30,16 +45,13 @@ Item {
   Process {
     id: proc
     property string text: ""
+    property bool exitSeen: true
     onStarted: {
       write(proc.text)
       proc.text = ""
       proc.stdinEnabled = false
     }
-    onExited: function(exitCode) {
-      if (exitCode !== 0) writer.failed("Could not copy to the clipboard")
-      var next = writer.queued
-      writer.queued = null
-      if (next) writer.send(next.text, next.paste)
-    }
+    onExited: function(exitCode) { writer.finish(exitCode === 0) }
+    onRunningChanged: if (!running) writer.finish(false)
   }
 }

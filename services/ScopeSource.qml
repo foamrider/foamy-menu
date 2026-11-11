@@ -8,7 +8,9 @@ import "../kit/FoamyNative.js" as FoamyNative
 // The scopes the launcher offers: built-ins merged with the JSON files in
 // ~/.config/foamy-menu/scopes/, watched so an edit applies without a restart.
 // A scope's items load when it is entered (the last list stays on screen
-// while it refreshes). Commands run as argv, never through a shell. A query
+// while it refreshes). Commands run as argv, never through a shell, one at a
+// time, each under `timeout` (Scopes.bounded) so a hung one and its children
+// end at the scope's deadline and the queue moves on. A query
 // scope that asks for suggestions fetches them while typing, one request at a
 // time; nothing is sent for scopes that leave "suggest" off.
 Item {
@@ -119,11 +121,51 @@ Item {
     var scope = source.scope(id)
     if (!scope) { source.next(); return }
     proc.scopeId = id
-    proc.timedOut = false
-    proc.command = Scopes.fill(scope.source.command, "", source.pluginDir)
-    timeout.interval = scope.source.timeout
+    proc.scopeCommand = Scopes.fill(scope.source.command, "", source.pluginDir)
+    proc.timeoutMs = scope.source.timeout
+    proc.lines = []
+    proc.outputSize = 0
+    proc.capped = false
+    proc.stderrHead = ""
+    proc.startedAt = Date.now()
+    proc.command = Scopes.bounded(proc.scopeCommand, scope.source.timeout)
+    watchdog.interval = scope.source.timeout + Scopes.WATCHDOG_GRACE_MS
     proc.running = true
-    timeout.restart()
+    watchdog.restart()
+  }
+
+  // The one way a scope load ends: exited, couldn't start, or given up on by
+  // the watchdog. Later calls for the same run (running -> false after
+  // exited(), the exit of a run the watchdog gave up on) find no scopeId.
+  // A failed refresh keeps the items it had.
+  function finish(failure) {
+    if (proc.scopeId === "") return
+    watchdog.stop()
+    var id = proc.scopeId
+    if (failure) source.message("warning", "scope " + id + ": " + failure, { command: proc.scopeCommand })
+    source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n")), failure)
+    proc.scopeId = ""
+    proc.lines = []
+    Qt.callLater(source.next)
+  }
+
+  // Output arrives a line at a time (whole lines, so no character is split).
+  // Past MAX_OUTPUT the command is stopped (timeout passes the SIGTERM on to
+  // its group) and what came before is the list.
+  function keepLine(line) {
+    if (proc.scopeId === "" || proc.capped) return
+    proc.outputSize += line.length + 1
+    if (proc.outputSize > Scopes.MAX_OUTPUT) {
+      proc.capped = true
+      source.message("warning", "scope " + proc.scopeId + ": output is over " + Scopes.MAX_OUTPUT + " characters; keeping the lines before that", { command: proc.scopeCommand })
+      if (proc.running) proc.signal(15)
+      return
+    }
+    proc.lines.push(line)
+  }
+
+  function keepStderr(data) {
+    if (proc.stderrHead.length < Scopes.MAX_STDERR) proc.stderrHead += String(data).slice(0, Scopes.MAX_STDERR - proc.stderrHead.length)
   }
 
   // Suggestions for the typed text, after a short pause in typing.
@@ -163,29 +205,50 @@ Item {
     }
   }
 
+  // Backstop: `timeout` normally ends the command at its deadline. If no exit
+  // came by WATCHDOG_GRACE_MS later, SIGKILL what's left and move on; if the
+  // command isn't running at all, its start was lost.
   Timer {
-    id: timeout
-    onTriggered: if (proc.running) { proc.timedOut = true; proc.signal(15) }
+    id: watchdog
+    onTriggered: {
+      if (!proc.running) { source.finish("couldn't start"); return }
+      proc.signal(9)
+      source.finish("timed out")
+    }
   }
 
   Process {
     id: proc
     property string scopeId: ""
-    property bool timedOut: false
-    stdout: StdioCollector { id: out }
-    stderr: StdioCollector { id: err }
-    onExited: function(exitCode) {
-      timeout.stop()
-      var id = proc.scopeId
+    // The scope's own command (proc.command is it under timeout).
+    property var scopeCommand: []
+    property int timeoutMs: 0
+    property double startedAt: 0
+    property var lines: []
+    property double outputSize: 0
+    property bool capped: false
+    property string stderrHead: ""
+    stdout: SplitParser { onRead: function(line) { source.keepLine(line) } }
+    // Chunks as they arrive (no split), so at most MAX_STDERR is ever kept.
+    stderr: SplitParser {
+      splitMarker: ""
+      onRead: function(data) { source.keepStderr(data) }
+    }
+    onExited: function(exitCode, exitStatus) {
       var failure = ""
-      if (proc.timedOut) failure = "timed out"
+      // Stopped at MAX_OUTPUT: the lines read so far are the list.
+      if (proc.capped) failure = ""
+      else if (Scopes.timedOut(exitCode, exitStatus, Date.now() - proc.startedAt, proc.timeoutMs)) failure = "timed out"
       // The bundled helper (the SSH scope's) has no binary for this CPU.
-      else if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.command)) failure = FoamyNative.UNAVAILABLE_TEXT
-      else if (exitCode !== 0) failure = (String(err.text || "").split("\n").filter(function(l) { return l.trim() })[0] || ("exited with code " + exitCode)).slice(0, 200)
-      if (failure) source.message("warning", "scope " + id + ": " + failure, { command: proc.command })
-      // A failed refresh keeps the items it had.
-      source.setItems(id, failure ? null : Scopes.parseOutput(out.text), failure)
-      proc.scopeId = ""
+      else if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.scopeCommand)) failure = FoamyNative.UNAVAILABLE_TEXT
+      else if (exitCode !== 0) failure = Scopes.exitFailure(exitCode, proc.stderrHead)
+      source.finish(failure)
+    }
+    // After exited() this finds no scopeId. Without exited() before it the
+    // command never started (Quickshell then emits only running -> false).
+    onRunningChanged: {
+      if (running) return
+      source.finish("couldn't start")
       Qt.callLater(source.next)
     }
   }

@@ -1,6 +1,7 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
+const os = require("node:os")
 const path = require("node:path")
 const vm = require("node:vm")
 const { spawnSync } = require("node:child_process")
@@ -9,7 +10,7 @@ const OmarchyMenu = require("../core/OmarchyMenu.js")
 
 const sourcePath = path.join(__dirname, "../services/OmarchyMenuSource.qml")
 const text = fs.readFileSync(sourcePath, "utf8")
-const methods = ["createGuardCompiler", "guardItems", "compileGuards", "guardKeys", "finishGuards", "refresh"]
+const methods = ["createGuardCompiler", "guardItems", "compileGuards", "guardKeys", "finishGuards", "bounded", "refresh"]
 
 // QML block sample: "  function refresh() {\n  }".
 function block(signature, indentation) {
@@ -36,7 +37,7 @@ function harness(factory = () => ({ compile: () => "stock-script", destroy() {} 
   const imports = []
   const messages = []
   const source = {
-    omarchyPath: '/opt/omarchy space "double" \'single\' #percent%',
+    omarchyPath: '/opt/omarchy space "double" \'single\' #percent%', commandTimeout: "10s",
     guardCompiler: null, tree: sampleTree(), guards: { previous: true }, revision: 7,
     message: (...args) => messages.push(args), providerMenus: () => [], startNextProvider() {}
   }
@@ -61,6 +62,13 @@ function harness(factory = () => ({ compile: () => "stock-script", destroy() {} 
       const handler = block("onExited: function(exitCode, exitStatus)", 4)
       vm.runInContext("(" + handler.slice(handler.indexOf("function")) + ")(exitCode, exitStatus)", context)
     },
+    // Quickshell's running -> false: after exited(), or alone for a batch
+    // that couldn't start.
+    stopped() {
+      guardProc.running = false
+      const handler = text.slice(text.indexOf("id: guardProc")).match(/onRunningChanged: ([^\n]+)/)[1]
+      vm.runInContext("(function(running) { " + handler + " })(false)", context)
+    },
     destroy() {
       vm.runInContext(text.match(/Component.onDestruction: ([^\n]+)/)[1], context)
     }
@@ -80,7 +88,7 @@ test("startup can use the legacy fallback, then imports OEM once and compiles ev
   assert.equal(fileURLToPath(url), source.omarchyPath + "/shell/plugins/menu/MenuModel.js")
   assert.equal(parent, source)
   assert.equal(name, "OmarchyGuardCompiler")
-  assert.deepEqual(Array.from(guardProc.command), ["bash", "-lc", "stock-1"])
+  assert.deepEqual(Array.from(guardProc.command), ["timeout", "--kill-after=1s", "10s", "bash", "-lc", "stock-1"])
   assert.equal(guardProc.requestTree, source.tree)
   assert.deepEqual(Array.from(guardProc.expectedGuards), ["probe:w", "probe:c", "probe:d", "other:w"])
   h.exit(0)
@@ -90,7 +98,7 @@ test("startup can use the legacy fallback, then imports OEM once and compiles ev
   assert.equal(h.imports.length, 1)
   assert.equal(calls.length, 2)
   assert.equal(calls[1].probe.when, "fresh-custom-check")
-  assert.equal(guardProc.command[2], "stock-2")
+  assert.equal(guardProc.command[5], "stock-2")
 })
 
 test("OEM input preserves legacy ID filtering and uses own keys even for prototype names", () => {
@@ -113,11 +121,11 @@ test("missing OEM import falls back without retrying each refresh", () => {
   const h = harness(() => { throw new Error("No MenuModel.js on this Omarchy") })
   h.start()
   assert.equal(h.source.guardCompiler, null)
-  assert.equal(h.guardProc.command[2], OmarchyMenu.guardScript(h.source.tree))
+  assert.equal(h.guardProc.command[5], OmarchyMenu.guardScript(h.source.tree))
   h.exit(0)
   h.source.refresh()
   assert.equal(h.imports.length, 1)
-  assert.equal(h.guardProc.command[2], OmarchyMenu.guardScript(h.source.tree))
+  assert.equal(h.guardProc.command[5], OmarchyMenu.guardScript(h.source.tree))
   h.destroy()
 })
 
@@ -130,7 +138,7 @@ test("throwing or non-string OEM compilers are destroyed once and use unchanged 
       destroy() { destroyed++ }
     }))
     h.start()
-    assert.equal(h.guardProc.command[2], OmarchyMenu.guardScript(h.source.tree))
+    assert.equal(h.guardProc.command[5], OmarchyMenu.guardScript(h.source.tree))
     assert.equal(h.source.guardCompiler, null)
     h.exit(0)
     h.source.refresh()
@@ -172,6 +180,68 @@ test("nonzero exit or abnormal termination retains previous guards and warns onc
     assert.equal(h.messages[0][0], "warning")
     assert.match(h.messages[0][1], /refresh failed/)
   }
+})
+
+test("running -> false after exited() changes nothing; alone it fails the batch once", () => {
+  const h = harness()
+  h.start()
+  h.exit(0)
+  h.stopped()
+  assert.equal(h.source.revision, 8)
+  assert.deepEqual(h.messages, [])
+  // A batch that can't start: no exited(), only running -> false.
+  const previous = h.source.guards
+  h.source.refresh()
+  assert.equal(h.guardProc.running, true)
+  h.stopped()
+  assert.equal(h.source.guards, previous)
+  assert.equal(h.guardProc.requestTree, null)
+  assert.equal(h.messages.length, 1)
+  assert.match(h.messages[0][1], /refresh failed/)
+  h.stopped()
+  assert.equal(h.messages.length, 1)
+  // The next refresh runs a batch again.
+  h.source.refresh()
+  assert.equal(h.guardProc.running, true)
+  assert.equal(h.guardProc.requestTree, h.source.tree)
+})
+
+test("a hung guard batch and its background groups end at the deadline", (t) => {
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foamy-menu-guard-hang-"))
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+  const pids = path.join(dir, "pids")
+  const menu = {}
+  // Twelve hung guards over the batch's eight background groups.
+  for (let i = 0; i < 12; i++) menu["hung" + i] = { when: 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
+  const h = harness(() => { throw new Error("fallback script") })
+  h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
+  h.source.commandTimeout = "0.3s"
+  h.start()
+  const [cmd, ...args] = h.guardProc.command
+  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "0.3s", "bash", "-lc"])
+  const started = Date.now()
+  const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
+  const elapsed = Date.now() - started
+  assert.ok(elapsed < 1200, "ended at the deadline: " + elapsed)
+  assert.equal(result.status, 124)
+  const listed = fs.readFileSync(pids, "utf8").trim().split(/\s+/)
+  // Each group runs its guards in turn: its first one hangs (two pids each).
+  assert.equal(listed.length, 16)
+  // A killed orphan is a zombie until its new parent reaps it: that's gone.
+  const running = pid => {
+    try { return !/^\d+ \(.*\) Z /.test(fs.readFileSync("/proc/" + pid + "/stat", "utf8")) } catch (e) { return false }
+  }
+  let alive = listed.filter(running)
+  for (let i = 0; i < 20 && alive.length; i++) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+    alive = alive.filter(running)
+  }
+  assert.deepEqual(alive, [])
+  // The batch's exit (124) keeps the previous results.
+  const previous = h.source.guards
+  h.exit(result.status, 0, result.stdout)
+  assert.equal(h.source.guards, previous)
+  assert.match(h.messages[0][1], /refresh failed/)
 })
 
 test("exit zero with missing or malformed rows retains previous guards", () => {
@@ -276,6 +346,7 @@ import ${JSON.stringify(coreUrl)} as OmarchyMenu
 ShellRoot {
   id: source
   property string omarchyPath: ""
+  property string commandTimeout: "10s"
   property var guardCompiler: null
   property var tree: ({ items: ({}), order: [] })
   property var guards: ({})

@@ -22,6 +22,11 @@ Item {
   property bool loading: guardProc.running || providerProc.running
   property int revision: 0
   property var guardCompiler: null
+  // Each guard batch and provider list runs under coreutils timeout: at this
+  // deadline its whole process group (the batch's background groups too)
+  // gets SIGTERM, then SIGKILL a second later. A batch that ends that way
+  // fails and keeps the previous results; so does a provider list.
+  property string commandTimeout: "10s"
 
   signal message(string level, string text, var metadata)
 
@@ -116,7 +121,7 @@ Item {
         guardProc.collected = ""
         guardProc.requestTree = source.tree
         guardProc.expectedGuards = source.guardKeys(items)
-        guardProc.command = ["bash", "-lc", script]
+        guardProc.command = source.bounded(["bash", "-lc", script])
         guardProc.running = true
       }
     }
@@ -124,6 +129,10 @@ Item {
       source.providerQueue = source.providerMenus()
       source.startNextProvider()
     }
+  }
+
+  function bounded(argv) {
+    return ["timeout", "--kill-after=1s", source.commandTimeout].concat(argv)
   }
 
   function providerMenus() {
@@ -150,8 +159,25 @@ Item {
     var spec = OmarchyMenu.PROVIDERS[source.tree.items[menuId].provider]
     providerProc.menuId = menuId
     providerProc.collected = ""
-    providerProc.command = ["bash", "-lc", spec.script]
+    providerProc.command = source.bounded(["bash", "-lc", spec.script])
     providerProc.running = true
+  }
+
+  // The one way a provider list ends: exited or couldn't start. A second call
+  // for the same run (running -> false after exited()) finds no menuId. A
+  // list that timed out, was killed or never started keeps the previous one.
+  function finishProvider(ok) {
+    var menuId = providerProc.menuId
+    if (menuId === "") return
+    providerProc.menuId = ""
+    var item = source.tree.items[menuId]
+    if (item) {
+      var next = ({})
+      for (var k in source.pendingProviderItems) next[k] = source.pendingProviderItems[k]
+      next[menuId] = ok ? OmarchyMenu.providerItems(menuId, item.provider, providerProc.collected) : (source.providerItems[menuId] || [])
+      source.pendingProviderItems = next
+    }
+    source.startNextProvider()
   }
 
   function load(which, text) {
@@ -171,6 +197,9 @@ Item {
     onExited: function(exitCode, exitStatus) {
       source.finishGuards(exitCode, exitStatus)
     }
+    // After exited() (or a restart from it) this finds no request. Without
+    // exited() before it the batch never started: keep the previous results.
+    onRunningChanged: if (!running) source.finishGuards(-1, 1)
   }
 
   Process {
@@ -178,16 +207,9 @@ Item {
     property string menuId: ""
     property string collected: ""
     stdout: SplitParser { onRead: function(line) { providerProc.collected += line + "\n" } }
-    onExited: {
-      var item = source.tree.items[providerProc.menuId]
-      if (item) {
-        var next = ({})
-        for (var k in source.pendingProviderItems) next[k] = source.pendingProviderItems[k]
-        next[providerProc.menuId] = OmarchyMenu.providerItems(providerProc.menuId, item.provider, providerProc.collected)
-        source.pendingProviderItems = next
-      }
-      source.startNextProvider()
-    }
+    // timeout exits 124 at the deadline (or is SIGKILLed with what's left).
+    onExited: function(exitCode, exitStatus) { source.finishProvider(exitStatus === 0 && exitCode !== 124) }
+    onRunningChanged: if (!running) source.finishProvider(false)
   }
 
   FileView {

@@ -22,6 +22,18 @@ var DEFAULT_TIMEOUT_MS = 10000
 // A scope without icon or iconName gets a search glyph (Nerd Font md-magnify).
 var DEFAULT_ICON = "\u{f0349}"
 var MAX_TIMEOUT_MS = 60000
+// A command scope runs under coreutils timeout (bounded()): at its deadline
+// the command's whole process group gets SIGTERM (so the children of a
+// `sh -c` too), and SIGKILL KILL_AFTER later. The launcher's own watchdog
+// waits WATCHDOG_GRACE_MS past the deadline before giving up on the exit.
+var KILL_AFTER = "1s"
+var WATCHDOG_GRACE_MS = 3000
+// Characters of output kept from one command scope run. Past it the command
+// is stopped and the lines read so far are its items: MAX_ITEMS items fit
+// many times over, so only a command that floods its output is cut short.
+var MAX_OUTPUT = 8 * 1024 * 1024
+// Characters of a command scope's stderr kept for its failure message.
+var MAX_STDERR = 4096
 var MAX_SUGGESTIONS = 8
 // Saved searches kept per query scope; the least recently used go first.
 var MAX_HISTORY = 100
@@ -480,6 +492,28 @@ function substitute(text, value, pluginDir) {
   })
 }
 
+// A filled scope command under timeout, ending it (and its children) at ms.
+function bounded(argv, ms) {
+  var seconds = Math.max(1, Math.round(Number(ms) || 0)) / 1000
+  return ["timeout", "--kill-after=" + KILL_AFTER, String(seconds) + "s"].concat(argv)
+}
+
+// Whether a bounded() command ended at its deadline: timeout exits 124 once
+// the SIGTERM ended it, or is itself SIGKILLed (a crash, code 9) when the
+// command outlived the SIGTERM.
+function timedOut(exitCode, exitStatus, elapsedMs, ms) {
+  return elapsedMs >= ms && (exitStatus === 0 ? exitCode === 124 : exitCode === 9)
+}
+
+// The short failure message for a command scope's non-zero exit: the first
+// non-blank stderr line (timeout's own "timeout: " prefix dropped from its
+// "failed to run command" report), else the exit code.
+function exitFailure(exitCode, stderr) {
+  var line = String(stderr || "").split("\n").filter(function(l) { return l.trim() })[0] || ""
+  line = line.replace(/^timeout: (failed to run command)/, "$1")
+  return (line || ("exited with code " + exitCode)).slice(0, 200)
+}
+
 // One argv with {value}, {query} and {plugin} substituted inside each argument.
 function fill(args, value, pluginDir) {
   return args.map(function(arg) { return substitute(arg, value, pluginDir) })
@@ -560,6 +594,12 @@ if (typeof module !== "undefined") {
   module.exports = {
     BUILTINS: BUILTINS,
     MAX_ITEMS: MAX_ITEMS,
+    MAX_OUTPUT: MAX_OUTPUT,
+    MAX_STDERR: MAX_STDERR,
+    WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS,
+    bounded: bounded,
+    timedOut: timedOut,
+    exitFailure: exitFailure,
     LAYOUTS: LAYOUTS,
     SSH_HOST_PATTERN: SSH_HOST_PATTERN,
     STEAM_APPID_PATTERN: STEAM_APPID_PATTERN,

@@ -57,7 +57,8 @@ Item {
 
   Process {
     id: clients
-    command: ["hyprctl", "clients", "-j"]
+    // Under timeout, so a stuck hyprctl falls back to launching within 2 s.
+    command: ["timeout", "--kill-after=1s", "2s", "hyprctl", "clients", "-j"]
     stdout: StdioCollector {
       onStreamFinished: {
         var candidate = service.pending
@@ -78,6 +79,14 @@ Item {
     }
     onExited: function(exitCode) {
       if (exitCode === 0 || !service.pending) return
+      var candidate = service.pending
+      service.pending = null
+      service.launchRequested(candidate)
+    }
+    // After the output and exited() nothing is pending. Without them the
+    // command never started: launch.
+    onRunningChanged: {
+      if (running || !service.pending) return
       var candidate = service.pending
       service.pending = null
       service.launchRequested(candidate)
