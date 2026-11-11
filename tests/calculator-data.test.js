@@ -13,14 +13,14 @@ const text = fs.readFileSync(path.join(__dirname, "../services/CalculatorData.qm
 
 function harness(zoneTimeout) {
   const messages = []
-  const data = { zoneTimeout, zones: {}, zonesAt: 0, message: (level, message, metadata) => messages.push({ message, metadata }) }
-  const context = vm.createContext({ data, Calculator })
+  const service = { zoneTimeout, zones: {}, zonesAt: 0, message: (level, message, metadata) => messages.push({ message, metadata }) }
+  const context = vm.createContext({ service, Calculator })
   const start = text.indexOf("  function storeZones(")
   vm.runInContext(text.slice(start, text.indexOf("\n  }", start) + 4), context)
-  data.storeZones = context.storeZones
+  service.storeZones = context.storeZones
   const process = text.slice(text.indexOf("id: zoneProcess"))
   const command = process.slice(process.indexOf("command: ") + 9, process.indexOf("concat(Calculator.zoneList())") + 29)
-  return { data, messages, command: vm.runInContext(command, context) }
+  return { data: service, messages, command: vm.runInContext(command, context) }
 }
 
 test("the zone run answers every zone the calculator knows, and is stored", () => {

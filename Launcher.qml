@@ -17,7 +17,7 @@ Item {
   property int minimumWidth: 0
   property var settingsEntry: ({})
   property var hostShell: null
-  readonly property alias backendApi: backend
+  readonly property alias backendApi: backendService
   readonly property alias window: launcher
 
   readonly property string pluginId: (root.manifest && root.manifest.id) || "foamy.menu"
@@ -37,7 +37,7 @@ Item {
     root.openedAt = Date.now()
     launcher.prepare(payload)
     if (!wasOpen)
-      backend.emit("window.visibilityChanged", {
+      backendService.emit("window.visibilityChanged", {
         visible: true
       })
   }
@@ -46,7 +46,7 @@ Item {
     if (!root.opened)
       return
     root.opened = false
-    backend.emit("window.visibilityChanged", {
+    backendService.emit("window.visibilityChanged", {
       visible: false
     })
   }
@@ -78,7 +78,7 @@ Item {
 
   function run(commandId) {
     // `foamy-menu run` is explicit, so it skips the confirmation alert.
-    var r = backend.callSync("rootSearch.performAction", {
+    var r = backendService.callSync("rootSearch.performAction", {
       id: commandId,
       action: "open",
       query: "",
@@ -100,7 +100,7 @@ Item {
   }
 
   Backend {
-    id: backend
+    id: backendService
     version: (root.manifest && root.manifest.version) || ""
     appLibrary: root.appLibrary
     settingsEntry: root.settingsEntry
@@ -116,8 +116,8 @@ Item {
     brandFont: root.brandFont
     minimumWidth: root.minimumWidth
     shown: root.opened
-    backend: backend
-    appLibrary: backend.appLibrary
+    backend: backendService
+    appLibrary: backendService.appLibrary
     onDismissRequested: root.hide()
   }
 
@@ -172,7 +172,7 @@ Item {
           })
         }
       }
-      return JSON.stringify(backend.callSync(method, data))
+      return JSON.stringify(backendService.callSync(method, data))
     }
   }
 }

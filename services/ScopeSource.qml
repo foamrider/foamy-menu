@@ -1,6 +1,5 @@
 import QtQuick
 import Qt.labs.folderlistmodel
-import Quickshell
 import Quickshell.Io
 import "../core/Scopes.js" as Scopes
 import "../kit/FoamyNative.js" as FoamyNative

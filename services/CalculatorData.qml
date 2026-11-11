@@ -9,7 +9,7 @@ import "../core/Fetch.js" as Fetch
 // Intl, so one bash process asks strftime for all of them (~40 ms), under
 // a deadline like every launcher process (zoneTimeout).
 Item {
-  id: data
+  id: service
 
   // $XDG_CACHE_HOME/foamy-menu; empty until the directory exists.
   property string cacheDir: ""
@@ -37,10 +37,10 @@ Item {
   // Cheap; called on every launcher open.
   function refresh() {
     var now = Date.now()
-    if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running)
+    if (now - service.zonesAt > service.zonesMaxAgeMs && !zoneProcess.running)
       zoneProcess.running = true
-    if (data.ratesEnabled && data.cacheRead && !ratesFetch.busy && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
-      data.fetchRates()
+    if (service.ratesEnabled && service.cacheRead && !ratesFetch.busy && now - service.ratesFetchedAt > service.ratesMaxAgeMs && now - service.ratesTriedAt > service.retryAfterMs)
+      service.fetchRates()
   }
 
   function validRates(doc) {
@@ -58,8 +58,8 @@ Item {
   }
 
   function fetchRates() {
-    data.ratesTriedAt = Date.now()
-    ratesFetch.get(data.ratesUrl, null)
+    service.ratesTriedAt = Date.now()
+    ratesFetch.get(service.ratesUrl, null)
   }
 
   // Offsets are stored only when every zone answered. A run that ended early
@@ -78,14 +78,14 @@ Item {
     }
     var expected = Calculator.zoneList().length
     if (count < expected) {
-      data.message("warning", "time zone offsets are incomplete; trying again on the next open", {
+      service.message("warning", "time zone offsets are incomplete; trying again on the next open", {
         zones: count,
         expected: expected
       })
       return
     }
-    data.zones = next
-    data.zonesAt = Date.now()
+    service.zones = next
+    service.zonesAt = Date.now()
   }
 
   // A real reply is under 1 KB. One over Fetch.MAX_BYTES is stopped there and
@@ -97,28 +97,28 @@ Item {
       var parsed = null
       if (!failure)
         try {
-          parsed = data.validRates(JSON.parse(text))
+          parsed = service.validRates(JSON.parse(text))
         } catch (e) {
           parsed = null
         }
       if (!parsed) {
         if (failure === Fetch.TIMED_OUT)
-          data.message("warning", "exchange rates request timed out", null)
+          service.message("warning", "exchange rates request timed out", null)
         else
-          data.message("warning", "could not fetch exchange rates", {
+          service.message("warning", "could not fetch exchange rates", {
             error: failure || "not exchange rates"
           })
         return
       }
-      data.rates = parsed
-      data.ratesFetchedAt = Date.now()
+      service.rates = parsed
+      service.ratesFetchedAt = Date.now()
       cache.setText(JSON.stringify({
-        fetchedAt: data.ratesFetchedAt,
+        fetchedAt: service.ratesFetchedAt,
         base: parsed.base,
         date: parsed.date,
         rates: parsed.rates
       }))
-      data.message("info", "exchange rates updated", {
+      service.message("info", "exchange rates updated", {
         date: parsed.date,
         currencies: Object.keys(parsed.rates).length
       })
@@ -127,34 +127,34 @@ Item {
 
   FileView {
     id: cache
-    path: data.cacheDir ? data.cacheDir + "/currencies.json" : ""
+    path: service.cacheDir ? service.cacheDir + "/currencies.json" : ""
     atomicWrites: true
     printErrors: false
     onLoaded: {
       try {
         var doc = JSON.parse(text())
-        var parsed = data.validRates(doc)
+        var parsed = service.validRates(doc)
         if (parsed) {
-          data.rates = parsed
-          data.ratesFetchedAt = Number(doc.fetchedAt) || 0
+          service.rates = parsed
+          service.ratesFetchedAt = Number(doc.fetchedAt) || 0
         }
       } catch (e) {
-        data.message("warning", "ignoring unreadable exchange-rate cache", null)
+        service.message("warning", "ignoring unreadable exchange-rate cache", null)
       }
-      data.cacheRead = true
-      data.refresh()
+      service.cacheRead = true
+      service.refresh()
     }
     onLoadFailed: {
-      data.cacheRead = true
-      data.refresh()
+      service.cacheRead = true
+      service.refresh()
     }
   }
 
   Process {
     id: zoneProcess
-    command: ["timeout", "--kill-after=1s", data.zoneTimeout, "bash", "-c", "for z in \"$@\"; do TZ=$z printf '%s %(%z)T\\n' \"$z\" -1; done", "foamy-menu-zones"].concat(Calculator.zoneList())
+    command: ["timeout", "--kill-after=1s", service.zoneTimeout, "bash", "-c", "for z in \"$@\"; do TZ=$z printf '%s %(%z)T\\n' \"$z\" -1; done", "foamy-menu-zones"].concat(Calculator.zoneList())
     stdout: StdioCollector {
-      onStreamFinished: data.storeZones(text)
+      onStreamFinished: service.storeZones(text)
     }
   }
 
