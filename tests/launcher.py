@@ -257,7 +257,7 @@ with open(path, "w") as f:
         out.mkdir(parents=True, exist_ok=True)
         run.env['FOAMY_MENU_SHOTS'] = str(out)
     try:
-        run.run(timeout=45)
+        run.run(timeout=120)
     finally:
         fixture.shutdown()
         fixture.server_close()

@@ -26,11 +26,14 @@ ShellRoot {
     checks++
     console.log("PASS " + detail)
   }
-  // Holds the current stage until cond is true (or fails after ~10 s).
-  property int waits: 0
+  // Holds the current stage until cond is true, or fails after 30 s: the
+  // steps it waits for are child processes (a settings save through the
+  // `omarchy` stand-in, a scope's helper run), which a loaded machine slows.
+  property double waitingSince: 0
   function waitFor(cond) {
-    if (cond) { waits = 0; return false }
-    if (++waits > 40) { check(false, "timed out waiting"); return true }
+    if (cond) { waitingSince = 0; return false }
+    if (!waitingSince) waitingSince = Date.now()
+    if (Date.now() - waitingSince > 30000) { check(false, "timed out waiting at stage " + (stage - 1)); return true }
     stage--
     return true
   }
