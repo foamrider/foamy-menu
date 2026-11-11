@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the adopted launcher offscreen, with private state and stubbed commands.
 
-Runs on Omarchy 4.5 by default (hosts as in tests/runtime.py: FOAMY_HOST_45,
-OMARCHY_TEST_ROOT or the installed shell); 4.0 only with FOAMY_HOST_40."""
+Runs on the Omarchy shell tests/runtime.py picks: FOAMY_HOST_45,
+OMARCHY_TEST_ROOT or the installed shell."""
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
@@ -21,7 +21,7 @@ import zlib
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get('FOAMY_KIT', Path.home() / 'GitHub/Personal/foamy-kit'))
-# Omarchy 4.5 only by default; set before the harness reads its hosts.
+# Set before the harness reads its hosts.
 if not os.environ.get('FOAMY_HOST_45'):
     _root = os.environ.get('OMARCHY_TEST_ROOT')
     os.environ['FOAMY_HOST_45'] = str(Path(_root) / 'shell') if _root else '/usr/share/omarchy/shell'
@@ -271,15 +271,14 @@ with open(path, "w") as f:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--host', choices=['4.5', '4.0', 'both'], default='4.5')
     parser.add_argument('--shots')
     args = parser.parse_args()
-    hosts = stock_runtime.selected_hosts(args.host)
-    # English on the wide dark layout, Norwegian (Omarchy 4.5 language) on the narrow light one.
-    results = [run_case(host, theme, width, language, args.shots) for host in hosts
+    host = stock_runtime.HOST
+    # English on the wide dark layout, Norwegian on the narrow light one.
+    results = [run_case(host, theme, width, language, args.shots)
                for theme, width, language in [('dark', 1280, 'en'), ('light', 600, 'no')]]
-    # Once per host: the same checks with no bundled helper (JS matcher fallback).
-    results += [run_case(host, 'dark', 1280, 'en', None, native=False) for host in hosts]
+    # The same checks with no bundled helper (JS matcher fallback).
+    results.append(run_case(host, 'dark', 1280, 'en', None, native=False))
     return 0 if all(results) else 1
 
 

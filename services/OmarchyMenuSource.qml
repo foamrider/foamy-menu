@@ -57,6 +57,11 @@ Item {
     return items
   }
 
+  // The stock menu's own MenuModel.js builds the guard batch, so Foamy runs
+  // the same conditions the stock menu does. When that file is missing,
+  // doesn't compile, throws or returns no script (a changed or broken host
+  // install), OmarchyMenu.guardScript builds an equivalent batch instead, so
+  // entries keep their when/checked/disabled conditions.
   function compileGuards(tree, items) {
     if (source.guardCompiler) {
       try {

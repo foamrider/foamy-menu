@@ -2,17 +2,16 @@
 """Offscreen integration test of Foamy Menu around the host's real stock
 menu, on Omarchy 4.5 (QML only).
 
-  tests/runtime.py [--host 4.5|4.0|both] [--shots DIR] [--plugin DIR] [--shell QML]
+  tests/runtime.py [--shots DIR] [--plugin DIR] [--shell QML]
 
-The 4.5 host (the default) is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell,
-else the installed /usr/share/omarchy/shell. 4.0 runs only when FOAMY_HOST_40
-names a 4.0 shell; otherwise --host 4.0/both print a SKIP line for it.
+The host is FOAMY_HOST_45, else $OMARCHY_TEST_ROOT/shell, else the installed
+/usr/share/omarchy/shell.
 
 Uses the foamy-kit harness (FOAMY_KIT, default ~/GitHub/Personal/foamy-kit):
 temp HOME/XDG/runtime dirs, offscreen Qt, no Wayland/Hyprland variables.
 OMARCHY_PATH points at a stub tree whose shell/plugins/menu/Menu.qml is the
 host's own file with its PanelWindow swapped for tests/qml/FakeMenuWindow.qml
-(on 4.5 the swap is in Ui/OverlayWindow.qml); everything else is the host's
+(the swap is in Ui/OverlayWindow.qml); everything else is the host's
 code. Every omarchy-* command and hyprctl on PATH is a stub: the stock menu's
 guard commands fail quietly, and `omarchy-shell shell summon|toggle` calls are
 recorded instead of reaching a shell. No host script or binary runs, and the
@@ -31,7 +30,7 @@ import sys
 
 PLUGIN = Path(__file__).resolve().parents[1]
 KIT = Path(os.environ.get("FOAMY_KIT", Path.home() / "GitHub/Personal/foamy-kit"))
-# Omarchy 4.5 only by default; set before the harness reads its hosts.
+# Set before the harness reads its hosts.
 if not os.environ.get("FOAMY_HOST_45"):
     _root = os.environ.get("OMARCHY_TEST_ROOT")
     os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
@@ -84,13 +83,11 @@ def build(run):
         shutil.copyfile(PLUGIN / "tests/qml" / name, ui / name)
     with (ui / "qmldir").open("a") as qmldir:
         qmldir.write("FakeMenuWindow 1.0 FakeMenuWindow.qml\nFakeMenuEdges 1.0 FakeMenuEdges.qml\n")
-    overlay = host / "Ui/OverlayWindow.qml"
-    if overlay.exists():
-        # 4.5: the menu draws in Ui/OverlayWindow (a PanelWindow).
-        (ui / "OverlayWindow.qml").unlink()
-        text, count = transform_windows(overlay.read_text())
-        replaced += count
-        (ui / "OverlayWindow.qml").write_text(text)
+    # The menu draws in Ui/OverlayWindow (a PanelWindow).
+    (ui / "OverlayWindow.qml").unlink()
+    text, count = transform_windows((host / "Ui/OverlayWindow.qml").read_text())
+    replaced += count
+    (ui / "OverlayWindow.qml").write_text(text)
     if replaced == 0:
         raise SystemExit("host menu changed shape: no PanelWindow to replace")
     stubs = run.base / "stubs"
@@ -142,18 +139,11 @@ def run_host(host_name, shots, plugin, shell_path):
     return True
 
 
-def selected_hosts(choice):
-    """4.5, plus 4.0 for "4.0"/"both" only when FOAMY_HOST_40 is set."""
-    hosts = ["4.5", "4.0"] if choice == "both" else [choice]
-    if "4.0" in hosts and not os.environ.get("FOAMY_HOST_40"):
-        print("SKIP 4.0: set FOAMY_HOST_40 to an Omarchy 4.0 shell to run it")
-        hosts.remove("4.0")
-    return hosts
+HOST = "4.5"
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--host", default="4.5", choices=["4.5", "4.0", "both"])
     parser.add_argument("--shots")
     parser.add_argument("--plugin", default=str(PLUGIN), help="plugin directory to load (default: this checkout)")
     parser.add_argument("--shell", default=str(PLUGIN / "tests/qml/Runtime.qml"), help="test QML to run")
@@ -161,9 +151,7 @@ def main():
     if not (KIT / "preview/harness.py").exists():
         print(f"SKIP: foamy-kit harness not found at {KIT} (set FOAMY_KIT)")
         return 0
-    hosts = selected_hosts(args.host)
-    results = [run_host(host, args.shots, Path(args.plugin).resolve(), args.shell) for host in hosts]
-    return 0 if all(results) else 1
+    return 0 if run_host(HOST, args.shots, Path(args.plugin).resolve(), args.shell) else 1
 
 
 if __name__ == "__main__":

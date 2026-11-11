@@ -362,6 +362,10 @@ entries remain in `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
 
 The stock adapter uses private Omarchy menu internals for the window/card and
 application library. The runtime tests check these against the installed host.
+Menu entries' `when`, `checked` and `disabled` conditions run as one batch
+that the stock menu's `MenuModel.js` builds; if that file is missing or
+fails, Foamy builds an equivalent batch itself, so the conditions keep
+working.
 
 ## Side-by-side Omacast
 
@@ -439,8 +443,6 @@ dark layout in English and the light layout in Norwegian. `preview.png` is
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.
-`--host 4.0` and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0
-shell and print a SKIP line otherwise. These are harness labels, not version detection.
 
 After source edits, restart the shell to clear Quickshell's QML cache.
 No upstream installation or migration scripts are included in Foamy's CLI.

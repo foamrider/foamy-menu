@@ -21,9 +21,9 @@ BarWidget {
   implicitHeight: button.item ? button.item.implicitHeight : 0
 
   // Left-click toggles the menu in-process through the plugin's shell facade:
-  // foamy.menu owns omarchy.menu while it is the enabled menu clone, and both
-  // 4.0.6 and 4.5 expose toggle(). An older host, a revoked facade or a
-  // refusal falls back to the command the stock button runs.
+  // foamy.menu owns omarchy.menu while it is the enabled menu clone, and the
+  // facade exposes toggle(). A missing or revoked facade or a refusal falls
+  // back to the command the stock button runs.
   function toggleMenu() {
     var shell = bar ? bar.shell : null
     if (shell && typeof shell.toggle === "function" && shell.toggle("omarchy.menu", rootPayload) === true) return true

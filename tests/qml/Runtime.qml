@@ -7,7 +7,7 @@ import "services" as Services
 import "harness" as Harness
 
 // Offscreen integration test, run by tests/runtime.py against the host's
-// real stock menu (4.0.6 or 4.5): width adapter, app library sharing and
+// real stock menu: width adapter, app library sharing and
 // fallback, live settings, summon routing and the bar button.
 
 ShellRoot {
@@ -108,7 +108,7 @@ ShellRoot {
         return mode !== "denied"
       }
     }
-    // Older hosts and destroyed QObjects must both leave the fallback reachable.
+    // A facade without summon and a destroyed one must both leave the fallback reachable.
     // Destruction is deferred, so the revoked batch starts on the next timer tick.
   }
   function runActionBatch(stock) {
@@ -127,7 +127,7 @@ ShellRoot {
       if (target.payload !== "{}") command += " '" + target.payload + "'"
       stock.runAction(command)
     }
-    // 4.0.6 dispatches every action through a command; 4.5 first tries the facade.
+    // The stock menu first tries the facade; without one it runs the command.
     var direct = summonCalls.length > 0
     test.check(!direct || JSON.stringify(summonCalls) === JSON.stringify(summonTargets),
                mode + " direct dispatch is either unused or forwards all five targets once")

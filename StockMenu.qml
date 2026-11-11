@@ -121,9 +121,9 @@ Item {
 
       // Change only the painted card width, retaining the stock width binding
       // as the minimum for special menus added by future Omarchy releases.
-      // The card is a BorderSurface directly inside the menu's window: a
-      // PanelWindow on 4.0.6, an OverlayWindow (a PanelWindow) on 4.5. Any
-      // window type is accepted, so a new overlay base doesn't break it.
+      // The card is a BorderSurface directly inside the menu's window, an
+      // OverlayWindow (a PanelWindow). Any window type is accepted, so a new
+      // overlay base doesn't break it.
       for (var i = 0; i < item.data.length; i++) {
         var window = item.data[i]
         if (!root.isWindow(window)) continue
