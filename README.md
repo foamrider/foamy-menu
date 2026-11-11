@@ -381,7 +381,7 @@ name `foamy-menu`, layer namespace `foamy-menu`, and separate XDG directories:
 - Scopes: `~/.config/foamy-menu/scopes/*.json`
 - Favorites, ranking, saved web searches (when on) and calculator history: `~/.local/share/foamy-menu/db/`
 - Cache: `~/.cache/foamy-menu/`
-- Logs/state: `~/.local/state/foamy-menu/`
+- Logs: the journal (`journalctl --user -t omarchy-shell | grep foamy-menu`)
 
 Foamy does not migrate, read or change Omacast's data. Both launchers use the
 same installed application library and Omarchy actions.

@@ -11,49 +11,38 @@ function xdg(env, name, homeFallback) {
 function resolve(env) {
   var home = String(env("HOME") || "").replace(/\/+$/, "")
   if (!home) throw new Error("HOME is not set")
-  var uid = String(env("UID") || "")
-  var runtimeBase = xdg(env, "XDG_RUNTIME_DIR", uid ? "/run/user/" + uid : "/tmp")
 
   var config = xdg(env, "XDG_CONFIG_HOME", home + "/.config") + "/" + APP
   var data = xdg(env, "XDG_DATA_HOME", home + "/.local/share") + "/" + APP
   var cache = xdg(env, "XDG_CACHE_HOME", home + "/.cache") + "/" + APP
-  var state = xdg(env, "XDG_STATE_HOME", home + "/.local/state") + "/" + APP
 
+  // Only what the launcher uses: scope files, its stores and the rates cache.
+  // Logs go to the journal (omarchy-shell).
   return {
     home: home,
     config: config,
-    scriptCommands: config + "/script-commands",
     scopes: config + "/scopes",
     data: data,
     db: data + "/db",
-    extensions: data + "/extensions",
-    extensionSupport: data + "/extension-support",
-    clipboard: data + "/clipboard",
-    notesAttachments: data + "/notes/attachments",
-    cache: cache,
-    state: state,
-    logs: state + "/logs",
-    backups: state + "/backups",
-    runtime: runtimeBase + "/" + APP
+    cache: cache
   }
 }
 
-
 function directoriesToCreate(paths) {
-  return [paths.config, paths.scopes, paths.db, paths.cache, paths.logs, paths.backups, paths.runtime]
+  return [paths.config, paths.scopes, paths.db, paths.cache]
 }
 
 // Histories and settings are private: other local users must not read them.
-// Every base dir is made owner-only; config, data and state are repaired
+// Every base dir is made owner-only; config and data are repaired
 // recursively (the cache holds only rates and a cargo build, so its 0700 root
 // is enough). Store files are created 0600 before the first write, because
 // atomic saves keep an existing file's mode but give a new one 0666 & umask.
 function privateRoots(paths) {
-  return [paths.config, paths.data, paths.cache, paths.state, paths.runtime]
+  return [paths.config, paths.data, paths.cache]
 }
 
 function privateTrees(paths) {
-  return [paths.config, paths.data, paths.state]
+  return [paths.config, paths.data]
 }
 
 // argv after the script name: --, dirs to create, --,
