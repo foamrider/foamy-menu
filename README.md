@@ -401,10 +401,14 @@ bin/foamy-menu show               # also: toggle, hide, ping, isOpen, run <id> (
 bin/foamy-menu call calculator.calculate '{"query":"2+2"}'
 omarchy bar set foamy.menu windowMode compact
 bin/build-search                  # rebuild the bundled helper (developers; see below)
-./test.sh                          # JS tests and runtime checks on the installed 4.5 shell
+./test.sh                          # every test (tests/suite.sh); --fast skips the runtimes
 python3 -I tests/launcher.py --shots /tmp/foamy-menu-shots
-omarchy plugin validate .
+tests/validate.sh                  # linters, formatters, kit and helper checks, then the tests
 ```
+
+`tests/validate.sh` is foamy-kit's validation command (`mise install` first
+for the pinned tools; `--ci` is what GitHub's runner can do). It runs
+`omarchy plugin validate .` among its checks.
 
 The search helper is committed for x86_64 and aarch64 and falls back to the
 built-in matcher when it is missing for the CPU or fails. After changing
