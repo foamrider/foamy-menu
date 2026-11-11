@@ -37,7 +37,8 @@ omarchy restart shell
 The Arch bar button and the normal Super+Space menu shortcut open the launcher.
 Right-clicking the bar button opens the default terminal.
 
-- Enter opens the selected result; Shift+Enter opens a new application window.
+- Enter opens the selected result (an app whose window is open is focused
+  instead); Shift+Enter opens a new application window.
 - Ctrl+K opens actions; Ctrl+Shift+F toggles a favorite; Ctrl+, opens the settings.
 - Arrow keys navigate; Esc goes back or closes; Shift+Esc returns to root.
 - The search field edits at its cursor: ← → move it (in grids they move
@@ -442,7 +443,9 @@ route handoffs, and the rates and suggestion fetches against a local HTTPS
 server in an isolated offscreen shell with stub commands. It runs the
 dark layout in English and the light layout in Norwegian. `preview.png` is
 `root.png` from the English dark run of
-`python3 -I tests/launcher.py --shots DIR`.
+`python3 -I tests/launcher.py --shots DIR`. `tests/app-focuser.py` runs the
+app focuser against a fake `hyprctl`: quick repeated opens each focus the
+open window.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

@@ -12,3 +12,4 @@ export OMACAST_QML_RUNNER
 node --test tests/*.test.js
 python3 -I tests/runtime.py "$@"
 python3 -I tests/launcher.py "$@"
+python3 -I tests/app-focuser.py
