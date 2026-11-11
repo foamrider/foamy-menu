@@ -82,6 +82,7 @@ Item {
 
   Backend {
     id: backend
+    version: (root.manifest && root.manifest.version) || ""
     appLibrary: root.appLibrary
     settingsEntry: root.settingsEntry
     hostShell: root.hostShell

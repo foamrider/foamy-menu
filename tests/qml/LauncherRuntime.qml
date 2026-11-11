@@ -100,7 +100,7 @@ ShellRoot {
       if (next) next()
     })
   }
-  Foamy.Menu { id: menu; manifest: ({id: "foamy.menu"}) }
+  Foamy.Menu { id: menu; manifest: ({id: "foamy.menu", version: "0.0.0-runtime"}) }
   FileView { id: browsed; path: Quickshell.env("FOAMY_BROWSER_FILE"); printErrors: false; blockLoading: true }
   FileView { id: launched; path: Quickshell.env("FOAMY_LAUNCH_FILE"); printErrors: false; blockLoading: true }
   FileView { id: copied; path: Quickshell.env("FOAMY_COPY_FILE"); printErrors: false; blockLoading: true }
@@ -219,6 +219,7 @@ ShellRoot {
       case 6:
         test.check(view.query.indexOf("<img") === 0, "markup input remains literal")
         test.check(!backend.callSync("rootSearch.performAction", {id:"missing", action:"open"}).ok, "unknown action reports failure")
+        test.check(backend.callSync("system.info", null).data.version === "0.0.0-runtime", "system.info reports the manifest's version")
         test.capture("no-match", function() { menu.open('{"mode":"select","prompt":"Choose","options":["One","Two"],"width":280}') })
         break
       case 7:

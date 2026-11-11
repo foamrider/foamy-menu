@@ -21,7 +21,8 @@ import "kit"
 Item {
   id: backend
 
-  readonly property string version: "2.2.0"
+  // manifest.json's version (Launcher passes it), for system.info.
+  property string version: ""
   readonly property var paths: Paths.resolve(function(name) { return Quickshell.env(name) })
   readonly property string desktop: Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") ? "hyprland" : "unknown"
   // This plugin's directory, for {plugin} in scope commands.
