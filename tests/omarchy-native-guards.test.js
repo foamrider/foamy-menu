@@ -215,14 +215,16 @@ test("a hung guard batch and its background groups end at the deadline", (t) => 
   for (let i = 0; i < 12; i++) menu["hung" + i] = { when: 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
   const h = harness(() => { throw new Error("fallback script") })
   h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
-  h.source.commandTimeout = "0.3s"
+  // Long enough for bash -lc and all eight groups to start on a busy machine
+  // (at 0.3 s some were killed before they recorded their pids).
+  h.source.commandTimeout = "2s"
   h.start()
   const [cmd, ...args] = h.guardProc.command
-  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "0.3s", "bash", "-lc"])
+  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "2s", "bash", "-lc"])
   const started = Date.now()
   const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
   const elapsed = Date.now() - started
-  assert.ok(elapsed < 1200, "ended at the deadline: " + elapsed)
+  assert.ok(elapsed >= 2000 && elapsed < 2900, "ended at the deadline: " + elapsed)
   assert.equal(result.status, 124)
   const listed = fs.readFileSync(pids, "utf8").trim().split(/\s+/)
   // Each group runs its guards in turn: its first one hangs (two pids each).
