@@ -2,7 +2,6 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
-const vm = require("node:vm")
 
 const root = path.join(__dirname, "..")
 const en = require("../i18n/en.json")
@@ -10,12 +9,9 @@ const no = require("../i18n/no.json")
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8")
 const tokens = (s) => [...String(s).matchAll(/%[1-9][0-9]*|\{\w+\}/g)].map((m) => m[0]).sort()
 
-// The kit's own substitution, run on catalog text.
-const kit = read("kit/FoamyI18n.qml")
-const scope = vm.createContext({})
-vm.runInContext(kit.slice(kit.indexOf("  function substitute("), kit.indexOf("\n  function t(", kit.indexOf("  function substitute("))), scope)
-scope.root = { number: (value) => String(value) }
-const t = (catalog, key, values) => scope.substitute(Object.hasOwn(catalog, key) ? catalog[key] : key, values)
+// The kit's own lookup and substitution, run on catalog text.
+const I18n = require("../kit/node-loader.cjs").load("FoamyI18nText")
+const t = (catalog, key, values) => I18n.translator(catalog, en).t(key, values)
 
 test("English is keyed by itself; Norwegian has every key with the same holes", () => {
   for (const [key, value] of Object.entries(en)) assert.equal(value, key)
