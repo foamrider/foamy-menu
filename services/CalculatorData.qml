@@ -37,17 +37,24 @@ Item {
   // Cheap; called on every launcher open.
   function refresh() {
     var now = Date.now()
-    if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running) zoneProcess.running = true
-    if (data.ratesEnabled && data.cacheRead && !ratesFetch.busy
-        && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
+    if (now - data.zonesAt > data.zonesMaxAgeMs && !zoneProcess.running)
+      zoneProcess.running = true
+    if (data.ratesEnabled && data.cacheRead && !ratesFetch.busy && now - data.ratesFetchedAt > data.ratesMaxAgeMs && now - data.ratesTriedAt > data.retryAfterMs)
       data.fetchRates()
   }
 
   function validRates(doc) {
-    if (!doc || typeof doc.base !== "string" || !doc.rates || typeof doc.rates !== "object") return null
+    if (!doc || typeof doc.base !== "string" || !doc.rates || typeof doc.rates !== "object")
+      return null
     var out = {}
-    for (var code in doc.rates) if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && doc.rates[code] > 0) out[code] = doc.rates[code]
-    return { base: doc.base, date: String(doc.date || ""), rates: out }
+    for (var code in doc.rates)
+      if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && doc.rates[code] > 0)
+        out[code] = doc.rates[code]
+    return {
+      base: doc.base,
+      date: String(doc.date || ""),
+      rates: out
+    }
   }
 
   function fetchRates() {
@@ -64,13 +71,17 @@ Item {
     var lines = String(text).split("\n")
     for (var i = 0; i < lines.length; i++) {
       var m = /^(\S+) ([+-])(\d\d)(\d\d)$/.exec(lines[i])
-      if (!m || Object.prototype.hasOwnProperty.call(next, m[1])) continue
+      if (!m || Object.prototype.hasOwnProperty.call(next, m[1]))
+        continue
       next[m[1]] = (m[2] === "-" ? -1 : 1) * (Number(m[3]) * 60 + Number(m[4]))
       count++
     }
     var expected = Calculator.zoneList().length
     if (count < expected) {
-      data.message("warning", "time zone offsets are incomplete; trying again on the next open", { zones: count, expected: expected })
+      data.message("warning", "time zone offsets are incomplete; trying again on the next open", {
+        zones: count,
+        expected: expected
+      })
       return
     }
     data.zones = next
@@ -82,18 +93,35 @@ Item {
   BoundedFetch {
     id: ratesFetch
     timeoutSeconds: 15
-    onFinished: function(tag, text, failure) {
+    onFinished: function (tag, text, failure) {
       var parsed = null
-      if (!failure) try { parsed = data.validRates(JSON.parse(text)) } catch (e) { parsed = null }
+      if (!failure)
+        try {
+          parsed = data.validRates(JSON.parse(text))
+        } catch (e) {
+          parsed = null
+        }
       if (!parsed) {
-        if (failure === Fetch.TIMED_OUT) data.message("warning", "exchange rates request timed out", null)
-        else data.message("warning", "could not fetch exchange rates", { error: failure || "not exchange rates" })
+        if (failure === Fetch.TIMED_OUT)
+          data.message("warning", "exchange rates request timed out", null)
+        else
+          data.message("warning", "could not fetch exchange rates", {
+            error: failure || "not exchange rates"
+          })
         return
       }
       data.rates = parsed
       data.ratesFetchedAt = Date.now()
-      cache.setText(JSON.stringify({ fetchedAt: data.ratesFetchedAt, base: parsed.base, date: parsed.date, rates: parsed.rates }))
-      data.message("info", "exchange rates updated", { date: parsed.date, currencies: Object.keys(parsed.rates).length })
+      cache.setText(JSON.stringify({
+        fetchedAt: data.ratesFetchedAt,
+        base: parsed.base,
+        date: parsed.date,
+        rates: parsed.rates
+      }))
+      data.message("info", "exchange rates updated", {
+        date: parsed.date,
+        currencies: Object.keys(parsed.rates).length
+      })
     }
   }
 
@@ -116,13 +144,15 @@ Item {
       data.cacheRead = true
       data.refresh()
     }
-    onLoadFailed: { data.cacheRead = true; data.refresh() }
+    onLoadFailed: {
+      data.cacheRead = true
+      data.refresh()
+    }
   }
 
   Process {
     id: zoneProcess
-    command: ["timeout", "--kill-after=1s", data.zoneTimeout,
-      "bash", "-c", "for z in \"$@\"; do TZ=$z printf '%s %(%z)T\\n' \"$z\" -1; done", "foamy-menu-zones"].concat(Calculator.zoneList())
+    command: ["timeout", "--kill-after=1s", data.zoneTimeout, "bash", "-c", "for z in \"$@\"; do TZ=$z printf '%s %(%z)T\\n' \"$z\" -1; done", "foamy-menu-zones"].concat(Calculator.zoneList())
     stdout: StdioCollector {
       onStreamFinished: data.storeZones(text)
     }

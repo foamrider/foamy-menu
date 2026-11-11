@@ -26,6 +26,22 @@ function method(name) {
   return block("function " + name + "(", 2)
 }
 
+// A one-statement handler's body (qmlformat puts an if's statement on the
+// next line): from "name: " (after `from`) to the next line indented no
+// deeper than the handler.
+function handler(name, from) {
+  const start = text.indexOf(name + ": ", from ? text.indexOf(from) : 0)
+  assert.ok(start >= 0, name)
+  const indent = start - (text.lastIndexOf("\n", start) + 1)
+  const lines = text.slice(start + name.length + 2).split("\n")
+  const body = [lines[0]]
+  for (const line of lines.slice(1)) {
+    if (line.length - line.trimStart().length <= indent) break
+    body.push(line)
+  }
+  return body.join("\n")
+}
+
 function sampleTree() {
   return OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify({
     probe: { when: "true", checked: "false", disabled: "custom-check --literal '*'" },
@@ -53,24 +69,24 @@ function harness(factory = () => ({ compile: () => "stock-script", destroy() {} 
   return {
     source, guardProc, imports, messages,
     start() {
-      vm.runInContext(text.match(/Component.onCompleted: (\{[^\n]+\})/)[1], context)
+      const onCompleted = block("Component.onCompleted: {", 2)
+      vm.runInContext(onCompleted.slice(onCompleted.indexOf("{")), context)
     },
     exit(code, status = 0, output = "probe:w:1\nprobe:c:0\nprobe:d:1\nother:w:0\n") {
       guardProc.running = false
       guardProc.collected = output
       Object.assign(context, { exitCode: code, exitStatus: status })
-      const handler = block("onExited: function(exitCode, exitStatus)", 4)
+      const handler = block("onExited: function (exitCode, exitStatus)", 4)
       vm.runInContext("(" + handler.slice(handler.indexOf("function")) + ")(exitCode, exitStatus)", context)
     },
     // Quickshell's running -> false: after exited(), or alone for a batch
     // that couldn't start.
     stopped() {
       guardProc.running = false
-      const handler = text.slice(text.indexOf("id: guardProc")).match(/onRunningChanged: ([^\n]+)/)[1]
-      vm.runInContext("(function(running) { " + handler + " })(false)", context)
+      vm.runInContext("(function(running) { " + handler("onRunningChanged", "id: guardProc") + " })(false)", context)
     },
     destroy() {
-      vm.runInContext(text.match(/Component.onDestruction: ([^\n]+)/)[1], context)
+      vm.runInContext(handler("Component.onDestruction"), context)
     }
   }
 }
@@ -367,7 +383,7 @@ ShellRoot {
   function providerMenus() { return [] }
   function startNextProvider() {}
   ${methods.map(method).join("\n  ")}
-  ${text.match(/Component.onDestruction: [^\n]+/)[0]}
+  Component.onDestruction: ${handler("Component.onDestruction")}
   function check(ok, detail) { if (!ok) throw new Error(detail) }
   Component.onCompleted: Qt.callLater(function() {
     try {

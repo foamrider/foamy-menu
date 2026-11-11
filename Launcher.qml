@@ -25,32 +25,43 @@ Item {
   property bool opened: false
   property double openedAt: 0
 
-
   function open(payloadJson) {
     var payload = ({})
-    try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
+    try {
+      payload = JSON.parse(payloadJson || "{}")
+    } catch (e) {
+      payload = ({})
+    }
     var wasOpen = root.opened
     root.opened = true
     root.openedAt = Date.now()
     launcher.prepare(payload)
-    if (!wasOpen) backend.emit("window.visibilityChanged", { visible: true })
+    if (!wasOpen)
+      backend.emit("window.visibilityChanged", {
+        visible: true
+      })
   }
 
   function close() {
-    if (!root.opened) return
+    if (!root.opened)
+      return
     root.opened = false
-    backend.emit("window.visibilityChanged", { visible: false })
+    backend.emit("window.visibilityChanged", {
+      visible: false
+    })
   }
 
-
   function show() {
-    if (root.opened) return
-    if (root.shell && root.shell.summon(root.pluginId, "{}")) return
+    if (root.opened)
+      return
+    if (root.shell && root.shell.summon(root.pluginId, "{}"))
+      return
     root.open("{}")
   }
 
   function hide() {
-    if (!root.opened) return
+    if (!root.opened)
+      return
     if (root.shell && root.shell.hide(root.pluginId)) {
       root.close()
       return
@@ -59,14 +70,22 @@ Item {
   }
 
   function toggle() {
-    if (root.opened) root.hide()
-    else root.show()
+    if (root.opened)
+      root.hide()
+    else
+      root.show()
   }
 
   function run(commandId) {
     // `foamy-menu run` is explicit, so it skips the confirmation alert.
-    var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "", confirmed: true })
-    if (!r.ok) return r
+    var r = backend.callSync("rootSearch.performAction", {
+      id: commandId,
+      action: "open",
+      query: "",
+      confirmed: true
+    })
+    if (!r.ok)
+      return r
     var outcome = r.data || {}
     if (outcome.push) {
       root.show()
@@ -74,7 +93,8 @@ Item {
       launcher.push(outcome.push)
     } else if (outcome.close) {
       root.hide()
-      if (outcome.hud) launcher.hud(outcome.hud)
+      if (outcome.hud)
+        launcher.hud(outcome.hud)
     }
     return r
   }
@@ -85,7 +105,9 @@ Item {
     appLibrary: root.appLibrary
     settingsEntry: root.settingsEntry
     hostShell: root.hostShell
-    summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
+    summon: function (id, payload) {
+      return root.shell ? root.shell.summon(id, payload) : false
+    }
   }
 
   LauncherWindow {
@@ -141,8 +163,13 @@ Item {
     function call(method: string, dataJson: string): string {
       var data = null
       if (dataJson && dataJson.length > 0) {
-        try { data = JSON.parse(dataJson) } catch (e) {
-          return JSON.stringify({ ok: false, error: "data is not JSON: " + e })
+        try {
+          data = JSON.parse(dataJson)
+        } catch (e) {
+          return JSON.stringify({
+            ok: false,
+            error: "data is not JSON: " + e
+          })
         }
       }
       return JSON.stringify(backend.callSync(method, data))

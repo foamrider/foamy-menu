@@ -58,7 +58,7 @@ function harness(scopes) {
     vm.runInContext(block("function " + name + "(", 2), context)
     source[name] = context[name]
   }
-  const exited = block("onExited: function(exitCode, exitStatus)", 4, "id: proc")
+  const exited = block("onExited: function (exitCode, exitStatus)", 4, "id: proc")
   const runningChanged = block("onRunningChanged: {", 4, "id: proc")
   const triggered = block("onTriggered: {", 4, "id: watchdog")
   // Quickshell: a start sets running; the process ends with exited() and

@@ -14,23 +14,29 @@ Rectangle {
 
   signal activated(string actionId)
 
-  function px(v) { return Math.round(Style.space(v) * panel.zoom) }
+  function px(v) {
+    return Math.round(Style.space(v) * panel.zoom)
+  }
 
   readonly property var visibleActions: {
     var f = panel.filter.trim().toLowerCase()
-    return panel.actions.filter(function(a) { return !f || a.title.toLowerCase().indexOf(f) >= 0 })
+    return panel.actions.filter(function (a) {
+      return !f || a.title.toLowerCase().indexOf(f) >= 0
+    })
   }
 
   function move(delta) {
     var n = panel.visibleActions.length
-    if (n === 0) return
+    if (n === 0)
+      return
     panel.selectedIndex = (panel.selectedIndex + delta + n) % n
     list.positionViewAtIndex(panel.selectedIndex, ListView.Contain)
   }
 
   function activateSelected() {
     var a = panel.visibleActions[panel.selectedIndex]
-    if (a) panel.activated(a.id)
+    if (a)
+      panel.activated(a.id)
   }
 
   onFilterChanged: selectedIndex = 0
@@ -43,7 +49,9 @@ Rectangle {
   border.width: 1
   border.color: Util.alpha(look.foreground, 0.15)
 
-  MouseArea { anchors.fill: parent }
+  MouseArea {
+    anchors.fill: parent
+  }
 
   ListView {
     id: list
@@ -125,7 +133,10 @@ Rectangle {
           anchors.fill: parent
           hoverEnabled: true
           onPositionChanged: panel.selectedIndex = index
-          onClicked: { panel.selectedIndex = index; panel.activateSelected() }
+          onClicked: {
+            panel.selectedIndex = index
+            panel.activateSelected()
+          }
         }
       }
     }

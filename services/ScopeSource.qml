@@ -43,7 +43,9 @@ Item {
   signal message(string level, string text, var metadata)
 
   function scope(id) {
-    for (var i = 0; i < source.scopes.length; i++) if (source.scopes[i].id === id) return source.scopes[i]
+    for (var i = 0; i < source.scopes.length; i++)
+      if (source.scopes[i].id === id)
+        return source.scopes[i]
     return null
   }
 
@@ -51,10 +53,23 @@ Item {
     var files = []
     for (var i = 0; i < files_.count; i++) {
       var view = files_.objectAt(i)
-      if (!view || !view.loadedOnce) continue
-      if (view.failed) { files.push({ name: view.fileName, errors: ["could not be read"] }); continue }
+      if (!view || !view.loadedOnce)
+        continue
+      if (view.failed) {
+        files.push({
+          name: view.fileName,
+          errors: ["could not be read"]
+        })
+        continue
+      }
       var parsed = Scopes.parseFile(view.fileName, view.text())
-      files.push(parsed.definition ? { name: view.fileName, definition: parsed.definition } : { name: view.fileName, errors: parsed.errors })
+      files.push(parsed.definition ? {
+        name: view.fileName,
+        definition: parsed.definition
+      } : {
+        name: view.fileName,
+        errors: parsed.errors
+      })
     }
     var merged = Scopes.merge(source.builtins, files)
     var reported = JSON.stringify(merged.errors)
@@ -72,7 +87,8 @@ Item {
     for (var s = 0; s < merged.scopes.length; s++) {
       var id = merged.scopes[s].id
       var old = source.scope(id)
-      if (old && JSON.stringify(old) === JSON.stringify(merged.scopes[s]) && source.items[id]) kept[id] = source.items[id]
+      if (old && JSON.stringify(old) === JSON.stringify(merged.scopes[s]) && source.items[id])
+        kept[id] = source.items[id]
     }
     if (JSON.stringify(merged.scopes) !== before) {
       // Items first: a scopesChanged handler may load a list source at once
@@ -92,14 +108,16 @@ Item {
   // Loads (or refreshes) a scope's items. A list scope is immediate.
   function refresh(id) {
     var scope = source.scope(id)
-    if (!scope || scope.source.type === "query") return
+    if (!scope || scope.source.type === "query")
+      return
     if (scope.source.type === "list") {
       source.setItems(id, scope.source.items.slice(0, Scopes.MAX_ITEMS), "")
       return
     }
     // A run for this definition, queued or running, answers this request too;
     // one for a definition edited since then can't, so the new one queues.
-    if (source.queue.indexOf(id) >= 0 || (proc.scopeId === id && proc.definition === JSON.stringify(scope))) return
+    if (source.queue.indexOf(id) >= 0 || (proc.scopeId === id && proc.definition === JSON.stringify(scope)))
+      return
     source.queue = source.queue.concat([id])
     source.next()
   }
@@ -112,18 +130,24 @@ Item {
       source.items = nextItems
     }
     var nextFailures = Object.assign({}, source.failures)
-    if (failure) nextFailures[id] = failure
-    else delete nextFailures[id]
+    if (failure)
+      nextFailures[id] = failure
+    else
+      delete nextFailures[id]
     source.failures = nextFailures
     source.revision++
   }
 
   function next() {
-    if (proc.running || proc.scopeId !== "" || source.queue.length === 0) return
+    if (proc.running || proc.scopeId !== "" || source.queue.length === 0)
+      return
     var id = source.queue[0]
     source.queue = source.queue.slice(1)
     var scope = source.scope(id)
-    if (!scope) { source.next(); return }
+    if (!scope) {
+      source.next()
+      return
+    }
     proc.scopeId = id
     proc.definition = JSON.stringify(scope)
     proc.scopeCommand = Scopes.fill(scope.source.command, "", source.pluginDir)
@@ -144,12 +168,16 @@ Item {
   // removed while it ran is stale: its result is dropped (refresh() queued
   // the new definition's run).
   function finish(failure) {
-    if (proc.scopeId === "") return
+    if (proc.scopeId === "")
+      return
     watchdog.stop()
     var id = proc.scopeId
     var current = source.scope(id)
     if (current && JSON.stringify(current) === proc.definition) {
-      if (failure) source.message("warning", "scope " + id + ": " + failure, { command: proc.scopeCommand })
+      if (failure)
+        source.message("warning", "scope " + id + ": " + failure, {
+          command: proc.scopeCommand
+        })
       source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n")), failure)
     }
     proc.scopeId = ""
@@ -160,22 +188,30 @@ Item {
   // Output arrives a line at a time (whole lines, so no character is split;
   // Scopes.capped bounds what a line can hold).
   function keepLine(line) {
-    if (proc.scopeId !== "") proc.lines.push(line)
+    if (proc.scopeId !== "")
+      proc.lines.push(line)
   }
 
   function keepStderr(data) {
-    if (proc.stderrHead.length < Scopes.MAX_STDERR) proc.stderrHead += String(data).slice(0, Scopes.MAX_STDERR - proc.stderrHead.length)
+    if (proc.stderrHead.length < Scopes.MAX_STDERR)
+      proc.stderrHead += String(data).slice(0, Scopes.MAX_STDERR - proc.stderrHead.length)
   }
 
   // Suggestions for the typed text, after a short pause in typing.
   function suggest(id, query) {
-    source.pendingSuggestion = { id: id, query: query }
+    source.pendingSuggestion = {
+      id: id,
+      query: query
+    }
     suggestDelay.restart()
   }
 
   function storeSuggestions(id, query, items) {
     var next = Object.assign({}, source.suggestions)
-    next[id] = { query: query, items: items }
+    next[id] = {
+      query: query,
+      items: items
+    }
     source.suggestions = next
     source.revision++
   }
@@ -184,7 +220,8 @@ Item {
     var job = source.pendingSuggestion
     source.pendingSuggestion = null
     var scope = job ? source.scope(job.id) : null
-    if (!scope || !scope.suggest) return
+    if (!scope || !scope.suggest)
+      return
     // Replaces a request still in flight; its reply is dropped.
     suggestFetch.get(Scopes.fillText(scope.suggestUrl, job.query), job)
   }
@@ -199,7 +236,7 @@ Item {
   BoundedFetch {
     id: suggestFetch
     timeoutSeconds: 3
-    onFinished: function(job, text, failure) {
+    onFinished: function (job, text, failure) {
       source.storeSuggestions(job.id, job.query, failure ? [] : Scopes.parseSuggestions(text))
     }
   }
@@ -210,7 +247,10 @@ Item {
   Timer {
     id: watchdog
     onTriggered: {
-      if (!proc.running) { source.finish("couldn't start"); return }
+      if (!proc.running) {
+        source.finish("couldn't start")
+        return
+      }
       proc.signal(9)
       source.finish("timed out")
     }
@@ -227,30 +267,42 @@ Item {
     property double startedAt: 0
     property var lines: []
     property string stderrHead: ""
-    stdout: SplitParser { onRead: function(line) { source.keepLine(line) } }
+    stdout: SplitParser {
+      onRead: function (line) {
+        source.keepLine(line)
+      }
+    }
     // Chunks as they arrive (no split), so at most MAX_STDERR is ever kept.
     stderr: SplitParser {
       splitMarker: ""
-      onRead: function(data) { source.keepStderr(data) }
+      onRead: function (data) {
+        source.keepStderr(data)
+      }
     }
-    onExited: function(exitCode, exitStatus) {
+    onExited: function (exitCode, exitStatus) {
       var failure = ""
       if (Scopes.wasCapped(exitCode, exitStatus)) {
         // Cut at MAX_OUTPUT bytes, most likely inside a line: the whole lines
         // before it are the list.
         proc.lines.pop()
-        source.message("warning", "scope " + proc.scopeId + ": output is over " + Scopes.MAX_OUTPUT + " bytes; keeping the lines before that", { command: proc.scopeCommand })
-      }
-      else if (Scopes.timedOut(exitCode, exitStatus, Date.now() - proc.startedAt, proc.timeoutMs)) failure = "timed out"
+        source.message("warning", "scope " + proc.scopeId + ": output is over " + Scopes.MAX_OUTPUT + " bytes; keeping the lines before that", {
+          command: proc.scopeCommand
+        })
+      } else if (Scopes.timedOut(exitCode, exitStatus, Date.now() - proc.startedAt, proc.timeoutMs))
+        failure = "timed out"
+      else
       // The bundled helper (the SSH scope's) has no binary for this CPU.
-      else if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.scopeCommand)) failure = FoamyNative.UNAVAILABLE_TEXT
-      else if (exitCode !== 0) failure = Scopes.exitFailure(exitCode, proc.stderrHead)
+      if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.scopeCommand))
+        failure = FoamyNative.UNAVAILABLE_TEXT
+      else if (exitCode !== 0)
+        failure = Scopes.exitFailure(exitCode, proc.stderrHead)
       source.finish(failure)
     }
     // After exited() this finds no scopeId. Without exited() before it the
     // command never started (Quickshell then emits only running -> false).
     onRunningChanged: {
-      if (running) return
+      if (running)
+        return
       source.finish("couldn't start")
       Qt.callLater(source.next)
     }
@@ -281,8 +333,16 @@ Item {
       watchChanges: true
       printErrors: false
       onFileChanged: reload()
-      onLoaded: { loadedOnce = true; failed = false; rebuildTimer.restart() }
-      onLoadFailed: { loadedOnce = true; failed = true; rebuildTimer.restart() }
+      onLoaded: {
+        loadedOnce = true
+        failed = false
+        rebuildTimer.restart()
+      }
+      onLoadFailed: {
+        loadedOnce = true
+        failed = true
+        rebuildTimer.restart()
+      }
     }
   }
 

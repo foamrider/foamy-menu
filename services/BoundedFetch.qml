@@ -18,18 +18,29 @@ Item {
   signal finished(var tag, string text, string failure)
 
   function get(url, tag) {
-    fetch.next = { url: String(url), tag: tag }
+    fetch.next = {
+      url: String(url),
+      tag: tag
+    }
     // A running request is stopped; its onExited starts the next one.
-    if (!proc.running) Qt.callLater(fetch.start)
-    else if (proc.job) { proc.job = null; proc.signal(15) }
+    if (!proc.running)
+      Qt.callLater(fetch.start)
+    else if (proc.job) {
+      proc.job = null
+      proc.signal(15)
+    }
   }
 
   function start() {
-    if (proc.running || !fetch.next) return
+    if (proc.running || !fetch.next)
+      return
     var job = fetch.next
     fetch.next = null
     var input = Fetch.config(job.url, Qt.locale().uiLanguages)
-    if (!input) { fetch.finished(job.tag, "", "not an https URL"); return }
+    if (!input) {
+      fetch.finished(job.tag, "", "not an https URL")
+      return
+    }
     proc.job = job
     proc.input = input
     proc.didStart = false
@@ -39,7 +50,8 @@ Item {
   }
 
   function done(job, text, failure) {
-    if (job) fetch.finished(job.tag, failure ? "" : text, failure)
+    if (job)
+      fetch.finished(job.tag, failure ? "" : text, failure)
     Qt.callLater(fetch.start)
   }
 
@@ -48,15 +60,19 @@ Item {
     property var job: null
     property string input: ""
     property bool didStart: false
-    stdout: StdioCollector { id: out }
-    stderr: StdioCollector { id: err }
+    stdout: StdioCollector {
+      id: out
+    }
+    stderr: StdioCollector {
+      id: err
+    }
     onStarted: {
       proc.didStart = true
       write(proc.input)
       proc.input = ""
       proc.stdinEnabled = false
     }
-    onExited: function(exitCode) {
+    onExited: function (exitCode) {
       var job = proc.job
       proc.job = null
       var text = String(out.text || "")
@@ -64,7 +80,8 @@ Item {
     }
     // A command that cannot start reports no exit.
     onRunningChanged: {
-      if (proc.running || proc.didStart || !proc.job) return
+      if (proc.running || proc.didStart || !proc.job)
+        return
       var job = proc.job
       proc.job = null
       fetch.done(job, "", "curl did not start")

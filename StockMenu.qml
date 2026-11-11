@@ -28,7 +28,8 @@ Item {
       var entries = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
       for (var i = 0; i < entries.length; i++) {
         var entry = entries[i]
-        if (entry && entry.id === "foamy.menu" && entry.width !== undefined) return entry.width
+        if (entry && entry.id === "foamy.menu" && entry.width !== undefined)
+          return entry.width
       }
     }
     return undefined
@@ -40,7 +41,8 @@ Item {
     for (var s = 0; layout && s < sections.length; s++) {
       var entries = Array.isArray(layout[sections[s]]) ? layout[sections[s]] : []
       for (var i = 0; i < entries.length; i++)
-        if (entries[i] && entries[i].id === "foamy.menu") return entries[i]
+        if (entries[i] && entries[i].id === "foamy.menu")
+          return entries[i]
     }
     return ({})
   }
@@ -82,17 +84,24 @@ Item {
   }
 
   function isWindow(object) {
-    return !!object && typeof object === "object" && "contentItem" in object && "screen" in object
-      && !!object.contentItem && "children" in object.contentItem
+    return !!object && typeof object === "object" && "contentItem" in object && "screen" in object && !!object.contentItem && "children" in object.contentItem
   }
 
   function open(payloadJson) {
-    if (!menu.item) throw new Error("foamy.menu: stock menu failed to load; check the shell log")
+    if (!menu.item)
+      throw new Error("foamy.menu: stock menu failed to load; check the shell log")
     menu.item.open(payloadJson)
   }
-  function close() { if (menu.item) menu.item.close() }
-  function refresh() { return menu.item ? menu.item.refresh() : "stock menu unavailable" }
-  function ping() { return menu.item ? menu.item.ping() : "stock menu unavailable" }
+  function close() {
+    if (menu.item)
+      menu.item.close()
+  }
+  function refresh() {
+    return menu.item ? menu.item.refresh() : "stock menu unavailable"
+  }
+  function ping() {
+    return menu.item ? menu.item.ping() : "stock menu unavailable"
+  }
 
   // Reuse the host library. A revoked facade needs a packaged fallback until reinjection.
   Loader {
@@ -106,7 +115,8 @@ Item {
 
     function summon(id, payloadJson) {
       // A missing or revoked facade must leave the stock command fallback available.
-      if (!root.shell || typeof root.shell.summon !== "function") return false
+      if (!root.shell || typeof root.shell.summon !== "function")
+        return false
       return root.shell.summon(id, payloadJson)
     }
   }
@@ -117,7 +127,9 @@ Item {
     source: root.omarchyPath + "/shell/plugins/menu/Menu.qml"
     onLoaded: {
       item.shell = menuServices
-      item.manifest = Qt.binding(function() { return root.manifest })
+      item.manifest = Qt.binding(function () {
+        return root.manifest
+      })
 
       // Change only the painted card width, retaining the stock width binding
       // as the minimum for special menus added by future Omarchy releases.
@@ -126,10 +138,12 @@ Item {
       // overlay base doesn't break it.
       for (var i = 0; i < item.data.length; i++) {
         var window = item.data[i]
-        if (!root.isWindow(window)) continue
+        if (!root.isWindow(window))
+          continue
         for (var j = 0; j < window.contentItem.children.length; j++) {
           var surface = window.contentItem.children[j]
-          if (!(surface instanceof BorderSurface)) continue
+          if (!(surface instanceof BorderSurface))
+            continue
           root.menuWindow = window
           root.menuSurface = surface
           return
@@ -148,10 +162,11 @@ Item {
     property: "width"
     when: root.menuSurface !== null && menu.item !== null
     value: {
-      if (!menu.item || !root.menuWindow) return 0
-      if (menu.item.dmenuActive || root.configuredWidth === 0) return menu.item.cardWidth
-      return Math.min(Math.max(menu.item.cardWidth, Style.space(root.configuredWidth)),
-                      Math.max(0, root.menuWindow.width - Style.gapsOut * 2))
+      if (!menu.item || !root.menuWindow)
+        return 0
+      if (menu.item.dmenuActive || root.configuredWidth === 0)
+        return menu.item.cardWidth
+      return Math.min(Math.max(menu.item.cardWidth, Style.space(root.configuredWidth)), Math.max(0, root.menuWindow.width - Style.gapsOut * 2))
     }
   }
 }

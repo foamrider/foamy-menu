@@ -27,7 +27,8 @@ Item {
 
   // Starts the next lookup once the previous process is gone.
   function next() {
-    if (service.pending || clients.running || service.queue.length === 0) return
+    if (service.pending || clients.running || service.queue.length === 0)
+      return
     service.pending = service.queue[0]
     service.queue = service.queue.slice(1)
     clients.running = true
@@ -37,20 +38,23 @@ Item {
   function finish(text) {
     var candidate = service.pending
     service.pending = null
-    if (!candidate) return
+    if (!candidate)
+      return
     var address = ""
     var minimized = false
     if (text !== null) {
       try {
         var list = JSON.parse(text)
         address = RootSearch.findAppWindow(list, candidate.windowKeys)
-        minimized = list.some(function(c) {
+        minimized = list.some(function (c) {
           return String(c.address) === address && c.workspace && c.workspace.name === "special:minimized"
         })
       } catch (e) {}
     }
-    if (address) service.focusWindow(address, minimized)
-    else service.launchRequested(candidate)
+    if (address)
+      service.focusWindow(address, minimized)
+    else
+      service.launchRequested(candidate)
   }
 
   // Focusing the window is what moves you to its workspace. Hyprland refuses
@@ -63,27 +67,7 @@ Item {
   // to the top the way the dock does it; a window minimized to the dock is
   // first moved back to the workspace in front of the user.
   function focusWindow(address, minimized) {
-    Quickshell.execDetached(["bash", "-c",
-      'for _ in $(seq 20); do'
-      + ' hyprctl layers -j 2>/dev/null | grep -q \'"namespace": *"foamy-menu"\' || break;'
-      + ' sleep 0.05;'
-      + ' done;'
-      + ' if [[ $1 == 1 ]]; then'
-      + ' ws=$(hyprctl activeworkspace -j | jq -r .id);'
-      + ' hyprctl dispatch "hl.dsp.window.move({ workspace = \\"$ws\\", window = \\"address:$0\\" })" >/dev/null 2>&1'
-      + ' || hyprctl dispatch movetoworkspacesilent "$ws,address:$0" >/dev/null 2>&1;'
-      + ' fi;'
-      + ' for _ in 1 2 3 4 5 6 7 8 9 10; do'
-      + ' hyprctl dispatch "hl.dsp.focus({ window = \\"address:$0\\" })" >/dev/null 2>&1'
-      + ' || hyprctl dispatch focuswindow "address:$0" >/dev/null 2>&1;'
-      + ' if [[ $(hyprctl activewindow -j | jq -r .address) == "$0" ]]; then'
-      + ' hyprctl dispatch "hl.dsp.window.alter_zorder({ mode = \\"top\\", window = \\"address:$0\\" })" >/dev/null 2>&1'
-      + ' || hyprctl dispatch alterzorder "top,address:$0" >/dev/null 2>&1;'
-      + ' exit 0;'
-      + ' fi;'
-      + ' sleep 0.05;'
-      + ' done',
-      address, minimized ? "1" : "0"])
+    Quickshell.execDetached(["bash", "-c", 'for _ in $(seq 20); do' + ' hyprctl layers -j 2>/dev/null | grep -q \'"namespace": *"foamy-menu"\' || break;' + ' sleep 0.05;' + ' done;' + ' if [[ $1 == 1 ]]; then' + ' ws=$(hyprctl activeworkspace -j | jq -r .id);' + ' hyprctl dispatch "hl.dsp.window.move({ workspace = \\"$ws\\", window = \\"address:$0\\" })" >/dev/null 2>&1' + ' || hyprctl dispatch movetoworkspacesilent "$ws,address:$0" >/dev/null 2>&1;' + ' fi;' + ' for _ in 1 2 3 4 5 6 7 8 9 10; do' + ' hyprctl dispatch "hl.dsp.focus({ window = \\"address:$0\\" })" >/dev/null 2>&1' + ' || hyprctl dispatch focuswindow "address:$0" >/dev/null 2>&1;' + ' if [[ $(hyprctl activewindow -j | jq -r .address) == "$0" ]]; then' + ' hyprctl dispatch "hl.dsp.window.alter_zorder({ mode = \\"top\\", window = \\"address:$0\\" })" >/dev/null 2>&1' + ' || hyprctl dispatch alterzorder "top,address:$0" >/dev/null 2>&1;' + ' exit 0;' + ' fi;' + ' sleep 0.05;' + ' done', address, minimized ? "1" : "0"])
   }
 
   Process {
@@ -93,13 +77,15 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: service.finish(text)
     }
-    onExited: function(exitCode) {
-      if (exitCode !== 0) service.finish(null)
+    onExited: function (exitCode) {
+      if (exitCode !== 0)
+        service.finish(null)
     }
     // After the output and exited() nothing is pending. Without them the
     // command never started: launch. Either way the next lookup can start.
     onRunningChanged: {
-      if (running) return
+      if (running)
+        return
       service.finish(null)
       Qt.callLater(service.next)
     }

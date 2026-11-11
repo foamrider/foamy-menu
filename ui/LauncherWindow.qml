@@ -30,8 +30,10 @@ OverlayWindow {
 
   onBusyChanged: {
     window.loadingVisible = false
-    if (window.busy) loadingDelay.restart()
-    else loadingDelay.stop()
+    if (window.busy)
+      loadingDelay.restart()
+    else
+      loadingDelay.stop()
   }
 
   Timer {
@@ -40,7 +42,7 @@ OverlayWindow {
     onTriggered: window.loadingVisible = window.busy
   }
 
-  signal dismissRequested()
+  signal dismissRequested
 
   WlrLayershell.namespace: "foamy-menu"
 
@@ -48,21 +50,35 @@ OverlayWindow {
     window.backend.storeRevision
     window.backend.settings
     var r = window.backend.ready ? window.backend.callSync("settings.getGeneralSettings", null) : null
-    return r && r.ok ? r.data : ({ uiZoom: 1, windowMode: "expanded", escapeKeyBehavior: "pop-back-or-close", popToRootTimeout: 90, navigationBindings: "emacs" })
+    return r && r.ok ? r.data : ({
+        uiZoom: 1,
+        windowMode: "expanded",
+        escapeKeyBehavior: "pop-back-or-close",
+        popToRootTimeout: 90,
+        navigationBindings: "emacs"
+      })
   }
   readonly property real zoom: window.general.uiZoom > 0 ? window.general.uiZoom : 1
-  function px(value) { return Math.round(Style.space(value) * window.zoom) }
+  function px(value) {
+    return Math.round(Style.space(value) * window.zoom)
+  }
 
   readonly property var look: ({
-    background: Commons.Color.menu.background,
-    foreground: Commons.Color.menu.text,
-    accent: Commons.Color.menu.selectedText,
-    selectedBackground: Commons.Color.menu.selectedBackground,
-    fontFamily: Style.font.menuFamily
-  })
+      background: Commons.Color.menu.background,
+      foreground: Commons.Color.menu.text,
+      accent: Commons.Color.menu.selectedText,
+      selectedBackground: Commons.Color.menu.selectedBackground,
+      fontFamily: Style.font.menuFamily
+    })
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
 
-  property var stack: [{ kind: "root", title: "Foamy Menu", query: "" }]
+  property var stack: [
+    {
+      kind: "root",
+      title: "Foamy Menu",
+      query: ""
+    }
+  ]
   readonly property var view: window.stack[window.stack.length - 1]
   property string query: ""
   property int selectedIndex: -1
@@ -91,7 +107,9 @@ OverlayWindow {
   readonly property string actionPanelKeys: window.vim ? "Alt K" : "Ctrl K"
 
   // Plain English text in the picked language (FoamyI18n catalogs, keyed by it).
-  function t(text, values) { return FoamyI18n.t(String(text || ""), values) }
+  function t(text, values) {
+    return FoamyI18n.t(String(text || ""), values)
+  }
 
   readonly property bool atRoot: window.stack.length === 1
   readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
@@ -107,24 +125,24 @@ OverlayWindow {
   readonly property int gridColumns: grid.columns
   // Views whose search field is a value being typed (no list below).
   readonly property bool editing: window.view.kind === "alias" || window.view.kind === "setting-edit"
-  readonly property string placeholder: window.view.kind === "alias" ? window.t("Type an alias, then press ↵")
-    : window.view.kind === "setting-edit" ? window.t("Type a value, then press ↵")
-    : window.view.kind === "settings" ? window.t("Search settings…")
-    : window.view.kind === "apps" ? window.t("Search apps…")
-    : window.view.kind === "scope" ? (window.scopeState && window.scopeState.placeholder ? window.t(window.scopeState.placeholder) : window.t("Search %1…", [window.view.title]))
-    : window.view.kind === "menu" ? window.t("Search %1…", [window.view.title])
-    : window.view.kind === "calculator-history" ? window.t("Search calculations…")
-    : window.t("Search for apps and commands…")
+  readonly property string placeholder: window.view.kind === "alias" ? window.t("Type an alias, then press ↵") : window.view.kind === "setting-edit" ? window.t("Type a value, then press ↵") : window.view.kind === "settings" ? window.t("Search settings…") : window.view.kind === "apps" ? window.t("Search apps…") : window.view.kind === "scope" ? (window.scopeState && window.scopeState.placeholder ? window.t(window.scopeState.placeholder) : window.t("Search %1…", [window.view.title])) : window.view.kind === "menu" ? window.t("Search %1…", [window.view.title]) : window.view.kind === "calculator-history" ? window.t("Search calculations…") : window.t("Search for apps and commands…")
   // What an empty list says: [title, detail].
   readonly property var emptyText: {
-    if (window.view.kind === "alias") return [window.view.title, window.t("Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it.")]
-    if (window.view.kind === "setting-edit") return [window.view.title, window.view.hint || ""]
-    if (window.view.kind === "calculator-history" && !window.query) return [window.t("No Calculations Yet"), window.t("Type a calculation in the root search, then copy or paste the answer.")]
-    if (!window.backend.ready) return [window.t("Loading…"), ""]
+    if (window.view.kind === "alias")
+      return [window.view.title, window.t("Typing the alias exactly in the root search puts this command on top. Leave it empty to remove it.")]
+    if (window.view.kind === "setting-edit")
+      return [window.view.title, window.view.hint || ""]
+    if (window.view.kind === "calculator-history" && !window.query)
+      return [window.t("No Calculations Yet"), window.t("Type a calculation in the root search, then copy or paste the answer.")]
+    if (!window.backend.ready)
+      return [window.t("Loading…"), ""]
     var s = window.scopeState
-    if (s && s.failure && !s.loaded) return [window.t("Could not load %1", [window.view.title]), s.failure]
-    if (s && !s.loaded) return [window.t("Loading…"), ""]
-    if (s && !window.query) return [s.emptyText ? window.t(s.emptyText) : window.t("Nothing here yet"), ""]
+    if (s && s.failure && !s.loaded)
+      return [window.t("Could not load %1", [window.view.title]), s.failure]
+    if (s && !s.loaded)
+      return [window.t("Loading…"), ""]
+    if (s && !window.query)
+      return [s.emptyText ? window.t(s.emptyText) : window.t("Nothing here yet"), ""]
     return [window.t("No results"), ""]
   }
 
@@ -133,13 +151,14 @@ OverlayWindow {
   readonly property int headerHeight: px(66)
   readonly property int footerHeight: px(42)
 
-  ListModel { id: rows }
+  ListModel {
+    id: rows
+  }
 
   PointerMoveGate {
     id: pointerGate
     referenceItem: card
   }
-
 
   function closePopups() {
     window.actionPanelOpen = false
@@ -151,22 +170,30 @@ OverlayWindow {
 
   function prepare(payload) {
     popTimer.stop()
-    if (typeof payload.query === "string") window.query = payload.query
+    if (typeof payload.query === "string")
+      window.query = payload.query
     window.closePopups()
     window.historyIndex = -1
     window.rebuild(true)
-    Qt.callLater(function() { keyCatcher.forceActiveFocus() })
+    Qt.callLater(function () {
+      keyCatcher.forceActiveFocus()
+    })
   }
 
   onShownChanged: {
-    if (window.shown) return
+    if (window.shown)
+      return
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false
     window.closePopups()
     var seconds = Number(window.general.popToRootTimeout)
-    if (!(seconds > 0)) window.popToRoot()
-    else { popTimer.interval = seconds * 1000; popTimer.restart() }
+    if (!(seconds > 0))
+      window.popToRoot()
+    else {
+      popTimer.interval = seconds * 1000
+      popTimer.restart()
+    }
   }
 
   Timer {
@@ -175,16 +202,24 @@ OverlayWindow {
   }
 
   function popToRoot() {
-    window.stack = [{ kind: "root", title: "Foamy Menu", query: "" }]
+    window.stack = [
+      {
+        kind: "root",
+        title: "Foamy Menu",
+        query: ""
+      }
+    ]
     window.query = ""
     window.rootFilter = "all"
     window.rebuild(true)
   }
 
-
   function push(next) {
     var saved = window.stack.slice()
-    saved[saved.length - 1] = Object.assign({}, window.view, { query: window.query, selectedIndex: window.selectedIndex })
+    saved[saved.length - 1] = Object.assign({}, window.view, {
+      query: window.query,
+      selectedIndex: window.selectedIndex
+    })
     window.stack = saved.concat([next])
     window.query = next.kind === "alias" || next.kind === "setting-edit" ? (next.value || "") : ""
     window.rebuild(true)
@@ -194,31 +229,46 @@ OverlayWindow {
   // selected scope row turns into the scope's tag; text after the keyword
   // becomes the scope's search.
   function tryEnterScope() {
-    if (!window.atRoot) return false
+    if (!window.atRoot)
+      return false
     var match = Scopes.matchKeyword(window.backend.scopes, window.query)
-    if (match) { window.enterScope(match.scope.id, match.rest); return true }
+    if (match) {
+      window.enterScope(match.scope.id, match.rest)
+      return true
+    }
     var id = window.selectedRow ? window.selectedRow.itemId : ""
-    if (id.indexOf("scope:") === 0) { window.enterScope(id.slice("scope:".length), ""); return true }
+    if (id.indexOf("scope:") === 0) {
+      window.enterScope(id.slice("scope:".length), "")
+      return true
+    }
     // A "Search Google" row under "Use “…” with…" takes the typed text along.
-    if (id.indexOf("scope-query:") === 0) { window.enterScope(id.slice("scope-query:".length), window.query); return true }
+    if (id.indexOf("scope-query:") === 0) {
+      window.enterScope(id.slice("scope-query:".length), window.query)
+      return true
+    }
     return false
   }
 
   function enterScope(scopeId, rest) {
     window.query = ""
-    window.request({ id: "scope:" + scopeId, action: "open", query: "" })
-    if (window.view.kind === "scope" && rest) window.setQuery(rest)
+    window.request({
+      id: "scope:" + scopeId,
+      action: "open",
+      query: ""
+    })
+    if (window.view.kind === "scope" && rest)
+      window.setQuery(rest)
   }
 
   function pop() {
-    if (window.atRoot) return
+    if (window.atRoot)
+      return
     var next = window.stack.slice(0, -1)
     var top = next[next.length - 1]
     window.stack = next
     window.query = top.query || ""
     window.rebuild(false, top.selectedIndex)
   }
-
 
   // Whether the search in flight resets the selection (a new query).
   property bool resetPending: false
@@ -227,18 +277,28 @@ OverlayWindow {
     // A refresh (new candidates, a toast) while a new query's search is still
     // in flight keeps that reset: the selection on screen belongs to the
     // previous query and must not be carried over to the new results.
-    if (window.searchPending && window.resetPending) resetSelection = true
+    if (window.searchPending && window.resetPending)
+      resetSelection = true
     window.resetPending = !!resetSelection
     var serial = ++window.searchSerial
     window.backend.cancelSearch()
     pointerGate.reset()
     var keepId = !resetSelection && window.selectedRow ? window.selectedRow.itemId : ""
     window.searchPending = false
-    if (window.editing) { Rows.update(rows, []); window.select(-1); return }
+    if (window.editing) {
+      Rows.update(rows, [])
+      window.select(-1)
+      return
+    }
     window.searchPending = true
     var revision = window.backend.candidatesRevision
-    window.backend.searchAsync({ query: window.query, view: window.view, filter: window.atRoot ? window.rootFilter : "all" }, function(result) {
-      if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision) return
+    window.backend.searchAsync({
+      query: window.query,
+      view: window.view,
+      filter: window.atRoot ? window.rootFilter : "all"
+    }, function (result) {
+      if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision)
+        return
       window.applySearch(result, keepId, restoreIndex)
       window.searchPending = false
       window.resetPending = false
@@ -255,16 +315,23 @@ OverlayWindow {
     var keepIndex = -1, next = []
     for (var s = 0; s < result.data.length; s++) {
       var section = result.data[s]
-      if (section.title || s > 0) next.push(window.rowData({ id: "section:" + section.id, title: section.title ? window.t(section.title, section.titleValues) : "" }, "section"))
+      if (section.title || s > 0)
+        next.push(window.rowData({
+          id: "section:" + section.id,
+          title: section.title ? window.t(section.title, section.titleValues) : ""
+        }, "section"))
       for (var r = 0; r < section.rows.length; r++) {
         var c = section.rows[r]
-        if (c.id === keepId) keepIndex = next.length
+        if (c.id === keepId)
+          keepIndex = next.length
         next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
       }
     }
     Rows.update(rows, next)
-    if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex)) window.select(restoreIndex)
-    else window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
+    if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex))
+      window.select(restoreIndex)
+    else
+      window.select(keepIndex >= 0 ? keepIndex : window.nextSelectable(-1, 1))
   }
 
   function rowData(c, kind) {
@@ -297,7 +364,8 @@ OverlayWindow {
 
   function nextSelectable(from, direction) {
     for (var i = from + direction; i >= 0 && i < rows.count; i += direction)
-      if (window.isSelectable(i)) return i
+      if (window.isSelectable(i))
+        return i
     return -1
   }
 
@@ -306,30 +374,41 @@ OverlayWindow {
   function select(index, fromPointer) {
     if (index !== window.selectedIndex) {
       var previous = list.itemAtIndex(window.selectedIndex)
-      if (previous) previous.selected = false
+      if (previous)
+        previous.selected = false
     }
     window.selectedIndex = index
     var current = list.itemAtIndex(index)
-    if (current) current.selected = true
+    if (current)
+      current.selected = true
     window.selectedRow = Rows.snapshot(rows, index)
-    if (fromPointer) return
+    if (fromPointer)
+      return
     if (window.gridView) {
-      if (index >= 0) grid.positionViewAtIndex(index, GridView.Contain)
-      if (index === window.nextSelectable(-1, 1)) grid.positionViewAtBeginning()
+      if (index >= 0)
+        grid.positionViewAtIndex(index, GridView.Contain)
+      if (index === window.nextSelectable(-1, 1))
+        grid.positionViewAtBeginning()
       return
     }
-    if (index >= 0) list.positionViewAtIndex(index, ListView.Contain)
-    if (index === window.nextSelectable(-1, 1)) list.positionViewAtBeginning()
+    if (index >= 0)
+      list.positionViewAtIndex(index, ListView.Contain)
+    if (index === window.nextSelectable(-1, 1))
+      list.positionViewAtBeginning()
   }
 
   function move(delta) {
     pointerGate.reset()
-    if (window.selectedIndex < 0) { window.select(window.nextSelectable(-1, 1)); return }
+    if (window.selectedIndex < 0) {
+      window.select(window.nextSelectable(-1, 1))
+      return
+    }
     var step = delta > 0 ? 1 : -1
     var target = window.selectedIndex
     for (var n = 0; n < Math.abs(delta); n++) {
       var next = window.nextSelectable(target, step)
-      if (next < 0) break
+      if (next < 0)
+        break
       target = next
     }
     window.select(target)
@@ -338,109 +417,183 @@ OverlayWindow {
   function jumpSection(direction) {
     var i = window.selectedIndex
     for (i += direction; i >= 0 && i < rows.count; i += direction)
-      if (rows.get(i).rowKind === "section") break
+      if (rows.get(i).rowKind === "section")
+        break
     if (direction < 0) {
-      for (i -= 1; i >= 0; i--) if (rows.get(i).rowKind === "section") break
+      for (i -= 1; i >= 0; i--)
+        if (rows.get(i).rowKind === "section")
+          break
     }
     var first = window.nextSelectable(Math.max(-1, i), 1)
-    if (first >= 0) window.select(first)
+    if (first >= 0)
+      window.select(first)
   }
 
   function nthItem(n) {
     var seen = 0
     for (var i = 0; i < rows.count; i++) {
-      if (!window.isSelectable(i)) continue
-      if (++seen === n) return i
+      if (!window.isSelectable(i))
+        continue
+      if (++seen === n)
+        return i
     }
     return -1
   }
 
-
   function actionsForSelected() {
-    if (window.searchPending || !window.selectedRow) return []
-    var r = window.backend.callSync("rootSearch.getActions", { id: window.selectedRow.itemId })
+    if (window.searchPending || !window.selectedRow)
+      return []
+    var r = window.backend.callSync("rootSearch.getActions", {
+      id: window.selectedRow.itemId
+    })
     return r.ok ? r.data : []
   }
 
   function perform(actionId, index) {
-    if (window.searchPending) return
-    if (index !== undefined && index >= 0) window.select(index)
-    if (!window.selectedRow) return
+    if (window.searchPending)
+      return
+    if (index !== undefined && index >= 0)
+      window.select(index)
+    if (!window.selectedRow)
+      return
     window.actionPanelOpen = false
-    window.request({ id: window.selectedRow.itemId, action: actionId, query: window.query })
+    window.request({
+      id: window.selectedRow.itemId,
+      action: actionId,
+      query: window.query
+    })
   }
 
   function request(payload) {
     var r = window.backend.callSync("rootSearch.performAction", payload)
-    if (!r.ok) { window.showToast("failure", r.error); return }
+    if (!r.ok) {
+      window.showToast("failure", r.error)
+      return
+    }
     var outcome = r.data || {}
     if (outcome.confirm) {
-      var spec = Object.assign({}, outcome.confirm, { title: window.t(outcome.confirm.title), message: window.t(outcome.confirm.message), primary: window.t(outcome.confirm.primary) })
-      window.alert = { spec: spec, payload: payload }
+      var spec = Object.assign({}, outcome.confirm, {
+        title: window.t(outcome.confirm.title),
+        message: window.t(outcome.confirm.message),
+        primary: window.t(outcome.confirm.primary)
+      })
+      window.alert = {
+        spec: spec,
+        payload: payload
+      }
       return
     }
-    if (outcome.push) { window.push(outcome.push); return }
-    if (outcome.pop) { window.pop(); return }
+    if (outcome.push) {
+      window.push(outcome.push)
+      return
+    }
+    if (outcome.pop) {
+      window.pop()
+      return
+    }
     if (outcome.close) {
-      if (outcome.hud) window.hud(outcome.hud)
+      if (outcome.hud)
+        window.hud(outcome.hud)
       window.dismissRequested()
-      if (window.atRoot) window.setQuery("")
+      if (window.atRoot)
+        window.setQuery("")
       return
     }
-    if (outcome.toast) window.showToast(outcome.toast.style, outcome.toast.title, outcome.toast.actions)
+    if (outcome.toast)
+      window.showToast(outcome.toast.style, outcome.toast.title, outcome.toast.actions)
     window.rebuild(false)
   }
 
   function confirmAlert() {
-    var payload = Object.assign({}, window.alert.payload, { confirmed: true })
+    var payload = Object.assign({}, window.alert.payload, {
+      confirmed: true
+    })
     window.alert = null
     window.request(payload)
   }
 
   function performNth(n) {
     var list = window.actionsForSelected()
-    if (list.length > n) window.perform(list[n].id)
+    if (list.length > n)
+      window.perform(list[n].id)
   }
 
   function performIfOffered(actionIds) {
     var list = window.actionsForSelected()
-    for (var i = 0; i < list.length; i++) if (actionIds.indexOf(list[i].id) >= 0) { window.perform(list[i].id); return true }
+    for (var i = 0; i < list.length; i++)
+      if (actionIds.indexOf(list[i].id) >= 0) {
+        window.perform(list[i].id)
+        return true
+      }
     return false
   }
 
   function toggleActionPanel() {
-    if (window.actionPanelOpen) { window.actionPanelOpen = false; return }
-    window.actions = window.actionsForSelected().map(function(a) { return Object.assign({}, a, { title: window.t(a.title) }) })
+    if (window.actionPanelOpen) {
+      window.actionPanelOpen = false
+      return
+    }
+    window.actions = window.actionsForSelected().map(function (a) {
+      return Object.assign({}, a, {
+        title: window.t(a.title)
+      })
+    })
     window.actionPanelOpen = window.actions.length > 0
-    if (actionPanel.item) actionPanel.item.filter = ""
+    if (actionPanel.item)
+      actionPanel.item.filter = ""
   }
 
   function toggleDropdown() {
-    if (window.dropdownOpen || !window.atRoot) { window.dropdownOpen = false; return }
+    if (window.dropdownOpen || !window.atRoot) {
+      window.dropdownOpen = false
+      return
+    }
     window.dropdownOpen = true
     dropdown.item.filter = ""
-    var at = RootSearch.FILTERS.map(function(f) { return f.id }).indexOf(window.rootFilter)
+    var at = RootSearch.FILTERS.map(function (f) {
+      return f.id
+    }).indexOf(window.rootFilter)
     dropdown.item.selectedIndex = Math.max(0, at)
   }
 
   function setRootFilter(id) {
     window.dropdownOpen = false
-    if (window.rootFilter === id) return
+    if (window.rootFilter === id)
+      return
     window.rootFilter = id
     window.rebuild(true)
   }
 
   function toggleAbout() {
-    if (window.aboutOpen || !window.selectedRow) { window.aboutOpen = false; return }
-    var r = window.backend.callSync("rootSearch.getItemInfo", { id: window.selectedRow.itemId, query: window.query })
-    if (!r.ok) { window.showToast("failure", r.error); return }
-    window.aboutRows = r.data.map(function(row) { return { label: window.t(row.label), value: row.values ? window.t(row.value, row.values) : row.label === "Type" ? window.t(row.value) : row.value } })
+    if (window.aboutOpen || !window.selectedRow) {
+      window.aboutOpen = false
+      return
+    }
+    var r = window.backend.callSync("rootSearch.getItemInfo", {
+      id: window.selectedRow.itemId,
+      query: window.query
+    })
+    if (!r.ok) {
+      window.showToast("failure", r.error)
+      return
+    }
+    window.aboutRows = r.data.map(function (row) {
+      return {
+        label: window.t(row.label),
+        value: row.values ? window.t(row.value, row.values) : row.label === "Type" ? window.t(row.value) : row.value
+      }
+    })
     window.aboutOpen = r.data.length > 0
   }
 
   function toggleToastPanel() {
-    if (window.toastPanelOpen) { window.toastPanelOpen = false; toastTimer.restart(); return }
-    if (!window.toast || !window.toast.actions.length) return
+    if (window.toastPanelOpen) {
+      window.toastPanelOpen = false
+      toastTimer.restart()
+      return
+    }
+    if (!window.toast || !window.toast.actions.length)
+      return
     window.toastPanelOpen = true
     toastPanel.item.filter = ""
     toastTimer.stop()
@@ -449,48 +602,85 @@ OverlayWindow {
   // A toast action is a copy or a backend call (Backend.performAction's
   // toast.actions), with `done` as the success toast.
   function runToastAction(actionId) {
-    var action = (window.toast ? window.toast.actions : []).filter(function(a) { return a.id === actionId })[0]
+    var action = (window.toast ? window.toast.actions : []).filter(function (a) {
+      return a.id === actionId
+    })[0]
     window.toastPanelOpen = false
-    if (!action) return
+    if (!action)
+      return
     if (action.copy !== undefined) {
       window.backend.copyText(action.copy)
       window.showToast("success", "Copied to Clipboard")
       return
     }
     var r = window.backend.callSync(action.call.method, action.call.data)
-    if (!r.ok) { window.showToast("failure", r.error); return }
+    if (!r.ok) {
+      window.showToast("failure", r.error)
+      return
+    }
     window.toast = null
     window.rebuild(false)
-    if (action.done) window.showToast("success", action.done)
+    if (action.done)
+      window.showToast("success", action.done)
   }
 
   function openSettings() {
-    if (window.view.kind === "settings") return
-    if (window.view.kind === "setting-edit") { window.pop(); return }
+    if (window.view.kind === "settings")
+      return
+    if (window.view.kind === "setting-edit") {
+      window.pop()
+      return
+    }
     window.query = ""
-    window.request({ id: "builtin:settings", action: "open", query: "" })
+    window.request({
+      id: "builtin:settings",
+      action: "open",
+      query: ""
+    })
   }
 
   function saveSettingEdit() {
-    window.request({ id: "setting:" + window.view.key, action: "set", value: window.query })
+    window.request({
+      id: "setting:" + window.view.key,
+      action: "set",
+      value: window.query
+    })
   }
 
   function saveAlias() {
-    var r = window.backend.callSync("settings.updateCommandSettings", { commandId: window.view.commandId, alias: window.query })
-    if (!r.ok) { window.showToast("failure", r.error); return }
+    var r = window.backend.callSync("settings.updateCommandSettings", {
+      commandId: window.view.commandId,
+      alias: window.query
+    })
+    if (!r.ok) {
+      window.showToast("failure", r.error)
+      return
+    }
     var saved = window.query.trim()
     window.pop()
     window.showToast("success", saved ? "Alias saved" : "Alias removed")
     window.rebuild(false)
   }
 
-
   // A failure toast always offers its message to copy (Ctrl+T).
   function showToast(style, title, actions) {
     var list = (actions || []).slice()
-    if (style === "failure") list.push({ id: "copy-error", title: "Copy Error Message", copy: String(title || "") })
+    if (style === "failure")
+      list.push({
+        id: "copy-error",
+        title: "Copy Error Message",
+        copy: String(title || "")
+      })
     window.toastPanelOpen = false
-    window.toast = { style: style, title: window.t(title), actions: list.map(function(a) { return Object.assign({}, a, { title: window.t(a.title) }) }) }
+    window.toast = {
+      style: style,
+      title: window.t(title),
+      actions: list.map(function (a) {
+        return Object.assign({}, a, {
+          title: window.t(a.title)
+        })
+      })
+    }
     toastTimer.interval = list.length ? 6000 : 2500
     toastTimer.restart()
   }
@@ -498,17 +688,22 @@ OverlayWindow {
   Timer {
     id: toastTimer
     interval: 2500
-    onTriggered: if (!window.toastPanelOpen) window.toast = null
+    onTriggered: if (!window.toastPanelOpen)
+      window.toast = null
   }
 
   function hud(text) {
     // foamy-lint: allow bare-duration — how long the OSD stays up, not motion
-    Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({ icon: "\uf00c", message: window.t(text), duration: 1500 })])
+    Quickshell.execDetached(["omarchy-shell", "osd", "show", JSON.stringify({
+        icon: "\uf00c",
+        message: window.t(text),
+        duration: 1500
+      })])
   }
 
-
   function setQuery(next) {
-    if (window.query === next) return
+    if (window.query === next)
+      return
     window.query = next
     window.historyIndex = -1
     window.rebuild(true)
@@ -518,7 +713,8 @@ OverlayWindow {
   // query (a view, history, a scope keyword) puts it at the end.
   property int cursorPos: 0
   property bool keepCursor: false
-  onQueryChanged: if (!window.keepCursor) window.cursorPos = window.query.length
+  onQueryChanged: if (!window.keepCursor)
+    window.cursorPos = window.query.length
 
   // Applies a QueryEdit result: the text (searching again when it changed)
   // and the cursor.
@@ -529,25 +725,53 @@ OverlayWindow {
     window.cursorPos = next.cursor
   }
 
-  function queryState() { return QueryEdit.state(window.query, window.cursorPos) }
+  function queryState() {
+    return QueryEdit.state(window.query, window.cursorPos)
+  }
 
   // Editing and cursor keys for the search field; false for keys it leaves
   // to the list. Plain ←/→ belong to grids (cells) and the settings (values).
   function handleQueryKey(event, ctrl, alt, shift, key) {
-    if (alt || (event.modifiers & Qt.MetaModifier)) return false
+    if (alt || (event.modifiers & Qt.MetaModifier))
+      return false
     var s = window.queryState()
     var arrowsMoveCursor = window.editing || (!window.gridView && window.view.kind !== "settings")
     var charKey = window.vim ? (key === Qt.Key_H ? -1 : key === Qt.Key_L ? 1 : 0) : (key === Qt.Key_B ? -1 : key === Qt.Key_F ? 1 : 0)
-    if (key === Qt.Key_Home && !ctrl) { window.applyEdit(QueryEdit.home(s)); return true }
-    if (key === Qt.Key_End && !ctrl) { window.applyEdit(QueryEdit.end(s)); return true }
-    if (ctrl && !shift && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, true)); return true }
-    if (!ctrl && !shift && arrowsMoveCursor && (key === Qt.Key_Left || key === Qt.Key_Right)) { window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, false)); return true }
-    if (ctrl && !shift && charKey) { window.applyEdit(QueryEdit.move(s, charKey, false)); return true }
-    if (key === Qt.Key_Delete && !shift) { window.applyEdit(QueryEdit.deleteForward(s, ctrl)); return true }
-    if (!window.query) return false
-    if (key === Qt.Key_Backspace) { window.applyEdit(QueryEdit.backspace(s, ctrl)); return true }
+    if (key === Qt.Key_Home && !ctrl) {
+      window.applyEdit(QueryEdit.home(s))
+      return true
+    }
+    if (key === Qt.Key_End && !ctrl) {
+      window.applyEdit(QueryEdit.end(s))
+      return true
+    }
+    if (ctrl && !shift && (key === Qt.Key_Left || key === Qt.Key_Right)) {
+      window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, true))
+      return true
+    }
+    if (!ctrl && !shift && arrowsMoveCursor && (key === Qt.Key_Left || key === Qt.Key_Right)) {
+      window.applyEdit(QueryEdit.move(s, key === Qt.Key_Left ? -1 : 1, false))
+      return true
+    }
+    if (ctrl && !shift && charKey) {
+      window.applyEdit(QueryEdit.move(s, charKey, false))
+      return true
+    }
+    if (key === Qt.Key_Delete && !shift) {
+      window.applyEdit(QueryEdit.deleteForward(s, ctrl))
+      return true
+    }
+    if (!window.query)
+      return false
+    if (key === Qt.Key_Backspace) {
+      window.applyEdit(QueryEdit.backspace(s, ctrl))
+      return true
+    }
     // Ctrl+U only (Ctrl+Shift+U is Unicode input).
-    if (key === Qt.Key_U && event.modifiers === Qt.ControlModifier) { window.applyEdit(QueryEdit.killToStart(s)); return true }
+    if (key === Qt.Key_U && event.modifiers === Qt.ControlModifier) {
+      window.applyEdit(QueryEdit.killToStart(s))
+      return true
+    }
     return false
   }
 
@@ -556,10 +780,13 @@ OverlayWindow {
     clipboardInput.paste()
     var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
     clipboardInput.clear()
-    if (!text) return
-    if (window.actionPanelOpen) actionPanel.item.filter += text
+    if (!text)
+      return
+    if (window.actionPanelOpen)
+      actionPanel.item.filter += text
     else {
-      if (window.view.kind === "alias") text = text.replace(/\s/g, "")
+      if (window.view.kind === "alias")
+        text = text.replace(/\s/g, "")
       window.applyEdit(QueryEdit.insert(window.queryState(), text))
     }
   }
@@ -573,9 +800,11 @@ OverlayWindow {
   function recallHistory(direction) {
     var r = window.backend.callSync("rootSearch.getSearchHistory", null)
     var history = r.ok ? r.data : []
-    if (history.length === 0) return false
+    if (history.length === 0)
+      return false
     var next = Math.max(-1, Math.min(history.length - 1, window.historyIndex + direction))
-    if (next === window.historyIndex) return true
+    if (next === window.historyIndex)
+      return true
     window.query = next < 0 ? "" : history[next]
     window.rebuild(true)
     window.historyIndex = next
@@ -584,49 +813,89 @@ OverlayWindow {
 
   function setZoom(value) {
     var z = Math.round(Math.max(0.8, Math.min(1.5, value)) * 10) / 10
-    window.backend.callSync("settings.updateGeneralSettings", { uiZoom: z })
+    window.backend.callSync("settings.updateGeneralSettings", {
+      uiZoom: z
+    })
   }
 
   function handleEscape(shift) {
-    if (window.alert) { window.alert = null; return }
-    if (window.aboutOpen) { window.aboutOpen = false; return }
-    if (window.dropdownOpen) { window.dropdownOpen = false; return }
-    if (window.toastPanelOpen) { window.toggleToastPanel(); return }
-    if (window.actionPanelOpen) { window.actionPanelOpen = false; return }
-    if (shift) { window.popToRoot(); return }
+    if (window.alert) {
+      window.alert = null
+      return
+    }
+    if (window.aboutOpen) {
+      window.aboutOpen = false
+      return
+    }
+    if (window.dropdownOpen) {
+      window.dropdownOpen = false
+      return
+    }
+    if (window.toastPanelOpen) {
+      window.toggleToastPanel()
+      return
+    }
+    if (window.actionPanelOpen) {
+      window.actionPanelOpen = false
+      return
+    }
+    if (shift) {
+      window.popToRoot()
+      return
+    }
     if (window.general.escapeKeyBehavior === "close-and-pop-to-root") {
       window.dismissRequested()
       window.popToRoot()
       return
     }
-    if (window.query && !window.editing) window.setQuery("")
-    else if (!window.atRoot) window.pop()
-    else window.dismissRequested()
+    if (window.query && !window.editing)
+      window.setQuery("")
+    else if (!window.atRoot)
+      window.pop()
+    else
+      window.dismissRequested()
   }
 
   // -1 up, 1 down or 0, per the navigation bindings. Ctrl+P only moves up
   // inside popups: in the list it opens the dropdown.
   function direction(event, ctrl, alt, inPopup) {
     var key = event.key
-    if (!ctrl && !alt && key === Qt.Key_Down) return 1
-    if (!ctrl && !alt && key === Qt.Key_Up) return -1
-    if (!ctrl || alt || (event.modifiers & Qt.ShiftModifier)) return 0
-    if (window.vim) return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
+    if (!ctrl && !alt && key === Qt.Key_Down)
+      return 1
+    if (!ctrl && !alt && key === Qt.Key_Up)
+      return -1
+    if (!ctrl || alt || (event.modifiers & Qt.ShiftModifier))
+      return 0
+    if (window.vim)
+      return key === Qt.Key_J ? 1 : (key === Qt.Key_K ? -1 : 0)
     return key === Qt.Key_N ? 1 : (key === Qt.Key_P && inPopup ? -1 : 0)
   }
 
   function isActionPanelKey(ctrl, alt, shift, key) {
-    if (key !== Qt.Key_K || shift) return false
+    if (key !== Qt.Key_K || shift)
+      return false
     return window.vim ? alt && !ctrl : ctrl && !alt
   }
 
   // Keys for a popup list (action panel, dropdown, toast actions).
   function handlePopupKey(event, panel, ctrl, alt) {
     var dir = window.direction(event, ctrl, alt, true)
-    if (dir) { panel.move(dir); return true }
-    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { panel.activateSelected(); return true }
-    if (Util.editsFilter(event, panel.filter)) { panel.filter = Util.editedFilter(event, panel.filter); return true }
-    if (window.isTyping(event)) { panel.filter += event.text; return true }
+    if (dir) {
+      panel.move(dir)
+      return true
+    }
+    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+      panel.activateSelected()
+      return true
+    }
+    if (Util.editsFilter(event, panel.filter)) {
+      panel.filter = Util.editedFilter(event, panel.filter)
+      return true
+    }
+    if (window.isTyping(event)) {
+      panel.filter += event.text
+      return true
+    }
     return true
   }
 
@@ -638,17 +907,39 @@ OverlayWindow {
     var enter = key === Qt.Key_Return || key === Qt.Key_Enter
 
     if (window.alert) {
-      if (key === Qt.Key_Escape) window.alert = null
-      else if (enter) window.confirmAlert()
+      if (key === Qt.Key_Escape)
+        window.alert = null
+      else if (enter)
+        window.confirmAlert()
       return true
     }
-    if (key === Qt.Key_Escape) { window.handleEscape(shift); return true }
-    if (ctrl && (key === Qt.Key_Plus || key === Qt.Key_Equal)) { window.setZoom(window.zoom + 0.1); return true }
-    if (ctrl && key === Qt.Key_Minus) { window.setZoom(window.zoom - 0.1); return true }
-    if (ctrl && key === Qt.Key_0) { window.setZoom(1); return true }
-    if (ctrl && key === Qt.Key_BracketLeft) { window.closePopups(); window.pop(); return true }
+    if (key === Qt.Key_Escape) {
+      window.handleEscape(shift)
+      return true
+    }
+    if (ctrl && (key === Qt.Key_Plus || key === Qt.Key_Equal)) {
+      window.setZoom(window.zoom + 0.1)
+      return true
+    }
+    if (ctrl && key === Qt.Key_Minus) {
+      window.setZoom(window.zoom - 0.1)
+      return true
+    }
+    if (ctrl && key === Qt.Key_0) {
+      window.setZoom(1)
+      return true
+    }
+    if (ctrl && key === Qt.Key_BracketLeft) {
+      window.closePopups()
+      window.pop()
+      return true
+    }
     // Ctrl+, opens the settings, as in Raycast.
-    if (ctrl && !alt && key === Qt.Key_Comma) { window.closePopups(); window.openSettings(); return true }
+    if (ctrl && !alt && key === Qt.Key_Comma) {
+      window.closePopups()
+      window.openSettings()
+      return true
+    }
     // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste.
     var meta = (event.modifiers & Qt.MetaModifier) !== 0
     if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
@@ -657,44 +948,97 @@ OverlayWindow {
     }
 
     if (window.aboutOpen) {
-      if (ctrl && shift && key === Qt.Key_K) window.aboutOpen = false
+      if (ctrl && shift && key === Qt.Key_K)
+        window.aboutOpen = false
       return true
     }
     if (window.dropdownOpen) {
-      if (ctrl && !shift && key === Qt.Key_P) { window.dropdownOpen = false; return true }
+      if (ctrl && !shift && key === Qt.Key_P) {
+        window.dropdownOpen = false
+        return true
+      }
       return window.handlePopupKey(event, dropdown.item, ctrl, alt)
     }
     if (window.toastPanelOpen) {
-      if (ctrl && key === Qt.Key_T) { window.toggleToastPanel(); return true }
+      if (ctrl && key === Qt.Key_T) {
+        window.toggleToastPanel()
+        return true
+      }
       return window.handlePopupKey(event, toastPanel.item, ctrl, alt)
     }
     if (window.actionPanelOpen) {
-      if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.actionPanelOpen = false; return true }
+      if (window.isActionPanelKey(ctrl, alt, shift, key)) {
+        window.actionPanelOpen = false
+        return true
+      }
       return window.handlePopupKey(event, actionPanel.item, ctrl, alt)
     }
 
-    if (window.handleQueryKey(event, ctrl, alt, shift, key)) return true
+    if (window.handleQueryKey(event, ctrl, alt, shift, key))
+      return true
 
     if (window.view.kind === "setting-edit") {
-      if (enter) { window.saveSettingEdit(); return true }
+      if (enter) {
+        window.saveSettingEdit()
+        return true
+      }
     } else if (window.view.kind === "alias") {
-      if (enter) { window.saveAlias(); return true }
-      if (key === Qt.Key_Space) return true
+      if (enter) {
+        window.saveAlias()
+        return true
+      }
+      if (key === Qt.Key_Space)
+        return true
     } else {
-      if (ctrl && shift && key === Qt.Key_K) { window.toggleAbout(); return true }
-      if (window.isActionPanelKey(ctrl, alt, shift, key)) { window.toggleActionPanel(); return true }
-      if (ctrl && !shift && key === Qt.Key_P) { window.toggleDropdown(); return true }
-      if (ctrl && !shift && key === Qt.Key_T) { window.toggleToastPanel(); return true }
+      if (ctrl && shift && key === Qt.Key_K) {
+        window.toggleAbout()
+        return true
+      }
+      if (window.isActionPanelKey(ctrl, alt, shift, key)) {
+        window.toggleActionPanel()
+        return true
+      }
+      if (ctrl && !shift && key === Qt.Key_P) {
+        window.toggleDropdown()
+        return true
+      }
+      if (ctrl && !shift && key === Qt.Key_T) {
+        window.toggleToastPanel()
+        return true
+      }
       // Shift+Enter opens a new window for apps; Enter focuses an open one.
-      if (enter && shift && !ctrl && !alt && window.performIfOffered(["open-new"])) return true
-      if (enter && ctrl && shift) { window.performNth(2); return true }
-      if (enter && ctrl) { window.performNth(1); return true }
-      if (enter) { window.performNth(0); return true }
-      if (key === Qt.Key_Tab && !shift && window.tryEnterScope()) return true
-      if (ctrl && alt && key === Qt.Key_Up) { window.performIfOffered(["favorite-up"]); return true }
-      if (ctrl && alt && key === Qt.Key_Down) { window.performIfOffered(["favorite-down"]); return true }
-      if (ctrl && key === Qt.Key_Up) { window.jumpSection(-1); return true }
-      if (ctrl && key === Qt.Key_Down) { window.jumpSection(1); return true }
+      if (enter && shift && !ctrl && !alt && window.performIfOffered(["open-new"]))
+        return true
+      if (enter && ctrl && shift) {
+        window.performNth(2)
+        return true
+      }
+      if (enter && ctrl) {
+        window.performNth(1)
+        return true
+      }
+      if (enter) {
+        window.performNth(0)
+        return true
+      }
+      if (key === Qt.Key_Tab && !shift && window.tryEnterScope())
+        return true
+      if (ctrl && alt && key === Qt.Key_Up) {
+        window.performIfOffered(["favorite-up"])
+        return true
+      }
+      if (ctrl && alt && key === Qt.Key_Down) {
+        window.performIfOffered(["favorite-down"])
+        return true
+      }
+      if (ctrl && key === Qt.Key_Up) {
+        window.jumpSection(-1)
+        return true
+      }
+      if (ctrl && key === Qt.Key_Down) {
+        window.jumpSection(1)
+        return true
+      }
       var dir = window.direction(event, ctrl, alt, false)
       // In the settings, ←/→ change the selected value.
       if (window.view.kind === "settings" && !ctrl && !alt && (key === Qt.Key_Left || key === Qt.Key_Right)) {
@@ -703,58 +1047,113 @@ OverlayWindow {
       }
       if (window.gridView) {
         // Left/right step through apps; up/down and paging move by rows.
-        if (!ctrl && !alt && key === Qt.Key_Left) { window.move(-1); return true }
-        if (!ctrl && !alt && key === Qt.Key_Right) { window.move(1); return true }
-        if (dir) { window.move(dir * grid.columns); return true }
-        if (key === Qt.Key_PageUp) { window.move(-grid.columns * 3); return true }
-        if (key === Qt.Key_PageDown) { window.move(grid.columns * 3); return true }
+        if (!ctrl && !alt && key === Qt.Key_Left) {
+          window.move(-1)
+          return true
+        }
+        if (!ctrl && !alt && key === Qt.Key_Right) {
+          window.move(1)
+          return true
+        }
+        if (dir) {
+          window.move(dir * grid.columns)
+          return true
+        }
+        if (key === Qt.Key_PageUp) {
+          window.move(-grid.columns * 3)
+          return true
+        }
+        if (key === Qt.Key_PageDown) {
+          window.move(grid.columns * 3)
+          return true
+        }
       }
       if (dir < 0) {
-        if (window.atRoot && (window.query === "" || window.historyIndex >= 0) && window.selectedIndex === window.nextSelectable(-1, 1) && window.recallHistory(1)) return true
-        window.move(-1); return true
+        if (window.atRoot && (window.query === "" || window.historyIndex >= 0) && window.selectedIndex === window.nextSelectable(-1, 1) && window.recallHistory(1))
+          return true
+        window.move(-1)
+        return true
       }
       if (dir > 0) {
-        if (window.historyIndex >= 0) { window.recallHistory(-1); return true }
-        window.move(1); return true
+        if (window.historyIndex >= 0) {
+          window.recallHistory(-1)
+          return true
+        }
+        window.move(1)
+        return true
       }
-      if (key === Qt.Key_PageUp) { window.move(-8); return true }
-      if (key === Qt.Key_PageDown) { window.move(8); return true }
-      if (ctrl && shift && key === Qt.Key_F) { window.performIfOffered(["favorite-add", "favorite-remove"]); return true }
-      if (ctrl && shift && key === Qt.Key_C) { window.performIfOffered(["copy-command", "copy-id", "copy-plain", "copy-setting-command"]); return true }
-      if (ctrl && shift && key === Qt.Key_D) { window.performIfOffered(["delete-all-entries", "clear-history"]); return true }
-      if (ctrl && key === Qt.Key_D) { window.performIfOffered(["delete-entry", "delete-history"]); return true }
-      if (alt && shift && key === Qt.Key_D) { window.performIfOffered(["disable"]); return true }
+      if (key === Qt.Key_PageUp) {
+        window.move(-8)
+        return true
+      }
+      if (key === Qt.Key_PageDown) {
+        window.move(8)
+        return true
+      }
+      if (ctrl && shift && key === Qt.Key_F) {
+        window.performIfOffered(["favorite-add", "favorite-remove"])
+        return true
+      }
+      if (ctrl && shift && key === Qt.Key_C) {
+        window.performIfOffered(["copy-command", "copy-id", "copy-plain", "copy-setting-command"])
+        return true
+      }
+      if (ctrl && shift && key === Qt.Key_D) {
+        window.performIfOffered(["delete-all-entries", "clear-history"])
+        return true
+      }
+      if (ctrl && key === Qt.Key_D) {
+        window.performIfOffered(["delete-entry", "delete-history"])
+        return true
+      }
+      if (alt && shift && key === Qt.Key_D) {
+        window.performIfOffered(["disable"])
+        return true
+      }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
         var target = window.nthItem(key - Qt.Key_0)
-        if (target >= 0) window.perform("open", target)
+        if (target >= 0)
+          window.perform("open", target)
         return true
       }
     }
 
-    if (key === Qt.Key_Backspace && !window.query && !window.atRoot) { window.pop(); return true }
-    if (window.isTyping(event)) { window.applyEdit(QueryEdit.insert(window.queryState(), event.text)); return true }
+    if (key === Qt.Key_Backspace && !window.query && !window.atRoot) {
+      window.pop()
+      return true
+    }
+    if (window.isTyping(event)) {
+      window.applyEdit(QueryEdit.insert(window.queryState(), event.text))
+      return true
+    }
     return false
   }
 
   function isTyping(event) {
-    return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127
-      && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
+    return event.text && event.text.length === 1 && event.text.charCodeAt(0) >= 32 && event.text.charCodeAt(0) !== 127 && (event.modifiers === Qt.NoModifier || event.modifiers === Qt.ShiftModifier)
   }
 
   Connections {
     target: window.backend
     function onNotification(method, data) {
-      if (method === "settings.saveFailed" && window.shown) window.showToast("failure", data.error)
+      if (method === "settings.saveFailed" && window.shown)
+        window.showToast("failure", data.error)
     }
-    function onCandidatesRevisionChanged() { if (window.shown && !window.actionPanelOpen && !window.alert) window.rebuild(false) }
+    function onCandidatesRevisionChanged() {
+      if (window.shown && !window.actionPanelOpen && !window.alert)
+        window.rebuild(false)
+    }
     // Exchange rates or zone offsets arrived: re-evaluate a calculation on screen.
-    function onCalculatorRevisionChanged() { if (window.shown && !window.actionPanelOpen && window.query) window.rebuild(false) }
+    function onCalculatorRevisionChanged() {
+      if (window.shown && !window.actionPanelOpen && window.query)
+        window.rebuild(false)
+    }
   }
-
 
   MouseArea {
     anchors.fill: parent
-    onClicked: if (!window.backend.settings.keepVisibleOnFocusLoss) window.dismissRequested()
+    onClicked: if (!window.backend.settings.keepVisibleOnFocusLoss)
+      window.dismissRequested()
   }
 
   BorderSurface {
@@ -768,14 +1167,23 @@ OverlayWindow {
     borderSpec: window.borderSpec
     clip: true
 
-    MouseArea { anchors.fill: parent; onClicked: { window.closePopups(); keyCatcher.forceActiveFocus() } }
+    MouseArea {
+      anchors.fill: parent
+      onClicked: {
+        window.closePopups()
+        keyCatcher.forceActiveFocus()
+      }
+    }
 
     Item {
       id: keyCatcher
       anchors.fill: parent
       focus: true
       Keys.priority: Keys.BeforeItem
-      Keys.onPressed: function(event) { if (window.handleKey(event)) event.accepted = true }
+      Keys.onPressed: function (event) {
+        if (window.handleKey(event))
+          event.accepted = true
+      }
     }
 
     Item {
@@ -859,7 +1267,10 @@ OverlayWindow {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: { window.pop(); keyCatcher.forceActiveFocus() }
+          onClicked: {
+            window.pop()
+            keyCatcher.forceActiveFocus()
+          }
         }
       }
 
@@ -874,14 +1285,17 @@ OverlayWindow {
 
         property real scroll: 0
         function keepCursorVisible() {
-          queryBox.scroll = QueryEdit.scrollFor(queryBox.scroll, queryFont.advanceWidth(window.query.slice(0, window.cursorPos)),
-                                                queryFont.advanceWidth(window.query), queryBox.width)
+          queryBox.scroll = QueryEdit.scrollFor(queryBox.scroll, queryFont.advanceWidth(window.query.slice(0, window.cursorPos)), queryFont.advanceWidth(window.query), queryBox.width)
         }
         onWidthChanged: queryBox.keepCursorVisible()
         Connections {
           target: window
-          function onQueryChanged() { queryBox.keepCursorVisible() }
-          function onCursorPosChanged() { queryBox.keepCursorVisible() }
+          function onQueryChanged() {
+            queryBox.keepCursorVisible()
+          }
+          function onCursorPosChanged() {
+            queryBox.keepCursorVisible()
+          }
         }
 
         // Where a prefix of the query ends inside the box.
@@ -889,7 +1303,10 @@ OverlayWindow {
           return queryFont.advanceWidth(prefix) - queryBox.scroll
         }
 
-        FontMetrics { id: queryFont; font: queryText.font }
+        FontMetrics {
+          id: queryFont
+          font: queryText.font
+        }
 
         Text {
           id: queryText
@@ -908,8 +1325,11 @@ OverlayWindow {
           anchors.fill: parent
           enabled: window.query.length > 0
           cursorShape: Qt.IBeamCursor
-          onClicked: function(mouse) {
-            window.applyEdit({ text: window.query, cursor: QueryEdit.indexAt(window.query, mouse.x, queryBox.offsetOf) })
+          onClicked: function (mouse) {
+            window.applyEdit({
+              text: window.query,
+              cursor: QueryEdit.indexAt(window.query, mouse.x, queryBox.offsetOf)
+            })
             window.closePopups()
             keyCatcher.forceActiveFocus()
           }
@@ -922,9 +1342,7 @@ OverlayWindow {
         width: Math.max(1, Style.space(2))
         height: queryText.font.pixelSize + Style.space(4)
         anchors.verticalCenter: parent.verticalCenter
-        x: queryBox.x + (window.query
-          ? queryBox.offsetOf(window.query.slice(0, window.cursorPos)) + (caret.atEnd ? Style.space(1) : -Math.round(caret.width / 2))
-          : 0)
+        x: queryBox.x + (window.query ? queryBox.offsetOf(window.query.slice(0, window.cursorPos)) + (caret.atEnd ? Style.space(1) : -Math.round(caret.width / 2)) : 0)
         color: window.look.accent
         visible: window.shown && !window.actionPanelOpen
 
@@ -932,17 +1350,28 @@ OverlayWindow {
         // shows solid again whenever it moves.
         Connections {
           target: window
-          function onCursorPosChanged() { if (caretBlink.running) caretBlink.restart() }
+          function onCursorPosChanged() {
+            if (caretBlink.running)
+              caretBlink.restart()
+          }
         }
         SequentialAnimation on opacity {
           id: caretBlink
           running: window.shown && !FoamyMotion.reduceMotion
           loops: Animation.Infinite
           onStopped: caret.opacity = 1
-          PropertyAction { value: 1 }
-          PauseAnimation { duration: FoamyMotion.duration(530) }
-          PropertyAction { value: 0 }
-          PauseAnimation { duration: FoamyMotion.duration(530) }
+          PropertyAction {
+            value: 1
+          }
+          PauseAnimation {
+            duration: FoamyMotion.duration(530)
+          }
+          PropertyAction {
+            value: 0
+          }
+          PauseAnimation {
+            duration: FoamyMotion.duration(530)
+          }
         }
       }
 
@@ -967,7 +1396,9 @@ OverlayWindow {
           Text {
             anchors.verticalCenter: parent.verticalCenter
             textFormat: Text.PlainText
-            text: window.t((RootSearch.FILTERS.filter(function(f) { return f.id === window.rootFilter })[0] || RootSearch.FILTERS[0]).title)
+            text: window.t((RootSearch.FILTERS.filter(function (f) {
+                return f.id === window.rootFilter
+              })[0] || RootSearch.FILTERS[0]).title)
             color: window.look.foreground
             opacity: window.rootFilter === "all" ? 0.7 : 1
             font.family: window.look.fontFamily
@@ -986,7 +1417,10 @@ OverlayWindow {
         MouseArea {
           anchors.fill: parent
           cursorShape: Qt.PointingHandCursor
-          onClicked: { window.toggleDropdown(); keyCatcher.forceActiveFocus() }
+          onClicked: {
+            window.toggleDropdown()
+            keyCatcher.forceActiveFocus()
+          }
         }
       }
 
@@ -1028,8 +1462,13 @@ OverlayWindow {
           look: window.look
           appLibrary: window.appLibrary
           zoom: window.zoom
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, true) }
-          onClicked: function(i) { window.perform("open", i) }
+          onHovered: function (i, item, mouse) {
+            if (!window.actionPanelOpen && pointerGate.moved(item, mouse))
+              window.select(i, true)
+          }
+          onClicked: function (i) {
+            window.perform("open", i)
+          }
         }
       }
 
@@ -1046,9 +1485,7 @@ OverlayWindow {
         model: window.gridView ? rows : null
         cellWidth: Math.floor(width / columns)
         // Whole rows fill the height, so none is cut off at the bottom.
-        cellHeight: window.coverGrid
-          ? Math.floor(height / Math.max(1, Math.floor(height / coverCellHeight)))
-          : Math.floor(height / Math.max(1, Math.round(height / window.px(122))))
+        cellHeight: window.coverGrid ? Math.floor(height / Math.max(1, Math.floor(height / coverCellHeight))) : Math.floor(height / Math.max(1, Math.round(height / window.px(122))))
         boundsBehavior: Flickable.StopAtBounds
 
         delegate: AppCell {
@@ -1059,8 +1496,13 @@ OverlayWindow {
           appLibrary: window.appLibrary
           zoom: window.zoom
           covers: window.coverGrid
-          onHovered: function(i, item, mouse) { if (!window.actionPanelOpen && pointerGate.moved(item, mouse)) window.select(i, true) }
-          onClicked: function(i) { window.perform("open", i) }
+          onHovered: function (i, item, mouse) {
+            if (!window.actionPanelOpen && pointerGate.moved(item, mouse))
+              window.select(i, true)
+          }
+          onClicked: function (i) {
+            window.perform("open", i)
+          }
         }
       }
 
@@ -1163,8 +1605,16 @@ OverlayWindow {
         readonly property var primary: {
           window.selectedRow
           window.backend.storeRevision
-          if (window.view.kind === "alias") return { title: "Save Alias", shortcut: "↵" }
-          if (window.view.kind === "setting-edit") return { title: "Save", shortcut: "↵" }
+          if (window.view.kind === "alias")
+            return {
+              title: "Save Alias",
+              shortcut: "↵"
+            }
+          if (window.view.kind === "setting-edit")
+            return {
+              title: "Save",
+              shortcut: "↵"
+            }
           var list = window.actionsForSelected()
           return list.length ? list[0] : null
         }
@@ -1224,7 +1674,9 @@ OverlayWindow {
         actions: window.actions
         look: window.look
         zoom: window.zoom
-        onActivated: function(actionId) { window.perform(actionId) }
+        onActivated: function (actionId) {
+          window.perform(actionId)
+        }
       }
     }
 
@@ -1239,12 +1691,20 @@ OverlayWindow {
       anchors.topMargin: window.px(4)
       sourceComponent: ActionPanel {
         placeholder: window.t("Filter…")
-        actions: RootSearch.FILTERS.map(function(f) {
-          return { id: f.id, title: window.t(f.title), shortcut: "", section: "filter", icon: f.id === window.rootFilter ? "✓" : " " }
+        actions: RootSearch.FILTERS.map(function (f) {
+          return {
+            id: f.id,
+            title: window.t(f.title),
+            shortcut: "",
+            section: "filter",
+            icon: f.id === window.rootFilter ? "✓" : " "
+          }
         })
         look: window.look
         zoom: window.zoom
-        onActivated: function(id) { window.setRootFilter(id) }
+        onActivated: function (id) {
+          window.setRootFilter(id)
+        }
       }
     }
 
@@ -1259,12 +1719,20 @@ OverlayWindow {
       anchors.bottomMargin: window.px(6)
       sourceComponent: ActionPanel {
         placeholder: window.t("Search toast actions…")
-        actions: (window.toast ? window.toast.actions : []).map(function(a) {
-          return { id: a.id, title: a.title, shortcut: "", section: "toast", icon: " " }
+        actions: (window.toast ? window.toast.actions : []).map(function (a) {
+          return {
+            id: a.id,
+            title: a.title,
+            shortcut: "",
+            section: "toast",
+            icon: " "
+          }
         })
         look: window.look
         zoom: window.zoom
-        onActivated: function(id) { window.runToastAction(id) }
+        onActivated: function (id) {
+          window.runToastAction(id)
+        }
       }
     }
 

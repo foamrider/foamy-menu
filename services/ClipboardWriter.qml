@@ -11,11 +11,21 @@ Item {
   property var queued: null
   signal failed(string message)
 
-  function copy(text) { writer.send(String(text), false) }
-  function paste(text) { writer.send(String(text), true) }
+  function copy(text) {
+    writer.send(String(text), false)
+  }
+  function paste(text) {
+    writer.send(String(text), true)
+  }
 
   function send(text, paste) {
-    if (proc.running) { writer.queued = { text: text, paste: paste }; return }
+    if (proc.running) {
+      writer.queued = {
+        text: text,
+        paste: paste
+      }
+      return
+    }
     proc.text = text
     proc.exitSeen = false
     // Under timeout, so a stuck wl-copy or wtype can't hold back later copies.
@@ -27,14 +37,17 @@ Item {
   // The one way a copy ends: exited, or couldn't start (then Quickshell emits
   // no exited(), only running -> false). The next queued copy goes after it.
   function finish(ok) {
-    if (proc.exitSeen) return
+    if (proc.exitSeen)
+      return
     proc.exitSeen = true
     proc.text = ""
     proc.stdinEnabled = false
-    if (!ok) writer.failed("Could not copy to the clipboard")
+    if (!ok)
+      writer.failed("Could not copy to the clipboard")
     var next = writer.queued
     writer.queued = null
-    if (next) writer.send(next.text, next.paste)
+    if (next)
+      writer.send(next.text, next.paste)
   }
 
   // Constant scripts: no caller data ever reaches the command line.
@@ -51,7 +64,10 @@ Item {
       proc.text = ""
       proc.stdinEnabled = false
     }
-    onExited: function(exitCode) { writer.finish(exitCode === 0) }
-    onRunningChanged: if (!running) writer.finish(false)
+    onExited: function (exitCode) {
+      writer.finish(exitCode === 0)
+    }
+    onRunningChanged: if (!running)
+      writer.finish(false)
   }
 }

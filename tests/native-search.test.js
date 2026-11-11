@@ -180,7 +180,7 @@ test("the service drives the real helper: load, query, reload", { skip: helperUn
 test("the launch command uses the bundled helper for this CPU", () => {
   assert.match(source, /command: FoamyNative\.command\(service\.pluginDir, "foamy-menu-search", \[\]\)/)
   assert.match(source, /pluginDir: FoamyNative\.localPath\(Qt\.resolvedUrl\("\.\."\)\)/)
-  assert.match(source, /onExited: function\(exitCode, exitStatus\) \{ service\.exited\(exitCode\) \}/)
+  assert.match(source, /onExited: function ?\(exitCode, exitStatus\) \{\s*service\.exited\(exitCode\)\s*\}/)
 })
 
 test("no helper for this CPU, or one that can't run, falls back to the built-in matcher once", t => {
