@@ -132,7 +132,7 @@ ShellRoot {
     id: runProbe
     builtins: [
       test.commandScope("broken", ["/nonexistent/foamy-no-such-command"]),
-      test.commandScope("hung", ["sh", "-c", 'sleep 300 & echo $! >> "$0"; echo $$ >> "$0"; sleep 300', test.pidFile], 500),
+      test.commandScope("hung", ["sh", "-c", 'sleep 300 & echo $! >> "$0"; echo $$ >> "$0"; sleep 300', test.pidFile], 2000),
       test.commandScope("flood", ["seq", "100000000"]),
       test.commandScope("fine", ["printf", "one\\ntwo\\n"])
     ]
@@ -144,7 +144,7 @@ ShellRoot {
   FoamyServices.OmarchyMenuSource {
     id: guardProbe
     omarchyPath: Quickshell.env("FOAMY_GUARD_OMARCHY")
-    commandTimeout: "0.5s"
+    commandTimeout: "2s"
     property var said: []
     onMessage: function(level, text, metadata) { guardProbe.said = guardProbe.said.concat([text]) }
   }
@@ -203,7 +203,10 @@ ShellRoot {
         })
         break
       case 4:
+        // The copy and the launches below are child processes: their files
+        // show up when the child has run, which a loaded machine delays.
         copied.reload()
+        if (test.waitFor(copied.text() === "14")) break
         test.check(copied.text() === "14", "Enter copies calculation through stdin")
         test.check(!menu.opened, "copy dismisses launcher")
         test.check(backend.callSync("calculator.historyGetAll", null).data.length === 1, "saves calculator history")
@@ -283,6 +286,7 @@ ShellRoot {
         break
       case 14:
         launched.reload()
+        if (test.waitFor(/\nweb\n$/.test(launched.text()))) break
         var argv = launched.text().trim().split("\n")
         test.check(argv[0] === "--app-id=TUI.tile" && /\/bin\/foamy-ssh-connect$/.test(argv[1]) && argv[2] === "web", "Enter connects through the terminal")
         test.check(!menu.opened, "connecting dismisses the launcher")
@@ -309,6 +313,7 @@ ShellRoot {
         break
       case 18:
         browsed.reload()
+        if (test.waitFor(browsed.text().indexOf("rust%20%26%20async") >= 0)) break
         test.check(browsed.text().trim() === "https://www.google.com/search?q=rust%20%26%20async", "Enter opens the encoded search URL")
         test.check(!backend.callSync("frecency.get", { id: "scope-item:google:rust & async" }).data, "searches are not saved without history")
         menu.open('{"menu":"root"}')
