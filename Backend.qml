@@ -815,15 +815,24 @@ Item {
   }
 
 
+  // Whatever the setup did, the launcher goes on (the stores report their own
+  // failures); only the first call for the run counts.
+  function directoriesDone(exitCode) {
+    if (backend.directoriesReady) return
+    if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
+    backend.directoriesReady = true
+  }
+
   Process {
     id: mkdirs
-    // Create only Foamy-owned directories and repair permissions on its stores.
-    command: Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file]
-      .map(function(file) { return backend.paths.db + "/" + file }))
-    onExited: function(exitCode) {
-      if (exitCode !== 0) backend.log("error", "paths", "could not create data directories", { exitCode: exitCode })
-      backend.directoriesReady = true
-    }
+    // Create only Foamy-owned directories and repair permissions on its stores
+    // (under timeout, so a stuck filesystem can't hold the launcher back).
+    command: ["timeout", "--kill-after=1s", "10s"].concat(Paths.setupArgv(backend.paths, [Schema.documents.settings.file, Schema.documents.frecency.file, Schema.documents.calculator.file]
+      .map(function(file) { return backend.paths.db + "/" + file })))
+    onExited: function(exitCode) { backend.directoriesDone(exitCode) }
+    // After exited() this finds the directories ready; without it the setup
+    // never started.
+    onRunningChanged: if (!running) backend.directoriesDone(-1)
   }
 
   ScopeSource {

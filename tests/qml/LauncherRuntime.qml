@@ -120,6 +120,34 @@ ShellRoot {
     property var stored: []
     onSuggestionsChanged: if (suggestions.duckduckgo) stored = stored.concat([suggestions.duckduckgo.query])
   }
+  // Command scope runs, one at a time: a command that can't start, one that
+  // hangs (ended at its deadline, its sh -c child too), one that floods its
+  // output (stopped at Scopes.MAX_OUTPUT), then an ordinary one. The hung
+  // processes' pids go to FOAMY_SCOPE_PIDS; launcher.py checks none is left.
+  readonly property string pidFile: Quickshell.env("FOAMY_SCOPE_PIDS")
+  function commandScope(id, command, timeout) {
+    return { id: id, title: id, keyword: id, source: { type: "command", command: command, timeout: timeout || 10000 }, open: ["true"] }
+  }
+  FoamyServices.ScopeSource {
+    id: runProbe
+    builtins: [
+      test.commandScope("broken", ["/nonexistent/foamy-no-such-command"]),
+      test.commandScope("hung", ["sh", "-c", 'sleep 300 & echo $! >> "$0"; echo $$ >> "$0"; sleep 300', test.pidFile], 500),
+      test.commandScope("flood", ["seq", "100000000"]),
+      test.commandScope("fine", ["printf", "one\\ntwo\\n"])
+    ]
+    property var said: []
+    onMessage: function(level, text, metadata) { runProbe.said = runProbe.said.concat([text]) }
+  }
+  // A guard batch that hangs (its menu's one guard sleeps) ends at the
+  // deadline, keeps the previous results and stops loading.
+  FoamyServices.OmarchyMenuSource {
+    id: guardProbe
+    omarchyPath: Quickshell.env("FOAMY_GUARD_OMARCHY")
+    commandTimeout: "0.5s"
+    property var said: []
+    onMessage: function(level, text, metadata) { guardProbe.said = guardProbe.said.concat([text]) }
+  }
   Timer {
     running: true
     repeat: true
@@ -474,6 +502,26 @@ ShellRoot {
         test.check(!menu.opened, "playing dismisses the launcher")
         break
       case 35:
+        runProbe.refresh("broken")
+        runProbe.refresh("hung")
+        runProbe.refresh("flood")
+        runProbe.refresh("fine")
+        test.check(runProbe.loading, "command scopes queue up")
+        break
+      case 36:
+        if (test.waitFor(!runProbe.loading && !guardProbe.loading && guardProbe.said.length > 0)) break
+        test.check(/^failed to run command/.test(runProbe.failures.broken || "") && !runProbe.items.broken,
+          "a command that can't run fails its scope: " + runProbe.failures.broken)
+        test.check(runProbe.failures.hung === "timed out" && !runProbe.items.hung, "a hung command scope times out at its deadline")
+        test.check(!runProbe.failures.flood && runProbe.items.flood.length === Scopes.MAX_ITEMS && runProbe.items.flood[0].title === "1"
+          && runProbe.said.some(function(t) { return t.indexOf("scope flood: output is over") === 0 }),
+          "a flood of output is stopped at the cap and its first items kept")
+        test.check(!runProbe.failures.fine && runProbe.items.fine.map(function(i) { return i.title }).join() === "one,two",
+          "the queue goes on after them")
+        test.check(guardProbe.said.indexOf("Menu guard refresh failed; keeping previous results.") >= 0
+          && Object.keys(guardProbe.guards.when).length === 0, "a hung guard batch ends and keeps the previous results: " + guardProbe.said)
+        break
+      case 37:
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

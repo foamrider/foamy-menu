@@ -310,8 +310,12 @@ title; the rest may be left out). `icon` is an absolute image path or an icon
 name, `cover` an absolute image path; a grid layout shows them, and a list
 shows the icon in place of the scope's. A `list` source's items take `icon`
 and `cover` too. It runs when the scope is entered, with a
-10-second default timeout (`timeout` 100–60000 ms); the previous list stays
-on screen while it refreshes, and a failed run keeps it. At most 5000 items.
+10-second default timeout (`timeout` 100–60000 ms): at the deadline the
+command's process group (the command and what it started) gets SIGTERM, and
+SIGKILL a second later. The previous list stays on screen while it
+refreshes, and a failed run keeps it. At most 5000 items; a command that
+prints more than 8 Mi characters is stopped there, and the lines before that
+are its list.
 
 A query scope is one more search engine, for example the Arch Wiki:
 

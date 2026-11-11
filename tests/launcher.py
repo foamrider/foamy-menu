@@ -106,6 +106,22 @@ def png(width, height, rgb):
             + chunk(b'IDAT', zlib.compress(row * height)) + chunk(b'IEND', b''))
 
 
+def left_running(pids):
+    """The listed pids still running (a zombie waiting for its new parent to
+    reap it is gone), after up to a second for the kills to land."""
+    def running(pid):
+        try:
+            return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] != 'Z'
+        except (OSError, IndexError):
+            return False
+    for _ in range(20):
+        left = [pid for pid in pids if running(pid)]
+        if not left:
+            break
+        time.sleep(0.05)
+    return left
+
+
 def run_case(host, theme, width, language, shots, native=True):
     run = harness.Run(host, (PLUGIN / 'tests/qml/LauncherRuntime.qml').read_text(),
                       plugin=PLUGIN, theme=theme, language=language, prefix='foamy-menu-launcher-')
@@ -200,6 +216,16 @@ with open(path, "w") as f:
     (art / 'e033e23c29a192a17c16a7645a2b423ac64ff447.jpg').write_bytes(png(32, 32, (40, 120, 200)))
     (stubs / 'uwsm-app').write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
     (stubs / 'uwsm-app').chmod(0o755)
+    # The runtime's hung command scope and hung guard batch write their pids
+    # here; every one must be gone once they time out.
+    pids = run.base / 'hung-pids'
+    pids.write_text('')
+    guard_menu = run.base / 'guard-omarchy/default/omarchy'
+    guard_menu.mkdir(parents=True)
+    (guard_menu / 'omarchy-menu.jsonc').write_text(json.dumps({'hung': {
+        'label': 'Hung', 'action': 'true',
+        'when': 'sleep 300 & echo $! >> "$FOAMY_SCOPE_PIDS"; echo $BASHPID >> "$FOAMY_SCOPE_PIDS"; wait'}}))
+    run.env.update({'FOAMY_SCOPE_PIDS': str(pids), 'FOAMY_GUARD_OMARCHY': str(run.base / 'guard-omarchy')})
     # Saved searches are opt-in; this turns them on for DuckDuckGo only.
     (scopes / 'duckduckgo.json').write_text(json.dumps({'id': 'duckduckgo', 'history': True}))
     # Rates and suggestions through BoundedFetch, from a local server.
@@ -228,6 +254,11 @@ with open(path, "w") as f:
     if helper_lines if native else len(helper_lines) != 1 or unavailable not in helper_lines[0]:
         run.ok = False
         result += f'; unexpected search helper log: {helper_lines!r}'
+    listed = pids.read_text().split()
+    left = left_running(listed)
+    if len(listed) < 4 or left:
+        run.ok = False
+        result += f'; hung scope/guard processes: listed {listed!r}, still running {left!r}'
     label = '' if native else '/no-native-helper'
     print(f'{"PASS" if run.ok else "FAIL"} launcher {host}/{theme}/{width}/{language}{label}: {result}')
     if not run.ok:
