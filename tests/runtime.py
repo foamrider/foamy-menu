@@ -124,6 +124,12 @@ def run_host(host_name, shots, plugin, shell_path):
         run.env["FOAMY_MENU_SHOTS"] = str(out)
     run.run(timeout=120)
     result = next((line.split("FOAMY RESULT ", 1)[1] for line in run.log.splitlines() if "FOAMY RESULT" in line), "no result")
+    # Every host command the QML runs has a stand-in here; the harness
+    # refuses (and logs) any other.
+    refused = run.host_commands()
+    if refused:
+        run.ok = False
+        result += f"; host commands without a stand-in: {refused!r}"
     print(f"{'PASS' if run.ok else 'FAIL'} runtime {host_name}: {result}")
     for line in run.log.splitlines():
         if "FOAMY SHOT " in line:

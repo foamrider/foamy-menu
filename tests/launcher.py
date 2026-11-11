@@ -114,12 +114,11 @@ def left_running(pids):
             return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0] != 'Z'
         except (OSError, IndexError):
             return False
-    for _ in range(20):
-        left = [pid for pid in pids if running(pid)]
-        if not left:
-            break
-        time.sleep(0.05)
-    return left
+
+    def left():
+        return [pid for pid in pids if running(pid)]
+    harness.wait_for(lambda: not left(), 1)
+    return left()
 
 
 def run_case(host, theme, width, language, shots, native=True):
@@ -254,6 +253,10 @@ with open(path, "w") as f:
     if helper_lines if native else len(helper_lines) != 1 or unavailable not in helper_lines[0]:
         run.ok = False
         result += f'; unexpected search helper log: {helper_lines!r}'
+    refused = run.host_commands()
+    if refused:
+        run.ok = False
+        result += f'; host commands without a stand-in: {refused!r}'
     listed = pids.read_text().split()
     left = left_running(listed)
     if len(listed) < 4 or left:
