@@ -153,6 +153,24 @@ test("subtitles count only when they differ from the title", () => {
   assert.ok(r2.isMatching)
 })
 
+test("every field folds like the title and the query", () => {
+  const c = app("Innstillinger", {
+    subtitle: "Åpne søkeinnstillinger", alternateTitles: ["Blåtann"], keywords: ["språk"], bundleId: "no.Ærlig.app"
+  })
+  for (const query of ["sok", "søk", "apne", "blat", "blå", "sprak", "språk", "no.aer", "no.ær"])
+    assert.ok(R.buildRecord(c, query, { nowMs: NOW, sensitivity: "high" }).isMatching, query)
+  assert.ok(R.buildRecord(app("Kart", { subtitle: "Åpne" }), "apne", { nowMs: NOW }).subtitleExact)
+  // A folded alternate title counts as a title prefix for ranking.
+  assert.equal(R.buildRecord(c, "blå", { nowMs: NOW }).titleMatch, "prefix")
+  // A subtitle that folds to the title is not scored on its own.
+  assert.equal(R.buildRecord(app("Ærlig", { subtitle: "aerlig" }), "aer", { nowMs: NOW }).subtitle, null)
+  // The threshold counts the folded query: "jær" is four letters, inside a
+  // word, so it matches only below high.
+  const skjaer = app("Skjærgård")
+  assert.ok(R.buildRecord(skjaer, "jær", { nowMs: NOW, sensitivity: "medium" }).isMatching)
+  assert.ok(!R.buildRecord(skjaer, "jær", { nowMs: NOW, sensitivity: "high" }).isMatching)
+})
+
 test("bundle ids match only when the query has a dot", () => {
   const c = app("Firefox", { bundleId: "org.mozilla.firefox" })
   assert.ok(!R.buildRecord(c, "mozilla", { nowMs: NOW }).isMatching)

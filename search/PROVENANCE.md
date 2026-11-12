@@ -72,7 +72,25 @@ every other score. Default `medium` and `high` keep a score of `NAME - HIT_SPAN`
 the field passes the built-in matcher's threshold for that level, computed by
 `src/strictness.rs` with the same score and thresholds as `core/Ranker.js`
 (`fuzzyMatch`, `passesThreshold`), so a level matches the same rows with or
-without the helper. `medium` keeps listed typo scores; `high` drops them.
+without the helper. An exact score, and a prefix score of an ASCII field for an
+ASCII query without Ranker.js separators, pass without that check: Ranker.js
+scores such a prefix above both thresholds. `low` and `medium` keep listed typo
+scores; `high` drops them.
+
+Ranker.js lets a query separator (tab, newline, space, `-`, `.`, `/`, `(`, `)`,
+`[`, `]`) take any text separator or none, while the matcher reads it literally.
+For a query with one, a field without an in-order score still matches at a
+level when `src/strictness.rs` passes it at that level. Its score is the
+matcher's score for the query without its separators, held to
+`NAME +/- HIT_SPAN` (`NAME - HIT_SPAN` when that score is not in order). A field
+that lacks a character of the query other than its separators is skipped first
+(`searchbits::possible` with no edits; non-ASCII always passes).
+
+`src/strictness.rs` decides most fields without Ranker.js's alignment: the
+query found whole in the field gives a lower bound on its score, and word
+starts and adjacent letter pairs give an upper bound. A field that neither
+bound decides runs the alignment, which fills at most one cell per query and
+field UTF-16 unit, no more than the matcher's own name DP over that field.
 `tests/search-parity.test.js` runs both matchers over the same queries at every
 level. Upstream name DP scores are bounded by `2000000 +/- 100000`; exact,
 prefix, and word scores are `5000000`, `4000000`, and `3500000`. Upstream listed

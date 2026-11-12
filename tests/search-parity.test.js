@@ -21,9 +21,16 @@ const candidates = [
   { id: "dragon", title: "Fire Dragon", type: "application" },
   { id: "font", title: "Font Viewer", type: "application" },
   { id: "writer", title: "LibreOffice Writer", type: "application", keywords: ["word processor"] },
-  { id: "code", title: "Visual Studio Code", type: "application", keywords: ["editor"] },
+  { id: "code", title: "Visual Studio Code", type: "application", keywords: ["editor"], bundleId: "com.visualstudio.code" },
   { id: "calc", title: "Calculator", type: "application", alternateTitles: ["Kalkulator"] },
-  { id: "bt", title: "Bluetooth Settings", type: "command" }
+  { id: "bt", title: "Bluetooth Settings", type: "command" },
+  { id: "sok", title: "Innstillinger", type: "command", subtitle: "Åpne søkeinnstillinger" },
+  { id: "kbd", title: "Tastatur", type: "command", alternateTitles: ["Tastaturoppsett"], keywords: ["språk"] },
+  { id: "gt", title: "GNOME Terminal", type: "application", subtitle: "Use the command line" },
+  { id: "bl", title: "Blåtann", type: "command" },
+  { id: "wifi", title: "Wi-Fi", type: "command", subtitle: "Trådløst nettverk", keywords: ["nettverksinnstillinger"] },
+  { id: "naut", title: "Filbehandler", type: "application", bundleId: "org.gnome.Nautilus" },
+  { id: "skjaer", title: "Skjærgård", type: "command", alternateTitles: ["Øyrike"] }
 ]
 
 // [query, {level: matched ids}]; every row runs through both matchers.
@@ -35,21 +42,61 @@ const SHARED = [
   ["frfx", { low: ["firefox"], medium: ["firefox"], high: [] }],
   ["settngs", { low: ["bt"], medium: ["bt"], high: [] }],
   ["vsc", { low: ["code", "ssh"], medium: ["code", "ssh"], high: ["code", "ssh"] }],
-  ["lw", { low: ["writer"], medium: ["writer"], high: ["writer"] }],
+  ["lw", { low: ["wifi", "writer"], medium: ["wifi", "writer"], high: ["writer"] }],
   ["fx", { low: ["firefox"], medium: ["firefox"], high: ["firefox"] }],
   // Prefix and word starts in titles.
-  ["fir", { low: ["dragon", "firefox", "font", "writer"], medium: ["dragon", "firefox", "font"], high: ["dragon", "firefox"] }],
-  ["f", { low: ["dragon", "files", "firefox", "font", "ssh", "ssh-en", "writer"], medium: ["dragon", "files", "firefox", "font"], high: ["dragon", "files", "firefox", "font"] }],
+  ["fir", { low: ["dragon", "firefox", "font", "naut", "wifi", "writer"], medium: ["dragon", "firefox", "font", "naut", "wifi"], high: ["dragon", "firefox", "naut"] }],
+  ["f", { low: ["dragon", "files", "firefox", "font", "naut", "ssh", "ssh-en", "wifi", "writer"], medium: ["dragon", "files", "firefox", "font", "naut", "wifi"], high: ["dragon", "files", "firefox", "font", "naut", "wifi"] }],
   ["fire dragon", { low: ["dragon"], medium: ["dragon"], high: ["dragon"] }],
   // Subtitles, keywords and alternate titles.
   ["browser", { low: ["firefox"], medium: ["firefox"], high: ["firefox"] }],
   ["web", { low: ["firefox"], medium: ["firefox"], high: ["firefox"] }],
-  ["vert", { low: ["ssh"], medium: ["ssh"], high: ["ssh"] }],
+  ["vert", { low: ["ssh", "wifi"], medium: ["ssh", "wifi"], high: ["ssh"] }],
   ["config", { low: ["ssh", "ssh-en"], medium: ["ssh", "ssh-en"], high: ["ssh", "ssh-en"] }],
-  ["internet", { low: ["firefox"], medium: ["firefox"], high: ["firefox"] }],
+  ["internet", { low: ["firefox", "sok"], medium: ["firefox", "sok"], high: ["firefox"] }],
   ["editor", { low: ["code"], medium: ["code"], high: ["code"] }],
   ["kalk", { low: ["calc"], medium: ["calc"], high: ["calc"] }],
-  ["zzz", { low: [], medium: [], high: [] }]
+  ["zzz", { low: [], medium: [], high: [] }],
+  // Norwegian letters fold the same way in every field and in the query:
+  // the subtitle "Åpne søkeinnstillinger", the keyword "språk", the
+  // alternate title "Øyrike".
+  ["sok", { low: ["sok"], medium: ["sok"], high: ["sok"] }],
+  ["søk", { low: ["sok"], medium: ["sok"], high: ["sok"] }],
+  ["apne", { low: ["sok"], medium: ["sok"], high: ["sok"] }],
+  ["åpne", { low: ["sok"], medium: ["sok"], high: ["sok"] }],
+  ["sprak", { low: ["kbd"], medium: ["kbd"], high: ["kbd"] }],
+  ["språk", { low: ["kbd"], medium: ["kbd"], high: ["kbd"] }],
+  ["spr", { low: ["kbd", "sok"], medium: ["kbd"], high: ["kbd"] }],
+  ["blat", { low: ["bl"], medium: ["bl"], high: ["bl"] }],
+  ["blå", { low: ["bl"], medium: ["bl"], high: ["bl"] }],
+  ["trådløst", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }],
+  ["tradlost", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }],
+  ["øyr", { low: ["skjaer"], medium: ["skjaer"], high: ["skjaer"] }],
+  ["oyr", { low: ["skjaer"], medium: ["skjaer"], high: ["skjaer"] }],
+  ["skjær", { low: ["skjaer"], medium: ["skjaer"], high: ["skjaer"] }],
+  // "æ" folds to "ae": the threshold counts the folded query's four letters.
+  ["jær", { low: ["skjaer"], medium: ["skjaer"], high: [] }],
+  // A query separator takes any text separator or none: "-" and "." for a
+  // space, a space for nothing ("Tastaturoppsett"), and the reverse.
+  ["gnome t", { low: ["gt"], medium: ["gt"], high: ["gt"] }],
+  ["gnome-t", { low: ["gt"], medium: ["gt"], high: ["gt"] }],
+  ["wi fi", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }],
+  ["wifi", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }],
+  ["tast opp", { low: ["kbd"], medium: ["kbd"], high: ["kbd"] }],
+  ["tast-opp", { low: ["kbd"], medium: ["kbd"], high: ["kbd"] }],
+  ["v.s", { low: ["code", "living", "ssh", "wifi"], medium: ["code", "ssh"], high: ["code"] }],
+  ["f.b", { low: ["firefox", "naut"], medium: ["firefox", "naut"], high: ["firefox", "naut"] }],
+  // Bundle ids, for queries with a period.
+  ["com.vis", { low: ["code"], medium: ["code"], high: ["code"] }],
+  ["org.n", { low: ["naut"], medium: ["naut"], high: ["naut"] }],
+  ["gnome.naut", { low: ["gt", "naut"], medium: ["gt", "naut"], high: ["naut"] }],
+  // Several words, across the title and its subtitle.
+  ["use the", { low: ["gt"], medium: ["gt"], high: ["gt"] }],
+  ["fire drag", { low: ["dragon"], medium: ["dragon"], high: ["dragon"] }],
+  ["firedragon", { low: ["dragon"], medium: ["dragon"], high: ["dragon"] }],
+  ["browser fire", { low: ["firefox"], medium: ["firefox"], high: ["firefox"] }],
+  ["ssh config", { low: ["ssh", "ssh-en"], medium: ["ssh", "ssh-en"], high: ["ssh", "ssh-en"] }],
+  ["trå nett", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }]
 ]
 
 // Edit typos (swapped or wrong letters) are the helper's own: the built-in
