@@ -270,11 +270,10 @@ function normalize(raw) {
   // are found while typing: rootSection turns rootSearch on.
   var rootSection = !isQuery && raw.rootSection === true
   if (typeof keyword !== "string" || !KEYWORD_PATTERN.test(keyword)) errors.push("keyword must be 1–32 characters without spaces")
-  var title = text(raw.title, "title", errors, true)
   var scope = {
     id: id,
     enabled: raw.enabled !== false,
-    title: title,
+    title: text(raw.title, "title", errors, true),
     subtitle: text(raw.subtitle, "subtitle", errors, false),
     keyword: String(keyword).toLowerCase(),
     icon: text(raw.icon, "icon", errors, false) || (raw.iconName ? "" : DEFAULT_ICON),
@@ -293,7 +292,8 @@ function normalize(raw) {
     layout: layout,
     rootSearch: rootSection || (!isQuery && raw.rootSearch === true),
     rootSection: rootSection,
-    rootSectionTitle: text(raw.rootSectionTitle, "rootSectionTitle", errors, false) || title,
+    // Empty when left out: the heading is then the title (sectionTitle).
+    rootSectionTitle: text(raw.rootSectionTitle, "rootSectionTitle", errors, false),
     requireItems: !isQuery && raw.requireItems === true,
     itemLabel: text(raw.itemLabel, "itemLabel", errors, false),
     actions: actions(raw.actions, errors),
@@ -485,7 +485,7 @@ function rootItemCandidate(scope, item, t) {
 // own is shown as written.
 function sectionTitle(scope, t) {
   var tr = typeof t === "function" ? t : function(s) { return s }
-  return scope.rootSectionTitle === scope.title ? tr(scope.title) : scope.rootSectionTitle
+  return scope.rootSectionTitle || tr(scope.title)
 }
 
 // Whether a scope is offered (its row, its keyword): a requireItems scope only

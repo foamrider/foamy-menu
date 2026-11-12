@@ -191,9 +191,10 @@ test("suggestion replies: OpenSearch lists and DuckDuckGo phrases, bounded", () 
 test("rootSection: off by default; on, it implies rootSearch and titles the section", () => {
   const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true"] }
   const plain = Scopes.normalize(base).scope
-  assert.deepEqual([plain.rootSection, plain.rootSectionTitle, plain.rootSearch], [false, "Notes", false])
+  assert.deepEqual([plain.rootSection, plain.rootSectionTitle, plain.rootSearch], [false, "", false])
+  assert.equal(Scopes.sectionTitle(plain), "Notes", "the heading defaults to the title")
   const on = Scopes.normalize(Object.assign({}, base, { rootSection: true })).scope
-  assert.deepEqual([on.rootSection, on.rootSectionTitle, on.rootSearch], [true, "Notes", true])
+  assert.deepEqual([on.rootSection, on.rootSectionTitle, on.rootSearch], [true, "", true])
   const off = Scopes.normalize(Object.assign({}, base, { rootSection: true, rootSearch: false })).scope
   assert.equal(off.rootSearch, true, "rootSection wins over rootSearch: false")
   assert.equal(Scopes.loadsEarly(on), true, "its items load without entering the scope")
@@ -219,7 +220,7 @@ test("rootSection: a scope file turns it on for a built-in, over the steamGames 
   assert.deepEqual([steam([]).rootSection, steam([]).rootSearch], [false, false])
   const on = steam([file("steam.json", { id: "steam", rootSection: true, rootSectionTitle: "Steam" })])
   assert.deepEqual([on.rootSection, on.rootSearch, on.rootSectionTitle], [true, true, "Steam"])
-  assert.equal(steam([file("steam.json", { id: "steam", rootSection: true })]).rootSectionTitle, "Games", "defaults to the title")
+  assert.equal(Scopes.sectionTitle(steam([file("steam.json", { id: "steam", rootSection: true })])), "Games", "defaults to the title")
 })
 
 test("rootSection: the default heading is translated like the title; a title of its own is not", () => {
@@ -229,4 +230,5 @@ test("rootSection: the default heading is translated like the title; a title of 
   assert.equal(Scopes.sectionTitle(steam({}), t), "Spill")
   assert.equal(Scopes.sectionTitle(steam({ rootSectionTitle: "Steam" }), t), "Steam")
   assert.equal(Scopes.sectionTitle(steam({ rootSectionTitle: "Results" }), t), "Results", "shown as written, even when the catalog has it")
+  assert.equal(Scopes.sectionTitle(steam({ rootSectionTitle: "Games" }), t), "Games", "shown as written, even when it equals the title")
 })
