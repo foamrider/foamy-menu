@@ -21,23 +21,37 @@ function reply(line) {
   return data
 }
 
+var CHANNELS = ["title", "alternate", "subtitle", "keyword"]
+
+// The higher of two channel scores, either of which may be null.
+function best(a, b) {
+  return a === null ? b : (b === null ? a : Math.max(a, b))
+}
+
+// Hits by candidate id. A list can hold one id twice (a list scope with a
+// repeated value): those hits merge, keeping each channel's best score.
 function hits(data, ids) {
   if (!Array.isArray(data.hits)) throw new Error("Search reply has no hits")
   var out = Object.create(null)
+  var seen = Object.create(null)
   for (var i = 0; i < data.hits.length; i++) {
     var hit = data.hits[i]
     if (!hit || !Number.isInteger(hit.index) || hit.index < 0 || hit.index >= ids.length)
       throw new Error("Search reply has an invalid entry index")
-    var id = ids[hit.index]
-    if (Object.prototype.hasOwnProperty.call(out, id)) throw new Error("Search reply repeats an entry")
-    var scores = [hit.title, hit.alternate, hit.subtitle, hit.keyword]
-    for (var j = 0; j < scores.length; j++) {
-      var score = scores[j]
+    if (seen[hit.index]) throw new Error("Search reply repeats an entry")
+    seen[hit.index] = true
+    for (var j = 0; j < CHANNELS.length; j++) {
+      var score = hit[CHANNELS[j]]
       if (score !== null && (!Number.isInteger(score) || score <= 0 || score > 5000000))
         throw new Error("Search reply has an invalid score")
     }
-    if (scores.every(function(score) { return score === null })) throw new Error("Search reply contains an empty hit")
-    out[id] = hit
+    if (CHANNELS.every(function(channel) { return hit[channel] === null })) throw new Error("Search reply contains an empty hit")
+    var id = ids[hit.index]
+    var before = Object.prototype.hasOwnProperty.call(out, id) ? out[id] : null
+    out[id] = before ? {
+      index: before.index, title: best(before.title, hit.title), alternate: best(before.alternate, hit.alternate),
+      subtitle: best(before.subtitle, hit.subtitle), keyword: best(before.keyword, hit.keyword)
+    } : hit
   }
   return out
 }

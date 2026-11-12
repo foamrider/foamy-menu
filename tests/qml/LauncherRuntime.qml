@@ -50,6 +50,14 @@ ShellRoot {
     stage--
     return true
   }
+  // Types a query in the open view and runs the stage again, once the
+  // search settles (backend.loading holds the timer until it does).
+  property string asked: ""
+  function ask(query) {
+    test.asked = query
+    view.setQuery(query)
+    test.stage--
+  }
   function select(id) {
     view.select(view.nthItem(1))
     for (var i = 0; i < 40 && view.selectedRow && view.selectedRow.itemId !== id; i++)
@@ -439,7 +447,17 @@ ShellRoot {
         key(Qt.Key_Tab)
         break
       case 16:
-        test.check(view.view.kind === "scope" && view.view.scopeId === "bookmarks" && view.selectedRow && view.selectedRow.title === "Omarchy", "Tab on a scope row enters it")
+        // A scope's items match a misspelling through the helper, and a
+        // plain prefix through the built-in matcher without one.
+        var typo = test.nativeHelper ? "omrachy" : "omar"
+        if (test.asked !== typo) {
+          test.check(view.view.kind === "scope" && view.view.scopeId === "bookmarks" && view.selectedRow && view.selectedRow.title === "Omarchy", "Tab on a scope row enters it")
+          test.ask(typo)
+          break
+        }
+        test.asked = ""
+        test.check(view.selectedRow && view.selectedRow.itemId === "scope-item:bookmarks:Omarchy", "the scope search finds “" + typo + "”")
+        view.setQuery("")
         key(Qt.Key_Escape)
         test.check(view.atRoot, "Escape leaves the scope")
         view.setQuery("g rust & async")
@@ -524,6 +542,16 @@ ShellRoot {
         // The saves reach shell.json (through `omarchy bar set` here) and come back.
         if (test.waitFor(backend.settingsEntry.width === 1200 && backend.settingsEntry.clockFormat === "12h" && backend.settingsEntry.webSearchHistory === true))
           break
+        // Settings rows match a misspelling through the helper, and a plain
+        // prefix through the built-in matcher without one.
+        var misspelt = test.nativeHelper ? "stricntess" : "strictnes"
+        if (test.asked !== misspelt) {
+          test.ask(misspelt)
+          break
+        }
+        test.asked = ""
+        test.check(view.selectedRow && view.selectedRow.itemId === "setting:rootSearchSensitivity", "the settings search finds “" + misspelt + "”")
+        view.setQuery("")
         test.check(menu.stockMenu.configuredWidth === 1200, "the bar entry in shell.json holds the settings")
         test.select("setting:width")
         test.check(view.selectedRow.typeLabel === "1200 px", "the row shows the saved value")

@@ -29,8 +29,8 @@ newer clippy lints the vendored code trips are allowed, and rustfmt is skipped,
 at the adapter's module boundary (`src/main.rs`), so the vendored files need no
 warning or formatting edits. `tests/search-provenance.test.js` checks the
 hashes above and the license hash below.
-The helper's own tests live in `src/engine.rs`, `src/protocol.rs`, and
-`tests/protocol.rs`.
+The helper's own tests live in `src/engine.rs`, `src/catalogs.rs`,
+`src/protocol.rs`, and `tests/protocol.rs`.
 
 ## License
 
@@ -46,9 +46,19 @@ the process with failure. Unknown object properties are accepted. Requests must
 contain exactly one of `entries` or `query` and an unsigned 64-bit integer `id`.
 Optional entry fields may be omitted; present nulls and wrong types are rejected.
 Errors include `id` when a complete JSON object contains a valid unsigned ID.
-Invalid JSON and oversized drained lines have no recoverable ID. Every rejected
-request preserves the previously loaded catalog. A successful empty load counts
-as loaded; any search before the first successful load fails.
+Invalid JSON and oversized drained lines have no recoverable ID.
+
+The helper holds named catalogs (`src/catalogs.rs`). A load,
+`{"id":1,"catalog":"view","entries":[...]}`, replaces that name's list; a
+search, `{"id":2,"catalog":"view","query":"web","sensitivity":"medium"}`,
+searches it, and hit indexes refer to that list. A request without `catalog`
+names `root`. A name is 1 to 64 ASCII letters, digits, `-`, `_`, `.` or `:`;
+`null` or another type is rejected. Every rejected request preserves every
+loaded catalog, and a rejected load of a new name does not add it. A
+successful empty load counts as loaded; a search of a name before its first
+successful load fails. `services/NativeSearch.qml` uses `root` for the root
+candidates (which submenus and the Apps grid also search) and `view` for the
+open scope's items or the settings rows.
 
 The caller applies `Ranker.transliterate` to every input string and query once.
 The helper performs no transliteration, normalization, trimming, or path search.
@@ -80,7 +90,8 @@ typo scores are `999000` or `998000`: one edit from four alphanumeric query
 characters, two from eight, and no edits when the query starts with a
 non-alphanumeric character. Digits and punctuation remain literal.
 
-Limits are inclusive: 20000 entries per load, 1024 supplied text fields per
+Limits are inclusive: 4 catalog names, 40000 entries over all catalogs (a
+reload counts its new list, not the one it replaces), 20000 entries per load, 1024 supplied text fields per
 entry, 16384 UTF-8 bytes per supplied text field, 256 Unicode scalar values per
 query, and 8 MiB per wire line excluding LF. The field count includes the title,
 each present subtitle and bundle ID (including empty strings), and every
@@ -108,5 +119,6 @@ in a fresh target dir and compares bytes. The integration tests execute the buil
 binary, or the one named by `FOAMY_HELPER` (a JSON argv prefix, e.g. the aarch64
 build through qemu-user binfmt), and cover protocol recovery, reload atomicity,
 channel scores, optional fields, reordered fields, Unicode, long requests, and each
-input limit. Unit tests also cover matcher tiers, shadow removal, sensitivity, and
+input limit, named catalogs and their bounds. Unit tests also cover matcher
+tiers, shadow removal, sensitivity, and
 write/flush failure.

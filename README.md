@@ -19,11 +19,18 @@ The bundled flea-search helper retains its license and provenance in `search/`.
 
 Requires Omarchy 4.5 with Quickshell and the stock menu components.
 Search uses the bundled helper (`bin/x86_64/` and `bin/aarch64/foamy-menu-search`,
-static binaries, no Rust needed). It starts with the first search and keeps
-running; it receives the app and command list once, then one query per
-keystroke, and skips fields that cannot match before scoring them. On other
-CPUs, or when the helper exits or takes over a second to answer, the menu
-uses its built-in matcher for the rest of the shell session. The same binary
+static binaries, no Rust needed) in every view: the root search, submenus,
+the Apps grid, a scope's items and the settings. It starts with the first
+search and keeps running. It receives each list once, and again only when it
+changes: the app and command list (which the root search, submenus and the
+Apps grid share) and the list of the open scope or the settings. Then it gets
+one query per keystroke, and skips fields that cannot match before scoring
+them. So every view matches the same rows at each strictness, misspellings
+included. The built-in matcher takes over in every view for the rest of the
+shell session when the helper is missing for the CPU, exits, fails or takes
+over a second to answer. It also matches a query over 256 characters, and
+the views the helper does not search: a web search scope's saved searches and
+Calculator History. The same binary
 lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`) and the Games
 scope's Steam games (`foamy-menu-search steam-games`), one short run each time
 the scope loads; on a CPU without it, those scopes say the helper isn't
@@ -427,7 +434,7 @@ for the pinned tools; `--ci` is what GitHub's runner can do). It runs
 `omarchy plugin validate .` among its checks.
 
 The search helper is committed for x86_64 and aarch64 and falls back to the
-built-in matcher when it is missing for the CPU or fails. After changing
+built-in matcher in every view when it is missing for the CPU or fails. After changing
 `search/`, rebuild it with `bin/build-search` (also `foamy-menu build-search`):
 it runs the plugin's own `kit/native/build-native.sh`,
 which builds static musl binaries for both arches reproducibly with the pinned
