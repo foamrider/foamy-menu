@@ -327,3 +327,87 @@ fn oversized_final_line_without_newline_reports_one_error() {
             .contains("8388608 bytes")
     );
 }
+
+#[test]
+fn named_catalogs_load_and_search_apart_and_default_to_root() {
+    let output = exchange(&encode(&[
+        json!({"id":1,"entries":[{"title":"Firefox"}]}),
+        json!({"id":2,"catalog":"view","entries":[{"title":"web"},{"title":"db"}]}),
+        json!({"id":3,"catalog":"root","query":"fierfox"}),
+        json!({"id":4,"catalog":"view","query":"fierfox"}),
+        json!({"id":5,"catalog":"view","query":"db"}),
+        json!({"id":6,"query":"firefox"}),
+        json!({"id":7,"catalog":"missing","query":"db"}),
+        json!({"id":8,"catalog":"view","entries":[{"title":"Firefox"}]}),
+        json!({"id":9,"catalog":"view","query":"firefox"}),
+        json!({"id":10,"catalog":"root","query":"db"}),
+    ]));
+    assert_eq!(output[0], json!({"id":1,"loaded":1}));
+    assert_eq!(output[1], json!({"id":2,"loaded":2}));
+    assert_eq!(output[2]["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(output[3], json!({"id":4,"hits":[]}));
+    assert_eq!(output[4]["hits"][0]["index"], 1);
+    assert_eq!(output[5]["hits"][0]["title"], 5_000_000);
+    assert_eq!(output[6]["id"], 7);
+    assert!(
+        output[6]["error"]
+            .as_str()
+            .unwrap()
+            .contains("catalog missing")
+    );
+    assert_eq!(output[7], json!({"id":8,"loaded":1}));
+    assert_eq!(output[8]["hits"][0]["index"], 0);
+    assert_eq!(output[9], json!({"id":10,"hits":[]}));
+}
+
+#[test]
+fn catalog_bounds_reject_with_an_error_and_keep_every_list() {
+    const MAX_TOTAL_ENTRIES: usize = 40_000;
+    let mut requests = Vec::new();
+    for (id, name) in ["a", "b", "c", "d"].iter().enumerate() {
+        requests.push(json!({"id":id,"catalog":name,"entries":[{"title":name}]}));
+    }
+    requests.extend([
+        json!({"id":10,"catalog":"e","entries":[]}),
+        json!({"id":11,"catalog":"bad name","entries":[]}),
+        json!({"id":12,"catalog":"x".repeat(65),"entries":[]}),
+        json!({"id":13,"catalog":"","query":"a"}),
+        json!({"id":14,"catalog":null,"entries":[]}),
+        json!({"id":15,"catalog":7,"query":"a"}),
+        json!({"id":16,"catalog":"a","entries":vec![json!({"title":"x"}); MAX_ENTRIES]}),
+        json!({"id":17,"catalog":"b","entries":vec![json!({"title":"x"}); MAX_ENTRIES]}),
+        json!({"id":18,"catalog":"c","entries":[{"title":"x"},{"title":"y"}]}),
+        json!({"id":19,"catalog":"c","query":"c"}),
+        json!({"id":20,"catalog":"d","query":"d"}),
+        json!({"id":21,"catalog":"b","query":"x"}),
+    ]);
+    let output = exchange(&encode(&requests));
+    for reply in &output[..4] {
+        assert_eq!(reply["loaded"], 1);
+    }
+    let errors = [
+        (4, "4 names"),
+        (5, "catalog must be"),
+        (6, "catalog must be"),
+        (7, "catalog must be"),
+        (8, "invalid load request"),
+        (9, "invalid search request"),
+    ];
+    for (at, text) in errors {
+        let error = output[at]["error"].as_str().unwrap();
+        assert!(error.contains(text), "{at}: {error}");
+        assert_eq!(output[at]["id"], requests[at]["id"]);
+    }
+    assert_eq!(output[10]["loaded"], MAX_ENTRIES);
+    // a (20000) + b (20000) + c (1) + d (1) is over the total: b stays as it was.
+    assert!(
+        output[11]["error"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("{MAX_TOTAL_ENTRIES} candidates in total"))
+    );
+    assert_eq!(output[12]["loaded"], 2);
+    assert_eq!(output[13], json!({"id":19,"hits":[]}));
+    assert_eq!(output[14]["hits"][0]["index"], 0);
+    assert_eq!(output[15], json!({"id":21,"hits":[]}));
+}

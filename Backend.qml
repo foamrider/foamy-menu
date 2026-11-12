@@ -88,19 +88,71 @@ Item {
     nativeSearch.cancel()
   }
 
+  // Every view takes its matches from the helper's catalog for it; null
+  // matches (no helper for this CPU, a failure, a timeout, an over-long
+  // query) leave the match to the built-in matcher.
   function searchAsync(data, callback) {
     nativeSearch.cancel()
     var query = String(data && data.query || "").trim()
-    var view = data && data.view
-    if (!query || (view && view.kind !== "root")) {
+    // Before the empty-query return, so a view's list loads as it opens.
+    var catalog = backend.searchCatalog(data && data.view)
+    if (!query || !catalog) {
       callback(backend.callSync("rootSearch.search", data))
       return
     }
-    nativeSearch.search(Ranker.transliterate(query.toLowerCase()), backend.searchContext().sensitivity, function (matches) {
+    nativeSearch.search(catalog, Ranker.transliterate(query.toLowerCase()), backend.searchContext().sensitivity, function (matches) {
       callback(backend.callSync("rootSearch.search", Object.assign({}, data, {
         fleaHits: matches
       })))
     })
+  }
+
+  // The helper catalog a view searches: "root" for the root candidates
+  // (submenus and the Apps grid list root candidates too), "view" for the
+  // open scope's items or the settings rows, "" for a view the built-in
+  // matcher handles alone (query scopes, Calculator History).
+  function searchCatalog(view) {
+    var kind = view ? view.kind : "root"
+    if (kind === "root" || kind === "menu" || kind === "apps")
+      return "root"
+    if (kind === "scope") {
+      const scope = scopeSource.scope(view.scopeId)
+      if (!scope || Scopes.isQuery(scope))
+        return ""
+      backend.setViewCatalog(backend.scopeItems(scope.id))
+      return "view"
+    }
+    if (kind === "settings") {
+      backend.setViewCatalog(backend.settingsCandidates())
+      return "view"
+    }
+    return ""
+  }
+
+  // The list behind the "view" catalog. A scope's cached item list is the
+  // same array until its items change, so a keystroke builds no entries;
+  // the settings rows are new each time and few, and NativeSearch skips the
+  // load when their entries are unchanged.
+  property var viewCatalogSource: null
+  function setViewCatalog(candidates) {
+    if (candidates === backend.viewCatalogSource)
+      return
+    backend.viewCatalogSource = candidates
+    nativeSearch.setCatalog("view", FleaSearch.entries(candidates, Ranker.transliterate), candidates.map(function (c) {
+      return c.id
+    }))
+  }
+
+  // Every row of the settings view, as the view lists them.
+  function settingsCandidates() {
+    var sections = RootSearch.settingsSections(backend.settings, "", {
+      t: backend.tr
+    }, backend.deps)
+    var out = []
+    for (let s = 0; s < sections.length; s++)
+      for (let r = 0; r < sections[s].rows.length; r++)
+        out.push(sections[s].rows[r].candidate)
+    return out
   }
 
   NativeSearch {
@@ -171,10 +223,9 @@ Item {
     nativeSearch.cancel()
     backend.candidates = next
     backend.candidatesById = byId
-    nativeSearch.ids = next.map(function (c) {
+    nativeSearch.setCatalog("root", entries, next.map(function (c) {
       return c.id
-    })
-    nativeSearch.entries = entries
+    }))
     backend.candidatesRevision++
   }
 

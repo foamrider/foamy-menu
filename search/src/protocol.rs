@@ -1,4 +1,5 @@
-use crate::engine::{Catalog, Entry, Hit, Sensitivity};
+use crate::catalogs::{Catalogs, DEFAULT_CATALOG};
+use crate::engine::{Entry, Hit, Sensitivity};
 use foamy_helper::io::{LineReader, is_over_limit};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6,20 +7,34 @@ use std::io::{self, BufRead, Write};
 
 pub(crate) const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 
-// Input: {"id":1,"entries":[{"title":"Firefox"}]}.
+// Named catalogs: the helper holds up to MAX_CATALOGS lists (catalogs.rs),
+// each loaded and searched by the name in `catalog`. A request without
+// `catalog` names DEFAULT_CATALOG ("root"). NativeSearch.qml uses "root" for
+// the root candidates (also searched by submenus and the Apps grid) and
+// "view" for the open scope's items or the settings rows.
+
+// Input: {"id":1,"catalog":"root","entries":[{"title":"Firefox"}]}.
 #[derive(Deserialize)]
 struct LoadRequest {
     id: u64,
+    #[serde(default = "default_catalog")]
+    catalog: String,
     entries: Vec<Entry>,
 }
 
-// Input: {"id":2,"query":"fire","sensitivity":"medium"}.
+// Input: {"id":2,"catalog":"root","query":"fire","sensitivity":"medium"}.
 #[derive(Deserialize)]
 struct SearchRequest {
     id: u64,
+    #[serde(default = "default_catalog")]
+    catalog: String,
     query: String,
     #[serde(default)]
     sensitivity: Sensitivity,
+}
+
+fn default_catalog() -> String {
+    DEFAULT_CATALOG.to_owned()
 }
 
 #[derive(Serialize)]
@@ -49,13 +64,13 @@ impl Response {
     }
 }
 
-fn request(value: Value, catalog: &mut Catalog) -> Result<Response, String> {
+fn request(value: Value, catalogs: &mut Catalogs) -> Result<Response, String> {
     let object = value.as_object().ok_or("request must be an object")?;
     match (object.contains_key("entries"), object.contains_key("query")) {
         (true, false) => {
             let request: LoadRequest = serde_json::from_value(value)
                 .map_err(|error| format!("invalid load request: {error}"))?;
-            let loaded = catalog.load(request.entries)?;
+            let loaded = catalogs.load(&request.catalog, request.entries)?;
             Ok(Response::Loaded {
                 id: request.id,
                 loaded,
@@ -64,7 +79,7 @@ fn request(value: Value, catalog: &mut Catalog) -> Result<Response, String> {
         (false, true) => {
             let request: SearchRequest = serde_json::from_value(value)
                 .map_err(|error| format!("invalid search request: {error}"))?;
-            let hits = catalog.search(&request.query, request.sensitivity)?;
+            let hits = catalogs.search(&request.catalog, &request.query, request.sensitivity)?;
             Ok(Response::Hits {
                 id: request.id,
                 hits,
@@ -75,24 +90,24 @@ fn request(value: Value, catalog: &mut Catalog) -> Result<Response, String> {
 }
 
 // Input is one complete JSON object per line; property order and unknown properties are unrestricted.
-fn response(line: &[u8], catalog: &mut Catalog) -> Response {
+fn response(line: &[u8], catalogs: &mut Catalogs) -> Response {
     let value: Value = match serde_json::from_slice(line) {
         Ok(value) => value,
         Err(error) => return Response::error(None, format!("invalid JSON request: {error}")),
     };
     let id = value.get("id").and_then(Value::as_u64);
-    request(value, catalog).unwrap_or_else(|error| Response::error(id, error))
+    request(value, catalogs).unwrap_or_else(|error| Response::error(id, error))
 }
 
 pub(crate) fn run(reader: impl BufRead, writer: &mut impl Write) -> io::Result<()> {
-    let mut catalog = Catalog::default();
+    let mut catalogs = Catalogs::default();
     // The kit's bounded line reader: an oversized line is consumed through LF
     // or EOF without growing past the limit, and reading goes on after it.
     let mut lines = LineReader::new(reader, MAX_LINE_BYTES);
     loop {
         let reply = match lines.read_line() {
             Ok(None) => return Ok(()),
-            Ok(Some(line)) => response(&line, &mut catalog),
+            Ok(Some(line)) => response(&line, &mut catalogs),
             Err(error) if is_over_limit(&error) => {
                 Response::error(None, format!("request line exceeds {MAX_LINE_BYTES} bytes"))
             }

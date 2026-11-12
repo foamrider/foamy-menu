@@ -99,9 +99,6 @@ services/CalculatorData.qml: block-scope-var-declaration: var declaration in blo
 services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var doc = JSON.parse(text())
 services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var m = /^(\S+) ([+-])(\d\d)(\d\d)$/.exec(lines[i])
 services/CalculatorData.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parsed = service.validRates(doc)
-services/NativeSearch.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var data = FleaSearch.reply(line)
-services/NativeSearch.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var matches = FleaSearch.hits(data, service.ids)
-services/NativeSearch.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var request = service.pending
 services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < lines.length; i++) {
 services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < source.tree.order.length; i++) {
 services/OmarchyMenuSource.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | for (var i = 0; i < tree.order.length; i++) {
