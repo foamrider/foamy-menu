@@ -36,7 +36,10 @@ function harness(tree) {
   return { summons, visits, open: id => JSON.parse(JSON.stringify(perform({ id }))) }
 }
 
-for (const [version, appearance] of [["4.0.0", "style"], ["4.5.0", "appearance"]]) {
+// The selected rows of the supported Omarchy release.
+{
+  const version = "4.5.0"
+  const appearance = "appearance"
   const parsed = OmarchyMenu.parse(fs.readFileSync(path.join(__dirname, "fixtures/omarchy-menu-v" + version + ".jsonc"), "utf8"))
   const tree = OmarchyMenu.buildTree(parsed.items, [])
 
@@ -50,7 +53,7 @@ for (const [version, appearance] of [["4.0.0", "style"], ["4.5.0", "appearance"]
       providers[item.id] = OmarchyMenu.providerItems(item.id, item.provider, "First\tfirst\tfirst\nSecond\tsecond\tfirst\n")
     }
     assert.ok(providers[appearance + ".font"])
-    if (version === "4.5.0") assert.ok(providers["update.kernel"])
+    assert.ok(providers["update.kernel"])
     const candidates = RootSearch.menuCandidates(tree, {}, providers, deps)
     for (const [id, rows] of Object.entries(providers)) {
       const sections = RootSearch.submenuSections(candidates, id, "", { commands: {}, frecency: {}, nowMs: Date.now() }, deps)

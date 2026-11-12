@@ -40,7 +40,7 @@ test("Games is a cover grid shown once Steam has games; steamGames adds them to 
     [{ name: "steam.json", definition: { id: "steam", layout: "list", keyword: "games" } }]).scopes.find((s) => s.id === "steam")
   assert.deepEqual([listed.layout, listed.keyword], ["list", "games"], "a scope file still overrides the built-in")
   const keys = RS.settingsSections(defaults, "", ctx, deps).flatMap((s) => s.rows.map((r) => r.candidate.settingKey)).filter(Boolean)
-  assert.ok(keys.includes("steamGames") && !keys.some((k) => /Art$/.test(k)), "one switch, no art choice")
+  assert.ok(keys.includes("steamGames") && !keys.some((k) => k.endsWith("Art")), "one switch, no art choice")
 })
 
 test("games are found from the root search, ranked and filtered as applications", () => {

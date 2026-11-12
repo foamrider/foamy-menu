@@ -33,6 +33,8 @@ test("first start under umask 022 creates owner-only dirs and 0600 store files",
   for (const dir of Paths.privateRoots(p)) assert.equal(mode(dir), 0o700, dir)
   for (const dir of Paths.directoriesToCreate(p)) assert.equal(mode(dir), 0o700, dir)
   for (const f of ["settings.json", "frecency.json", "calculator.json"]) assert.equal(mode(p.db + "/" + f), 0o600, f)
+  // Nothing in state or the runtime dir: the launcher keeps nothing there.
+  for (const unused of [p.home + "/.local/state/foamy-menu", p.home + "/run/foamy-menu"]) assert.equal(fs.existsSync(unused), false, unused)
 })
 
 test("an atomic save into a pre-created file keeps it private", (t) => {

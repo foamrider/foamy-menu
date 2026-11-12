@@ -17,7 +17,11 @@ Item {
   property var catalog: ({})
   readonly property string catalogPath: FoamyI18n.language !== "en" ? source.omarchyPath + "/default/i18n/" + FoamyI18n.language + "/menu.json" : ""
   property var tree: OmarchyMenu.buildTree([], [])
-  property var guards: ({ when: {}, checked: {}, disabled: {} })
+  property var guards: ({
+      when: {},
+      checked: {},
+      disabled: {}
+    })
   property var providerItems: ({})
   property bool loading: guardProc.running || providerProc.running
   property int revision: 0
@@ -32,36 +36,45 @@ Item {
 
   function createGuardCompiler() {
     try {
-      var path = source.omarchyPath + "/shell/plugins/menu/MenuModel.js"
+      var path = source.omarchyPath + "/shell/plugins/menu/MenuModel.js";
       var url = "file://" + path.split("/").map(encodeURIComponent).join("/")
-      source.guardCompiler = Qt.createQmlObject(
-        "import QtQml\nimport " + JSON.stringify(url) + " as Stock\n"
-          + "QtObject { function compile(items) { return Stock.guardScript(items) } }",
-        source, "OmarchyGuardCompiler")
+      source.guardCompiler = Qt.createQmlObject("import QtQml\nimport " + JSON.stringify(url) + " as Stock\n" + "QtObject { function compile(items) { return Stock.guardScript(items) } }", source, "OmarchyGuardCompiler")
     } catch (error) {
       source.guardCompiler = null
     }
   }
 
-  Component.onCompleted: { source.createGuardCompiler(); source.refresh() }
-  Component.onDestruction: if (source.guardCompiler) source.guardCompiler.destroy()
+  Component.onCompleted: {
+    source.createGuardCompiler()
+    source.refresh()
+  }
+  Component.onDestruction: if (source.guardCompiler)
+    source.guardCompiler.destroy()
 
   function guardItems(tree) {
     var items = Object.create(null)
     for (var i = 0; i < tree.order.length; i++) {
       var id = tree.order[i]
-      if (!Object.prototype.hasOwnProperty.call(tree.items, id)) continue
+      if (!Object.prototype.hasOwnProperty.call(tree.items, id))
+        continue
       var item = tree.items[id]
-      if (item && /^[A-Za-z0-9._-]+$/.test(item.id)) items[item.id] = item
+      if (item && /^[A-Za-z0-9._-]+$/.test(item.id))
+        items[item.id] = item
     }
     return items
   }
 
+  // The stock menu's own MenuModel.js builds the guard batch, so Foamy runs
+  // the same conditions the stock menu does. When that file is missing,
+  // doesn't compile, throws or returns no script (a changed or broken host
+  // install), OmarchyMenu.guardScript builds an equivalent batch instead, so
+  // entries keep their when/checked/disabled conditions.
   function compileGuards(tree, items) {
     if (source.guardCompiler) {
       try {
         var script = source.guardCompiler.compile(items)
-        if (typeof script === "string") return script
+        if (typeof script === "string")
+          return script
       } catch (error) {}
       source.guardCompiler.destroy()
       source.guardCompiler = null
@@ -72,9 +85,12 @@ Item {
   function guardKeys(items) {
     var keys = []
     for (var id in items) {
-      if (items[id].when) keys.push(id + ":w")
-      if (items[id].checked) keys.push(id + ":c")
-      if (items[id].disabled) keys.push(id + ":d")
+      if (items[id].when)
+        keys.push(id + ":w")
+      if (items[id].checked)
+        keys.push(id + ":c")
+      if (items[id].disabled)
+        keys.push(id + ":d")
     }
     return keys
   }
@@ -84,8 +100,12 @@ Item {
     var expected = guardProc.expectedGuards
     guardProc.requestTree = null
     guardProc.expectedGuards = []
-    if (!tree) return
-    if (tree !== source.tree) { source.refresh(); return }
+    if (!tree)
+      return
+    if (tree !== source.tree) {
+      source.refresh()
+      return
+    }
     if (exitCode !== 0 || exitStatus !== 0) {
       source.message("warning", "Menu guard refresh failed; keeping previous results.", null)
       return
@@ -95,7 +115,8 @@ Item {
     for (var i = 0; i < lines.length; i++) {
       // Guard rows look like system.lock:w:1, with one row per requested condition.
       var match = /^([A-Za-z0-9._-]+:[wcd]):[01]$/.exec(lines[i].trim())
-      if (match) received[match[1]] = true
+      if (match)
+        received[match[1]] = true
     }
     for (var j = 0; j < expected.length; j++) {
       if (!received[expected[j]]) {
@@ -139,7 +160,8 @@ Item {
     var out = []
     for (var i = 0; i < source.tree.order.length; i++) {
       var item = source.tree.items[source.tree.order[i]]
-      if (item.provider && OmarchyMenu.PROVIDERS[item.provider]) out.push(item.id)
+      if (item.provider && OmarchyMenu.PROVIDERS[item.provider])
+        out.push(item.id)
     }
     return out
   }
@@ -168,12 +190,14 @@ Item {
   // list that timed out, was killed or never started keeps the previous one.
   function finishProvider(ok) {
     var menuId = providerProc.menuId
-    if (menuId === "") return
+    if (menuId === "")
+      return
     providerProc.menuId = ""
     var item = source.tree.items[menuId]
     if (item) {
       var next = ({})
-      for (var k in source.pendingProviderItems) next[k] = source.pendingProviderItems[k]
+      for (var k in source.pendingProviderItems)
+        next[k] = source.pendingProviderItems[k]
       next[menuId] = ok ? OmarchyMenu.providerItems(menuId, item.provider, providerProc.collected) : (source.providerItems[menuId] || [])
       source.pendingProviderItems = next
     }
@@ -182,9 +206,12 @@ Item {
 
   function load(which, text) {
     var parsed = OmarchyMenu.parse(text)
-    if (parsed.error) source.message("warning", "ignoring unreadable " + (which === "user" ? source.userPath : source.defaultPath) + ": " + parsed.error, null)
-    if (which === "user") source.userItems = parsed.items
-    else source.defaultItems = parsed.items
+    if (parsed.error)
+      source.message("warning", "ignoring unreadable " + (which === "user" ? source.userPath : source.defaultPath) + ": " + parsed.error, null)
+    if (which === "user")
+      source.userItems = parsed.items
+    else
+      source.defaultItems = parsed.items
     source.rebuild()
   }
 
@@ -193,23 +220,35 @@ Item {
     property string collected: ""
     property var requestTree: null
     property var expectedGuards: []
-    stdout: SplitParser { onRead: function(line) { guardProc.collected += line + "\n" } }
-    onExited: function(exitCode, exitStatus) {
+    stdout: SplitParser {
+      onRead: function (line) {
+        guardProc.collected += line + "\n"
+      }
+    }
+    onExited: function (exitCode, exitStatus) {
       source.finishGuards(exitCode, exitStatus)
     }
     // After exited() (or a restart from it) this finds no request. Without
     // exited() before it the batch never started: keep the previous results.
-    onRunningChanged: if (!running) source.finishGuards(-1, 1)
+    onRunningChanged: if (!running)
+      source.finishGuards(-1, 1)
   }
 
   Process {
     id: providerProc
     property string menuId: ""
     property string collected: ""
-    stdout: SplitParser { onRead: function(line) { providerProc.collected += line + "\n" } }
+    stdout: SplitParser {
+      onRead: function (line) {
+        providerProc.collected += line + "\n"
+      }
+    }
     // timeout exits 124 at the deadline (or is SIGKILLed with what's left).
-    onExited: function(exitCode, exitStatus) { source.finishProvider(exitStatus === 0 && exitCode !== 124) }
-    onRunningChanged: if (!running) source.finishProvider(false)
+    onExited: function (exitCode, exitStatus) {
+      source.finishProvider(exitStatus === 0 && exitCode !== 124)
+    }
+    onRunningChanged: if (!running)
+      source.finishProvider(false)
   }
 
   FileView {
@@ -218,7 +257,10 @@ Item {
     printErrors: false
     onFileChanged: reload()
     onLoaded: source.load("default", text())
-    onLoadFailed: { source.message("error", "Omarchy menu not found at " + source.defaultPath, null); source.load("default", "") }
+    onLoadFailed: {
+      source.message("error", "Omarchy menu not found at " + source.defaultPath, null)
+      source.load("default", "")
+    }
   }
 
   FileView {
@@ -226,10 +268,19 @@ Item {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: { source.catalog = OmarchyMenu.parseCatalog(text()); source.rebuild() }
-    onLoadFailed: { source.catalog = ({}); source.rebuild() }
+    onLoaded: {
+      source.catalog = OmarchyMenu.parseCatalog(text())
+      source.rebuild()
+    }
+    onLoadFailed: {
+      source.catalog = ({})
+      source.rebuild()
+    }
   }
-  onCatalogPathChanged: if (!source.catalogPath) { source.catalog = ({}); source.rebuild() }
+  onCatalogPathChanged: if (!source.catalogPath) {
+    source.catalog = ({})
+    source.rebuild()
+  }
 
   FileView {
     path: source.userPath

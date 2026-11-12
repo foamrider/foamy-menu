@@ -1,6 +1,5 @@
 import QtQuick
 import Quickshell
-import Quickshell.Io
 import Quickshell.Hyprland
 import qs.Commons
 import "ui"
@@ -18,7 +17,7 @@ Item {
   property int minimumWidth: 0
   property var settingsEntry: ({})
   property var hostShell: null
-  readonly property alias backendApi: backend
+  readonly property alias backendApi: backendService
   readonly property alias window: launcher
 
   readonly property string pluginId: (root.manifest && root.manifest.id) || "foamy.menu"
@@ -26,32 +25,43 @@ Item {
   property bool opened: false
   property double openedAt: 0
 
-
   function open(payloadJson) {
     var payload = ({})
-    try { payload = JSON.parse(payloadJson || "{}") } catch (e) { payload = ({}) }
+    try {
+      payload = JSON.parse(payloadJson || "{}")
+    } catch (e) {
+      payload = ({})
+    }
     var wasOpen = root.opened
     root.opened = true
     root.openedAt = Date.now()
     launcher.prepare(payload)
-    if (!wasOpen) backend.emit("window.visibilityChanged", { visible: true })
+    if (!wasOpen)
+      backendService.emit("window.visibilityChanged", {
+        visible: true
+      })
   }
 
   function close() {
-    if (!root.opened) return
+    if (!root.opened)
+      return
     root.opened = false
-    backend.emit("window.visibilityChanged", { visible: false })
+    backendService.emit("window.visibilityChanged", {
+      visible: false
+    })
   }
 
-
   function show() {
-    if (root.opened) return
-    if (root.shell && root.shell.summon(root.pluginId, "{}")) return
+    if (root.opened)
+      return
+    if (root.shell && root.shell.summon(root.pluginId, "{}"))
+      return
     root.open("{}")
   }
 
   function hide() {
-    if (!root.opened) return
+    if (!root.opened)
+      return
     if (root.shell && root.shell.hide(root.pluginId)) {
       root.close()
       return
@@ -60,14 +70,22 @@ Item {
   }
 
   function toggle() {
-    if (root.opened) root.hide()
-    else root.show()
+    if (root.opened)
+      root.hide()
+    else
+      root.show()
   }
 
   function run(commandId) {
     // `foamy-menu run` is explicit, so it skips the confirmation alert.
-    var r = backend.callSync("rootSearch.performAction", { id: commandId, action: "open", query: "", confirmed: true })
-    if (!r.ok) return r
+    var r = backendService.callSync("rootSearch.performAction", {
+      id: commandId,
+      action: "open",
+      query: "",
+      confirmed: true
+    })
+    if (!r.ok)
+      return r
     var outcome = r.data || {}
     if (outcome.push) {
       root.show()
@@ -75,17 +93,21 @@ Item {
       launcher.push(outcome.push)
     } else if (outcome.close) {
       root.hide()
-      if (outcome.hud) launcher.hud(outcome.hud)
+      if (outcome.hud)
+        launcher.hud(outcome.hud)
     }
     return r
   }
 
   Backend {
-    id: backend
+    id: backendService
+    version: (root.manifest && root.manifest.version) || ""
     appLibrary: root.appLibrary
     settingsEntry: root.settingsEntry
     hostShell: root.hostShell
-    summon: function(id, payload) { return root.shell ? root.shell.summon(id, payload) : false }
+    summon: function (id, payload) {
+      return root.shell ? root.shell.summon(id, payload) : false
+    }
   }
 
   LauncherWindow {
@@ -94,8 +116,8 @@ Item {
     brandFont: root.brandFont
     minimumWidth: root.minimumWidth
     shown: root.opened
-    backend: backend
-    appLibrary: backend.appLibrary
+    backend: backendService
+    appLibrary: backendService.appLibrary
     onDismissRequested: root.hide()
   }
 
@@ -141,11 +163,16 @@ Item {
     function call(method: string, dataJson: string): string {
       var data = null
       if (dataJson && dataJson.length > 0) {
-        try { data = JSON.parse(dataJson) } catch (e) {
-          return JSON.stringify({ ok: false, error: "data is not JSON: " + e })
+        try {
+          data = JSON.parse(dataJson)
+        } catch (e) {
+          return JSON.stringify({
+            ok: false,
+            error: "data is not JSON: " + e
+          })
         }
       }
-      return JSON.stringify(backend.callSync(method, data))
+      return JSON.stringify(backendService.callSync(method, data))
     }
   }
 }

@@ -12,10 +12,12 @@ Rectangle {
   property var look: null
   property real zoom: 1
 
-  signal confirmed()
-  signal cancelled()
+  signal confirmed
+  signal cancelled
 
-  function px(v) { return Math.round(Style.space(v) * alert.zoom) }
+  function px(v) {
+    return Math.round(Style.space(v) * alert.zoom)
+  }
 
   // Omarchy's ConfirmDialog colours: the theme's urgent colour for a
   // destructive action, the menu scrim behind.
@@ -23,7 +25,10 @@ Rectangle {
 
   color: Commons.Color.menu.scrim
 
-  MouseArea { anchors.fill: parent; onClicked: alert.cancelled() }
+  MouseArea {
+    anchors.fill: parent
+    onClicked: alert.cancelled()
+  }
 
   Rectangle {
     id: box
@@ -35,7 +40,9 @@ Rectangle {
     border.width: 1
     border.color: Util.alpha(alert.look.foreground, 0.18)
 
-    MouseArea { anchors.fill: parent }
+    MouseArea {
+      anchors.fill: parent
+    }
 
     Column {
       id: column
@@ -70,7 +77,10 @@ Rectangle {
         font.pixelSize: Math.round(Style.font.bodySmall * alert.zoom)
       }
 
-      Item { width: 1; height: alert.px(4) }
+      Item {
+        width: 1
+        height: alert.px(4)
+      }
 
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
@@ -78,8 +88,16 @@ Rectangle {
 
         Repeater {
           model: [
-            { primary: false, title: FoamyI18n.t("Cancel"), key: "Esc" },
-            { primary: true, title: alert.spec ? alert.spec.primary : FoamyI18n.t("OK"), key: "↵" }
+            {
+              primary: false,
+              title: FoamyI18n.t("Cancel"),
+              key: "Esc"
+            },
+            {
+              primary: true,
+              title: alert.spec ? alert.spec.primary : FoamyI18n.t("OK"),
+              key: "↵"
+            }
           ]
 
           Rectangle {
@@ -90,9 +108,7 @@ Rectangle {
             radius: Math.max(Style.cornerRadius, alert.px(6))
             border.width: danger ? 1 : 0
             border.color: alert.danger
-            color: danger ? Util.alpha(alert.danger, 0.22)
-              : modelData.primary ? alert.look.selectedBackground
-              : Util.alpha(alert.look.foreground, 0.08)
+            color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
 
             Row {
               anchors.centerIn: parent

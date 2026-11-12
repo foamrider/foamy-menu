@@ -30,7 +30,9 @@ Item {
   signal hovered(int index, var item, var mouse)
   signal clicked(int index)
 
-  function px(v) { return Math.round(Style.space(v) * cell.zoom) }
+  function px(v) {
+    return Math.round(Style.space(v) * cell.zoom)
+  }
   readonly property int iconSize: cell.px(52)
   readonly property int radius: Math.max(Style.cornerRadius, cell.px(6))
 
@@ -40,9 +42,7 @@ Item {
   // The item's own icon, unless it fails to load; then the scope's icon.
   property bool imageFailed: false
   onImageChanged: cell.imageFailed = false
-  readonly property string iconSource: cell.image && !cell.imageFailed
-    ? (Scopes.imageUrl(cell.image) || cell.iconUrl(cell.image))
-    : cell.iconUrl(cell.iconName || cell.fallbackIcon)
+  readonly property string iconSource: cell.image && !cell.imageFailed ? (Scopes.imageUrl(cell.image) || cell.iconUrl(cell.image)) : cell.iconUrl(cell.iconName || cell.fallbackIcon)
   // Cover art is cropped to the cell; without one (or when it fails to
   // load), the icon sits on the tile.
   readonly property bool hasCover: cell.cover.length > 0 && coverImage.status !== Image.Error
@@ -61,7 +61,8 @@ Item {
     asynchronous: true
     smooth: true
     mipmap: true
-    onStatusChanged: if (status === Image.Error && cell.image) cell.imageFailed = true
+    onStatusChanged: if (status === Image.Error && cell.image)
+      cell.imageFailed = true
   }
 
   Item {
@@ -112,7 +113,8 @@ Item {
         asynchronous: true
         smooth: true
         mipmap: true
-        onStatusChanged: if (status === Image.Error && cell.image) cell.imageFailed = true
+        onStatusChanged: if (status === Image.Error && cell.image)
+          cell.imageFailed = true
       }
 
       Image {
@@ -178,7 +180,9 @@ Item {
     anchors.fill: parent
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    onPositionChanged: function(mouse) { cell.hovered(cell.index, cell, mouse) }
+    onPositionChanged: function (mouse) {
+      cell.hovered(cell.index, cell, mouse)
+    }
     onClicked: cell.clicked(cell.index)
   }
 }

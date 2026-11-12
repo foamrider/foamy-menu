@@ -2,7 +2,7 @@
 # Foamy launcher IPC. Installation and keybindings stay with Omarchy and dotfiles.
 set -euo pipefail
 case "${1:-}" in
-  toggle|show|hide|ping|isOpen|run|call)
+  toggle | show | hide | ping | isOpen | run | call)
     exec omarchy-shell foamy-menu "$@"
     ;;
   build-search)

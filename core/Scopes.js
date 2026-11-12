@@ -28,10 +28,21 @@ var MAX_TIMEOUT_MS = 60000
 // waits WATCHDOG_GRACE_MS past the deadline before giving up on the exit.
 var KILL_AFTER = "1s"
 var WATCHDOG_GRACE_MS = 3000
-// Characters of output kept from one command scope run. Past it the command
-// is stopped and the lines read so far are its items: MAX_ITEMS items fit
-// many times over, so only a command that floods its output is cut short.
+// Bytes of stdout read from one command scope run (capped()). Past it the
+// command is stopped and the whole lines before the cut are its items:
+// MAX_ITEMS items fit many times over, so only a command that floods its
+// output is cut short.
 var MAX_OUTPUT = 8 * 1024 * 1024
+// The fixed script capped() runs the command under; the command and its
+// arguments are its positional parameters, never script text. Quickshell's
+// line reader keeps a line until its newline arrives, so the cap has to sit
+// in front of it: `head -c` closes the pipe at MAX_OUTPUT bytes and the
+// command dies of SIGPIPE on its next write, which pipefail reports as exit
+// 141 (CAPPED_EXIT). The TERM trap keeps bash, timeout's direct child, alive
+// until the pipeline ends, so a command that ignores SIGTERM still gets
+// timeout's SIGKILL; bash resets the trap in what it runs.
+var CAPPED_SCRIPT = 'trap : TERM; set -o pipefail; "$@" | head -c ' + MAX_OUTPUT
+var CAPPED_EXIT = 141
 // Characters of a command scope's stderr kept for its failure message.
 var MAX_STDERR = 4096
 var MAX_SUGGESTIONS = 8
@@ -493,6 +504,16 @@ function substitute(text, value, pluginDir) {
 }
 
 // A filled scope command under timeout, ending it (and its children) at ms.
+// argv with its stdout cut at MAX_OUTPUT bytes (CAPPED_SCRIPT).
+function capped(argv) {
+  return ["bash", "-c", CAPPED_SCRIPT, "foamy-scope"].concat(argv)
+}
+
+// Whether a capped() command was stopped at MAX_OUTPUT.
+function wasCapped(exitCode, exitStatus) {
+  return exitStatus === 0 && exitCode === CAPPED_EXIT
+}
+
 function bounded(argv, ms) {
   var seconds = Math.max(1, Math.round(Number(ms) || 0)) / 1000
   return ["timeout", "--kill-after=" + KILL_AFTER, String(seconds) + "s"].concat(argv)
@@ -507,10 +528,12 @@ function timedOut(exitCode, exitStatus, elapsedMs, ms) {
 
 // The short failure message for a command scope's non-zero exit: the first
 // non-blank stderr line (timeout's own "timeout: " prefix dropped from its
-// "failed to run command" report), else the exit code.
+// "failed to run command" report, and the capped() wrapper's
+// "foamy-scope: line 1: " from bash's "command not found"), else the exit
+// code.
 function exitFailure(exitCode, stderr) {
   var line = String(stderr || "").split("\n").filter(function(l) { return l.trim() })[0] || ""
-  line = line.replace(/^timeout: (failed to run command)/, "$1")
+  line = line.replace(/^timeout: (failed to run command)/, "$1").replace(/^foamy-scope: [^:]* [0-9]+: /, "")
   return (line || ("exited with code " + exitCode)).slice(0, 200)
 }
 
@@ -597,6 +620,10 @@ if (typeof module !== "undefined") {
     MAX_OUTPUT: MAX_OUTPUT,
     MAX_STDERR: MAX_STDERR,
     WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS,
+    CAPPED_SCRIPT: CAPPED_SCRIPT,
+    CAPPED_EXIT: CAPPED_EXIT,
+    capped: capped,
+    wasCapped: wasCapped,
     bounded: bounded,
     timedOut: timedOut,
     exitFailure: exitFailure,

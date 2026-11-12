@@ -1,0 +1,3 @@
+# Paths a check must not read: `<glob> [checks]  # reason` (tests/validate.sh).
+tests/qml/*  qmllint  # harness scenes: "harness", "plugin" and the staged qs.Ui (FakeMenuWindow, FoamyWait) exist only in the harness's run directory, so qmllint's import verdict on them is not evidence
+tests/fixtures/foamy-ssh-hosts.sh  shfmt  # the retired Bash SSH lister, kept as written: ssh-hosts.test.js compares the helper's output with this reference implementation

@@ -38,7 +38,9 @@ Item {
 
   readonly property bool isSection: row.rowKind === "section"
   readonly property bool isCalculator: row.rowKind === "calculator"
-  function px(v) { return Math.round(Style.space(v) * row.zoom) }
+  function px(v) {
+    return Math.round(Style.space(v) * row.zoom)
+  }
 
   width: ListView.view ? ListView.view.width : 0
   height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(64) : px(42))
@@ -135,7 +137,8 @@ Item {
         sourceSize.width: width * Screen.devicePixelRatio
         sourceSize.height: height * Screen.devicePixelRatio
         source: !visible ? "" : (Scopes.imageUrl(name) || (row.appLibrary ? row.appLibrary.iconSource(name) : Quickshell.iconPath(name, "application-x-executable")))
-        onStatusChanged: if (status === Image.Error && ownImage) row.imageFailed = true
+        onStatusChanged: if (status === Image.Error && ownImage)
+          row.imageFailed = true
       }
 
       Text {
@@ -249,7 +252,9 @@ Item {
     enabled: !row.isSection
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
-    onPositionChanged: function(mouse) { row.hovered(row.index, row, mouse) }
+    onPositionChanged: function (mouse) {
+      row.hovered(row.index, row, mouse)
+    }
     onClicked: row.clicked(row.index)
   }
 }

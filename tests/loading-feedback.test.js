@@ -4,6 +4,7 @@ const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
 const { spawnSync } = require("node:child_process")
+const { isolatedQs } = require("./qs-sandbox.js")
 
 const source = fs.readFileSync(path.join(__dirname, "../ui/LauncherWindow.qml"), "utf8")
 
@@ -37,11 +38,8 @@ test("loading feedback delays fast work, preserves toasts and resets across hide
   // Footer sample: "id: footerStatus\n  text: window.toast ? window.toast.title : window.view.title".
   const footer = source.match(/id: footerStatus\s+[\s\S]*?text: ([^\n]+)/)
   assert.ok(footer, "missing footer status binding")
-  const env = { ...process.env, HOME: root, TMPDIR: root, QT_QPA_PLATFORM: "offscreen", QML_DISABLE_DISK_CACHE: "1" }
-  for (const key of ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"]) {
-    env[key] = path.join(root, key)
-    fs.mkdirSync(env[key], { mode: 0o700 })
-  }
+  // No desktop session bus, display or Omarchy command (tests/qs-sandbox.js).
+  const { env, hostCommands } = isolatedQs(root)
   const config = path.join(root, "shell.qml")
   fs.writeFileSync(config, `import QtQuick
 import Quickshell
@@ -99,4 +97,5 @@ ShellRoot {
   assert.equal(result.status, 0, output)
   assert.match(output, /OMACAST_LOADING_PROBE:OK/)
   assert.doesNotMatch(output, /OMACAST_LOADING_PROBE:FAIL/)
+  assert.deepEqual(hostCommands(), [])
 })

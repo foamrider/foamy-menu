@@ -28,7 +28,7 @@ function argv(maxBytes, seconds) {
 // a filled URL template never has them (the query is URL-encoded).
 function config(url, languages) {
   var text = String(url || "")
-  if (!/^https:\/\/[^\/]/.test(text) || /[\x00-\x20\x7f"\\]/.test(text)) return ""
+  if (!/^https:\/\/[^/]/.test(text) || /[\x00-\x20\x7f"\\]/.test(text)) return ""
   var out = 'url = "' + text + '"\n'
   // As XMLHttpRequest sent them, so suggestions keep the same language.
   out += 'user-agent = "Mozilla/5.0"\n'

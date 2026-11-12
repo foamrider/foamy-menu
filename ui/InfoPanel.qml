@@ -11,7 +11,9 @@ Rectangle {
   property var look: null
   property real zoom: 1
 
-  function px(v) { return Math.round(Style.space(v) * panel.zoom) }
+  function px(v) {
+    return Math.round(Style.space(v) * panel.zoom)
+  }
 
   width: px(400)
   height: content.implicitHeight + px(24)
@@ -20,7 +22,9 @@ Rectangle {
   border.width: 1
   border.color: Util.alpha(look.foreground, 0.15)
 
-  MouseArea { anchors.fill: parent }
+  MouseArea {
+    anchors.fill: parent
+  }
 
   Column {
     id: content

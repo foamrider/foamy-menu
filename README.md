@@ -37,7 +37,8 @@ omarchy restart shell
 The Arch bar button and the normal Super+Space menu shortcut open the launcher.
 Right-clicking the bar button opens the default terminal.
 
-- Enter opens the selected result; Shift+Enter opens a new application window.
+- Enter opens the selected result (an app whose window is open is focused
+  instead); Shift+Enter opens a new application window.
 - Ctrl+K opens actions; Ctrl+Shift+F toggles a favorite; Ctrl+, opens the settings.
 - Arrow keys navigate; Esc goes back or closes; Shift+Esc returns to root.
 - The search field edits at its cursor: ← → move it (in grids they move
@@ -313,9 +314,10 @@ and `cover` too. It runs when the scope is entered, with a
 10-second default timeout (`timeout` 100–60000 ms): at the deadline the
 command's process group (the command and what it started) gets SIGTERM, and
 SIGKILL a second later. The previous list stays on screen while it
-refreshes, and a failed run keeps it. At most 5000 items; a command that
-prints more than 8 Mi characters is stopped there, and the lines before that
-are its list.
+refreshes, and a failed run keeps it. At most 5000 items; the launcher reads
+at most 8 MiB of a command's output (a fixed `bash` wrapper pipes it through
+`head -c`), so a command that prints more is stopped there by SIGPIPE, and
+the whole lines before the cut are its list.
 
 A query scope is one more search engine, for example the Arch Wiki:
 
@@ -328,7 +330,9 @@ A query scope is one more search engine, for example the Arch Wiki:
 }
 ```
 
-Commands are argv arrays and never pass through a shell. `{value}` (the
+Commands are argv arrays, and their arguments never become shell code: an
+`open` command runs directly, and a `source` command runs as the arguments of
+the fixed output-capping `bash` wrapper above. `{value}` (the
 item's value, or a query scope's typed text), `{query}` (the same,
 URL-encoded) and `{plugin}` (this plugin's directory) are replaced inside
 single arguments, so a value with spaces or `;` stays one argument; `{value}`
@@ -362,6 +366,10 @@ entries remain in `~/.config/omarchy/extensions/omarchy-menu.jsonc`.
 
 The stock adapter uses private Omarchy menu internals for the window/card and
 application library. The runtime tests check these against the installed host.
+Menu entries' `when`, `checked` and `disabled` conditions run as one batch
+that the stock menu's `MenuModel.js` builds; if that file is missing or
+fails, Foamy builds an equivalent batch itself, so the conditions keep
+working.
 
 ## Side-by-side Omacast
 
@@ -373,7 +381,7 @@ name `foamy-menu`, layer namespace `foamy-menu`, and separate XDG directories:
 - Scopes: `~/.config/foamy-menu/scopes/*.json`
 - Favorites, ranking, saved web searches (when on) and calculator history: `~/.local/share/foamy-menu/db/`
 - Cache: `~/.cache/foamy-menu/`
-- Logs/state: `~/.local/state/foamy-menu/`
+- Logs: the journal (`journalctl --user -t omarchy-shell | grep foamy-menu`)
 
 Foamy does not migrate, read or change Omacast's data. Both launchers use the
 same installed application library and Omarchy actions.
@@ -393,10 +401,14 @@ bin/foamy-menu show               # also: toggle, hide, ping, isOpen, run <id> (
 bin/foamy-menu call calculator.calculate '{"query":"2+2"}'
 omarchy bar set foamy.menu windowMode compact
 bin/build-search                  # rebuild the bundled helper (developers; see below)
-./test.sh                          # JS tests and runtime checks on the installed 4.5 shell
+./test.sh                          # every test (tests/suite.sh); --fast skips the runtimes
 python3 -I tests/launcher.py --shots /tmp/foamy-menu-shots
-omarchy plugin validate .
+tests/validate.sh                  # linters, formatters, kit and helper checks, then the tests
 ```
+
+`tests/validate.sh` is foamy-kit's validation command (`mise install` first
+for the pinned tools; `--ci` is what GitHub's runner can do). It runs
+`omarchy plugin validate .` among its checks.
 
 The search helper is committed for x86_64 and aarch64 and falls back to the
 built-in matcher when it is missing for the CPU or fails. After changing
@@ -435,12 +447,12 @@ route handoffs, and the rates and suggestion fetches against a local HTTPS
 server in an isolated offscreen shell with stub commands. It runs the
 dark layout in English and the light layout in Norwegian. `preview.png` is
 `root.png` from the English dark run of
-`python3 -I tests/launcher.py --shots DIR`.
+`python3 -I tests/launcher.py --shots DIR`. `tests/app-focuser.py` runs the
+app focuser against a fake `hyprctl`: quick repeated opens each focus the
+open window.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.
-`--host 4.0` and `--host both` run 4.0 only when `FOAMY_HOST_40` names a 4.0
-shell and print a SKIP line otherwise. These are harness labels, not version detection.
 
 After source edits, restart the shell to clear Quickshell's QML cache.
 No upstream installation or migration scripts are included in Foamy's CLI.

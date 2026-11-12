@@ -23,9 +23,17 @@ Item {
     stock.close()
     launcher.open(payloadJson)
   }
-  function close() { launcher.close(); stock.close() }
-  function refresh() { launcher.backendApi.rebuildCandidates(); return stock.refresh() }
-  function ping() { return "ok" }
+  function close() {
+    launcher.close()
+    stock.close()
+  }
+  function refresh() {
+    launcher.backendApi.rebuildCandidates()
+    return stock.refresh()
+  }
+  function ping() {
+    return "ok"
+  }
 
   StockMenu {
     id: stock
@@ -41,26 +49,27 @@ Item {
         // next turn so that close cannot dismiss the dialog we just opened.
         var payload = JSON.parse(payloadJson || "{}")
         payload.foamyStock = true
-        Qt.callLater(function() {
+        Qt.callLater(function () {
           var encoded = JSON.stringify(payload)
-          if (root.shell && typeof root.shell.summon === "function"
-              && root.shell.summon("foamy.menu", encoded)) return
+          if (root.shell && typeof root.shell.summon === "function" && root.shell.summon("foamy.menu", encoded))
+            return
           root.open(encoded)
         })
         return true
       }
       if (id === "foamy.menu") {
-        if (root.shell && typeof root.shell.summon === "function"
-            && root.shell.summon(id, payloadJson)) return true
+        if (root.shell && typeof root.shell.summon === "function" && root.shell.summon(id, payloadJson))
+          return true
         root.open(payloadJson)
         return true
       }
-      return root.shell && typeof root.shell.summon === "function"
-        ? root.shell.summon(id, payloadJson) : false
+      return root.shell && typeof root.shell.summon === "function" ? root.shell.summon(id, payloadJson) : false
     }
     function hide(id) {
-      if (id !== "foamy.menu") return false
-      if (root.shell && typeof root.shell.hide === "function" && root.shell.hide(id)) return true
+      if (id !== "foamy.menu")
+        return false
+      if (root.shell && typeof root.shell.hide === "function" && root.shell.hide(id))
+        return true
       launcher.close()
       return true
     }

@@ -12,9 +12,9 @@ How the lists are made:
 
 ## `foamy-menu-search`
 
-- `bin/aarch64/foamy-menu-search`: sha256 `690399eb5e6c13bde7b5a1f42923a7abc22c0b6b6aea65515e703c57847dcfab`
-- `bin/x86_64/foamy-menu-search`: sha256 `20b1bfd9697f12cd5208cdfec637b1bb9cc998a2f9fb7aba8c6d9db476c8637c`
-- `search/native.pin`: source `f2b9052a0c85080a60f41c5b4338b8a6248ed27b966577e326066ad73f187305`, toolchain 1.99.1
+- `bin/aarch64/foamy-menu-search`: sha256 `c3b6e27d00546baf3f691f1f72943765b44429f3f5b96f04addd9b2056a09f33`
+- `bin/x86_64/foamy-menu-search`: sha256 `1086ae68f37c5b5ea53ed4bf89763f64b202b3ac205e57ee7f04d62e7e1ecd23`
+- `search/native.pin`: source `1bd7a2b48b4c28c383568204b3574740295f3cbdd3006ae775a0a7db5f744223`, toolchain 1.99.1
 
 ### Crates linked into `foamy-menu-search`
 
@@ -34,7 +34,7 @@ First-party crates (not third-party code, listed for completeness):
 
 | Crate | Version | Source | License | Arches | Notices |
 |---|---|---|---|---|---|
-| foamy-helper | 0.1.1 | `kit/rust/foamy-helper/` (foamy-kit, vendored) | MIT | both | [N4](#n4) |
+| foamy-helper | 0.1.2 | `kit/rust/foamy-helper/` (foamy-kit, vendored) | MIT | both | [N4](#n4) |
 | foamy-menu-search | 0.1.0 | `search/` (this plugin) | MIT | both | `LICENSE` |
 
 ### Toolchain code linked into `foamy-menu-search`
@@ -311,7 +311,7 @@ Copyright 2014 The Rust Project Developers. See the COPYRIGHT
 
 ### N4
 
-Shipped by: foamy-helper 0.1.1 (foamy-kit's LICENSE).
+Shipped by: foamy-helper 0.1.2 (foamy-kit's LICENSE).
 
 ```text
 MIT License

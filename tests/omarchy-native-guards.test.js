@@ -7,6 +7,7 @@ const vm = require("node:vm")
 const { spawnSync } = require("node:child_process")
 const { fileURLToPath, pathToFileURL } = require("node:url")
 const OmarchyMenu = require("../core/OmarchyMenu.js")
+const { isolatedQs } = require("./qs-sandbox.js")
 
 const sourcePath = path.join(__dirname, "../services/OmarchyMenuSource.qml")
 const text = fs.readFileSync(sourcePath, "utf8")
@@ -24,6 +25,22 @@ function block(signature, indentation) {
 
 function method(name) {
   return block("function " + name + "(", 2)
+}
+
+// A one-statement handler's body (qmlformat puts an if's statement on the
+// next line): from "name: " (after `from`) to the next line indented no
+// deeper than the handler.
+function handler(name, from) {
+  const start = text.indexOf(name + ": ", from ? text.indexOf(from) : 0)
+  assert.ok(start >= 0, name)
+  const indent = start - (text.lastIndexOf("\n", start) + 1)
+  const lines = text.slice(start + name.length + 2).split("\n")
+  const body = [lines[0]]
+  for (const line of lines.slice(1)) {
+    if (line.length - line.trimStart().length <= indent) break
+    body.push(line)
+  }
+  return body.join("\n")
 }
 
 function sampleTree() {
@@ -53,24 +70,24 @@ function harness(factory = () => ({ compile: () => "stock-script", destroy() {} 
   return {
     source, guardProc, imports, messages,
     start() {
-      vm.runInContext(text.match(/Component.onCompleted: (\{[^\n]+\})/)[1], context)
+      const onCompleted = block("Component.onCompleted: {", 2)
+      vm.runInContext(onCompleted.slice(onCompleted.indexOf("{")), context)
     },
     exit(code, status = 0, output = "probe:w:1\nprobe:c:0\nprobe:d:1\nother:w:0\n") {
       guardProc.running = false
       guardProc.collected = output
       Object.assign(context, { exitCode: code, exitStatus: status })
-      const handler = block("onExited: function(exitCode, exitStatus)", 4)
+      const handler = block("onExited: function (exitCode, exitStatus)", 4)
       vm.runInContext("(" + handler.slice(handler.indexOf("function")) + ")(exitCode, exitStatus)", context)
     },
     // Quickshell's running -> false: after exited(), or alone for a batch
     // that couldn't start.
     stopped() {
       guardProc.running = false
-      const handler = text.slice(text.indexOf("id: guardProc")).match(/onRunningChanged: ([^\n]+)/)[1]
-      vm.runInContext("(function(running) { " + handler + " })(false)", context)
+      vm.runInContext("(function(running) { " + handler("onRunningChanged", "id: guardProc") + " })(false)", context)
     },
     destroy() {
-      vm.runInContext(text.match(/Component.onDestruction: ([^\n]+)/)[1], context)
+      vm.runInContext(handler("Component.onDestruction"), context)
     }
   }
 }
@@ -215,14 +232,16 @@ test("a hung guard batch and its background groups end at the deadline", (t) => 
   for (let i = 0; i < 12; i++) menu["hung" + i] = { when: 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
   const h = harness(() => { throw new Error("fallback script") })
   h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
-  h.source.commandTimeout = "0.3s"
+  // Long enough for bash -lc and all eight groups to start on a busy machine
+  // (at 0.3 s some were killed before they recorded their pids).
+  h.source.commandTimeout = "2s"
   h.start()
   const [cmd, ...args] = h.guardProc.command
-  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "0.3s", "bash", "-lc"])
+  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "2s", "bash", "-lc"])
   const started = Date.now()
   const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
   const elapsed = Date.now() - started
-  assert.ok(elapsed < 1200, "ended at the deadline: " + elapsed)
+  assert.ok(elapsed >= 2000 && elapsed < 2900, "ended at the deadline: " + elapsed)
   assert.equal(result.status, 124)
   const listed = fs.readFileSync(pids, "utf8").trim().split(/\s+/)
   // Each group runs its guards in turn: its first one hangs (two pids each).
@@ -333,11 +352,8 @@ test("real QML imports present, missing, broken, throwing and quoted-path OEM fi
     fs.mkdirSync(dir, { recursive: true })
     if (script !== null) fs.writeFileSync(path.join(dir, "MenuModel.js"), script)
   }
-  const env = { ...process.env, HOME: root, TMPDIR: root, QT_QPA_PLATFORM: "offscreen", QML_DISABLE_DISK_CACHE: "1" }
-  for (const key of ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"]) {
-    env[key] = path.join(root, key)
-    fs.mkdirSync(env[key], { mode: 0o700 })
-  }
+  // No desktop session bus, display or Omarchy command (tests/qs-sandbox.js).
+  const { env, hostCommands } = isolatedQs(root)
   const coreUrl = pathToFileURL(path.join(__dirname, "../core/OmarchyMenu.js")).href
   const config = path.join(root, "shell.qml")
   fs.writeFileSync(config, `import QtQml
@@ -365,7 +381,7 @@ ShellRoot {
   function providerMenus() { return [] }
   function startNextProvider() {}
   ${methods.map(method).join("\n  ")}
-  ${text.match(/Component.onDestruction: [^\n]+/)[0]}
+  Component.onDestruction: ${handler("Component.onDestruction")}
   function check(ok, detail) { if (!ok) throw new Error(detail) }
   Component.onCompleted: Qt.callLater(function() {
     try {
@@ -400,4 +416,5 @@ ShellRoot {
   assert.equal(result.status, 0, output)
   assert.match(output, /OMACAST_GUARD_PROBE:OK/)
   assert.doesNotMatch(output, /OMACAST_GUARD_PROBE:FAIL/)
+  assert.deepEqual(hostCommands(), [])
 })
