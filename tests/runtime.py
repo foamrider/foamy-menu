@@ -105,7 +105,7 @@ def build(run):
     actions.write_text("")
     run.env.update(
         {
-            "PATH": f"{stubs}:{os.environ.get('PATH', '/usr/bin')}",
+            "PATH": f"{stubs}:{run.env['PATH']}",
             "FOAMY_MENU_TEST_ACTION_LOG": str(actions),
         }
     )
