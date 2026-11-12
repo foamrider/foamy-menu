@@ -187,3 +187,46 @@ test("suggestion replies: OpenSearch lists and DuckDuckGo phrases, bounded", () 
   assert.equal(Scopes.parseSuggestions(JSON.stringify(["q", Array.from({ length: 20 }, (_, i) => "s" + i)])).length, 8)
   assert.equal(Scopes.fillText(queryScope().suggestUrl, "a&b"), "https://suggestqueries.google.com/complete/search?client=firefox&q=a%26b")
 })
+
+test("rootSection: off by default; on, it implies rootSearch and titles the section", () => {
+  const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true"] }
+  const plain = Scopes.normalize(base).scope
+  assert.deepEqual([plain.rootSection, plain.rootSectionTitle, plain.rootSearch], [false, "Notes", false])
+  const on = Scopes.normalize(Object.assign({}, base, { rootSection: true })).scope
+  assert.deepEqual([on.rootSection, on.rootSectionTitle, on.rootSearch], [true, "Notes", true])
+  const off = Scopes.normalize(Object.assign({}, base, { rootSection: true, rootSearch: false })).scope
+  assert.equal(off.rootSearch, true, "rootSection wins over rootSearch: false")
+  assert.equal(Scopes.loadsEarly(on), true, "its items load without entering the scope")
+  assert.equal(Scopes.normalize(Object.assign({}, base, { rootSection: true, rootSectionTitle: "My Notes" })).scope.rootSectionTitle, "My Notes")
+})
+
+test("rootSection: wrong types, an over-long title and query scopes are rejected", () => {
+  const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true"] }
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { rootSection: "yes" })).errors, ["rootSection must be true or false"])
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { rootSectionTitle: 5 })).errors, ["rootSectionTitle must be a string"])
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { rootSectionTitle: "x".repeat(513) })).errors, ["rootSectionTitle is longer than 512 characters"])
+  const query = { id: "q", title: "Q", source: { type: "query" }, open: ["true"], rootSection: true }
+  assert.deepEqual(Scopes.normalize(query).errors, ["a query scope has no items for rootSection"])
+  const merged = Scopes.merge(Scopes.BUILTINS, [file("google.json", { id: "google", rootSection: true })])
+  assert.ok(!merged.scopes.some((s) => s.id === "google"), "the invalid override drops the scope")
+  assert.deepEqual(merged.errors.map((e) => [e.id, e.file]), [["google", "google.json"]])
+})
+
+test("rootSection: a scope file turns it on for a built-in, over the steamGames setting", () => {
+  const Settings = require("../core/Settings.js")
+  const builtins = Settings.applyToScopes(Scopes.BUILTINS, { sshScope: true, steamGames: false, webSearchHistory: false, webSearchSuggestions: false })
+  const steam = (files) => Scopes.merge(builtins, files).scopes.find((s) => s.id === "steam")
+  assert.deepEqual([steam([]).rootSection, steam([]).rootSearch], [false, false])
+  const on = steam([file("steam.json", { id: "steam", rootSection: true, rootSectionTitle: "Steam" })])
+  assert.deepEqual([on.rootSection, on.rootSearch, on.rootSectionTitle], [true, true, "Steam"])
+  assert.equal(steam([file("steam.json", { id: "steam", rootSection: true })]).rootSectionTitle, "Games", "defaults to the title")
+})
+
+test("rootSection: the default heading is translated like the title; a title of its own is not", () => {
+  const I18n = require("../kit/node-loader.cjs").load("FoamyI18nText")
+  const { t } = I18n.translator(require("../i18n/no.json"), require("../i18n/en.json"))
+  const steam = (extra) => Scopes.merge(Scopes.BUILTINS, [file("steam.json", Object.assign({ id: "steam", rootSection: true }, extra))]).scopes.find((s) => s.id === "steam")
+  assert.equal(Scopes.sectionTitle(steam({}), t), "Spill")
+  assert.equal(Scopes.sectionTitle(steam({ rootSectionTitle: "Steam" }), t), "Steam")
+  assert.equal(Scopes.sectionTitle(steam({ rootSectionTitle: "Results" }), t), "Results", "shown as written, even when the catalog has it")
+})

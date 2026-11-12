@@ -257,19 +257,24 @@ function normalize(raw) {
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") errors.push("enabled must be true or false")
   var keyword = raw.keyword === undefined ? id : raw.keyword
   var isQuery = isPlainObject(raw.source) && raw.source.type === "query"
-  for (var f = 0; f < 4; f++) {
-    var flag = ["history", "suggest", "rootSearch", "requireItems"][f]
+  for (var f = 0; f < 5; f++) {
+    var flag = ["history", "suggest", "rootSearch", "requireItems", "rootSection"][f]
     if (raw[flag] !== undefined && typeof raw[flag] !== "boolean") errors.push(flag + " must be true or false")
   }
   var layout = raw.layout === undefined ? "list" : raw.layout
   if (LAYOUTS.indexOf(layout) < 0) { errors.push("layout must be \"list\", \"icons\" or \"covers\""); layout = "list" }
   if (isQuery && layout !== "list") { errors.push("a query scope has no grid layout"); layout = "list" }
   if (isQuery && (raw.rootSearch === true || raw.requireItems === true)) errors.push("a query scope has no items for rootSearch or requireItems")
+  if (isQuery && raw.rootSection === true) errors.push("a query scope has no items for rootSection")
+  // A root section lists the items in the root view, so they load early and
+  // are found while typing: rootSection turns rootSearch on.
+  var rootSection = !isQuery && raw.rootSection === true
   if (typeof keyword !== "string" || !KEYWORD_PATTERN.test(keyword)) errors.push("keyword must be 1–32 characters without spaces")
+  var title = text(raw.title, "title", errors, true)
   var scope = {
     id: id,
     enabled: raw.enabled !== false,
-    title: text(raw.title, "title", errors, true),
+    title: title,
     subtitle: text(raw.subtitle, "subtitle", errors, false),
     keyword: String(keyword).toLowerCase(),
     icon: text(raw.icon, "icon", errors, false) || (raw.iconName ? "" : DEFAULT_ICON),
@@ -286,7 +291,9 @@ function normalize(raw) {
     suggestUrl: text(raw.suggestUrl, "suggestUrl", errors, false),
     valuePattern: text(raw.valuePattern, "valuePattern", errors, false),
     layout: layout,
-    rootSearch: !isQuery && raw.rootSearch === true,
+    rootSearch: rootSection || (!isQuery && raw.rootSearch === true),
+    rootSection: rootSection,
+    rootSectionTitle: text(raw.rootSectionTitle, "rootSectionTitle", errors, false) || title,
     requireItems: !isQuery && raw.requireItems === true,
     itemLabel: text(raw.itemLabel, "itemLabel", errors, false),
     actions: actions(raw.actions, errors),
@@ -473,6 +480,14 @@ function rootItemCandidate(scope, item, t) {
   return c
 }
 
+// The heading of a rootSection scope's section in the root view. The
+// default (the title) is translated as the scope's row is; a title of its
+// own is shown as written.
+function sectionTitle(scope, t) {
+  var tr = typeof t === "function" ? t : function(s) { return s }
+  return scope.rootSectionTitle === scope.title ? tr(scope.title) : scope.rootSectionTitle
+}
+
 // Whether a scope is offered (its row, its keyword): a requireItems scope only
 // once its source has listed something (Games: Steam is installed with games).
 function isShown(scope, items) {
@@ -644,6 +659,7 @@ if (typeof module !== "undefined") {
     scopeCandidate: scopeCandidate,
     itemCandidate: itemCandidate,
     rootItemCandidate: rootItemCandidate,
+    sectionTitle: sectionTitle,
     valueAllowed: valueAllowed,
     fill: fill,
     fillText: fillText,
