@@ -1,7 +1,7 @@
 #!/bin/bash
 # foamy-menu's own tests; tests/validate.sh runs this after the linters, and
 # ./test.sh runs it with no options.
-#   --ci    no Quickshell, no Omarchy host: the node tests (the two that need
+#   --ci    no Quickshell, no Omarchy host: the node tests (the four that need
 #           Quickshell skip themselves) and the bundled helper through them
 #   --fast  skip the offscreen Quickshell runtimes
 # Everything runs offscreen in temporary HOME/XDG directories with stubbed
@@ -27,8 +27,8 @@ run() {
 skip() { echo "SKIP $*"; }
 kit=${FOAMY_KIT:-$HOME/GitHub/Personal/foamy-kit}
 
-# The loading-feedback and real-import guard tests run their QML in a real
-# Quickshell and skip without one.
+# The loading-feedback, real-import guard and qs-sandbox tests run their QML
+# in a real Quickshell, isolated by tests/qs-sandbox.js, and skip without one.
 if ((ci)); then
   unset OMACAST_QML_RUNNER
 else

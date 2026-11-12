@@ -7,6 +7,7 @@ const vm = require("node:vm")
 const { spawnSync } = require("node:child_process")
 const { fileURLToPath, pathToFileURL } = require("node:url")
 const OmarchyMenu = require("../core/OmarchyMenu.js")
+const { isolatedQs } = require("./qs-sandbox.js")
 
 const sourcePath = path.join(__dirname, "../services/OmarchyMenuSource.qml")
 const text = fs.readFileSync(sourcePath, "utf8")
@@ -351,11 +352,8 @@ test("real QML imports present, missing, broken, throwing and quoted-path OEM fi
     fs.mkdirSync(dir, { recursive: true })
     if (script !== null) fs.writeFileSync(path.join(dir, "MenuModel.js"), script)
   }
-  const env = { ...process.env, HOME: root, TMPDIR: root, QT_QPA_PLATFORM: "offscreen", QML_DISABLE_DISK_CACHE: "1" }
-  for (const key of ["XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"]) {
-    env[key] = path.join(root, key)
-    fs.mkdirSync(env[key], { mode: 0o700 })
-  }
+  // No desktop session bus, display or Omarchy command (tests/qs-sandbox.js).
+  const { env, hostCommands } = isolatedQs(root)
   const coreUrl = pathToFileURL(path.join(__dirname, "../core/OmarchyMenu.js")).href
   const config = path.join(root, "shell.qml")
   fs.writeFileSync(config, `import QtQml
@@ -418,4 +416,5 @@ ShellRoot {
   assert.equal(result.status, 0, output)
   assert.match(output, /OMACAST_GUARD_PROBE:OK/)
   assert.doesNotMatch(output, /OMACAST_GUARD_PROBE:FAIL/)
+  assert.deepEqual(hostCommands(), [])
 })
