@@ -206,7 +206,9 @@ ShellRoot {
   // Command scope runs, one at a time: a command that can't start, one that
   // hangs (ended at its deadline, its sh -c child too), two that flood their
   // output, in lines and without a newline (stopped at Scopes.MAX_OUTPUT
-  // bytes, long before their deadline), then an ordinary one. The hung
+  // bytes, long before their 60 s deadline), then an ordinary one. Reading
+  // the flood's 8 MB, a line at a time, took more than 10 s on a loaded
+  // machine, so the default deadline ended it first. The hung
   // processes' pids go to FOAMY_SCOPE_PIDS; launcher.py checks none is left.
   readonly property string pidFile: Quickshell.env("FOAMY_SCOPE_PIDS")
   function commandScope(id, command, timeout) {
@@ -224,7 +226,7 @@ ShellRoot {
   }
   FoamyServices.ScopeSource {
     id: runProbe
-    builtins: [test.commandScope("broken", ["/nonexistent/foamy-no-such-command"]), test.commandScope("hung", ["sh", "-c", 'sleep 300 & echo $! >> "$0"; echo $$ >> "$0"; sleep 300', test.pidFile], 2000), test.commandScope("flood", ["seq", "100000000"]), test.commandScope("unbroken", ["sh", "-c", "yes | tr -d '\\n'"], 60000), test.commandScope("fine", ["printf", "one\\ntwo\\n"])]
+    builtins: [test.commandScope("broken", ["/nonexistent/foamy-no-such-command"]), test.commandScope("hung", ["sh", "-c", 'sleep 300 & echo $! >> "$0"; echo $$ >> "$0"; sleep 300', test.pidFile], 2000), test.commandScope("flood", ["seq", "100000000"], 60000), test.commandScope("unbroken", ["sh", "-c", "yes | tr -d '\\n'"], 60000), test.commandScope("fine", ["printf", "one\\ntwo\\n"])]
     property var said: []
     onMessage: function (level, text, metadata) {
       runProbe.said = runProbe.said.concat([text])
@@ -248,6 +250,10 @@ ShellRoot {
     onTriggered: {
       if (test.capturing)
         return
+      // Each wait for the backend (its first load, and every scope or menu
+      // reload a stage starts) gets 100 ticks (25 s). The count starts again
+      // once it is ready: summed over the whole run, a loaded machine
+      // passed 100 ticks without any single wait being long.
       if (!backend.ready || backend.loading) {
         if (++test.attempts > 100) {
           test.check(false, "backend becomes ready")
@@ -255,6 +261,7 @@ ShellRoot {
         }
         return
       }
+      test.attempts = 0
       switch (test.stage++) {
       case 0:
         test.check(backend.candidates.length > 5, "loads apps and Omarchy commands")
@@ -529,6 +536,10 @@ ShellRoot {
         launcher.run("builtin:omarchy-menu")
         break
       case 23:
+        // Menu.qml opens the stock menu on a later event loop turn
+        // (Qt.callLater), and a loaded machine can run this tick first.
+        if (test.waitFor(menu.stockMenu.opened))
+          break
         test.check(menu.stockMenu.opened && !launcher.opened, "original-menu action survives launcher close")
         menu.open('{"menu":"system"}')
         break
