@@ -149,6 +149,9 @@ function matchScore(match) {
   return match.score
 }
 
+// The search strictness levels. The helper applies the same score and
+// thresholds (search/src/strictness.rs); change both together, and
+// tests/search-parity.test.js checks that they agree.
 function passesThreshold(match, queryLength, sensitivity) {
   if (match === "exact") return true
   if (!match || match === "unmatched") return false

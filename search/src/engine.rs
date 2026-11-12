@@ -1,6 +1,7 @@
 use crate::backend::searchbits;
-use crate::backend::searchmatch::{HIT_SPAN, Letter, Matcher, NAME, SHADOW_TYPO, State};
+use crate::backend::searchmatch::{EXACT, HIT_SPAN, Letter, Matcher, NAME, SHADOW_TYPO, State};
 use crate::backend::searchtypo::Scratch;
+use crate::strictness::{Gate, Level};
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub(crate) const MAX_ENTRIES: usize = 20_000;
@@ -127,6 +128,7 @@ struct Scorer {
     state: State,
     edits: Scratch,
     sensitivity: Sensitivity,
+    gate: Gate,
 }
 
 impl Scorer {
@@ -139,21 +141,33 @@ impl Scorer {
             state,
             edits: Scratch::default(),
             sensitivity,
+            gate: Gate::new(query),
         }
     }
 
+    // `low` takes every listed match. `medium` and `high` take a match whose
+    // letters are in order (name, word, prefix, exact) only when it passes
+    // the built-in matcher's threshold (strictness.rs), so the levels match
+    // the same rows with or without the helper. Edit typos are the helper's
+    // own: `medium` keeps them, `high` drops them.
     fn score(&mut self, text: &str) -> Option<i32> {
-        self.matcher
+        let score = self
+            .matcher
             .name_bytes(
                 text.as_bytes(),
                 &mut self.letters,
                 &mut self.state,
                 &mut self.edits,
             )
-            .filter(|score| {
-                *score > SHADOW_TYPO
-                    && (self.sensitivity != Sensitivity::High || *score >= NAME - HIT_SPAN)
-            })
+            .filter(|score| *score > SHADOW_TYPO)?;
+        let in_order = score >= NAME - HIT_SPAN;
+        let keep = match self.sensitivity {
+            Sensitivity::Low => true,
+            _ if score == EXACT => true,
+            Sensitivity::Medium => !in_order || self.gate.passes(text, Level::Medium),
+            Sensitivity::High => in_order && self.gate.passes(text, Level::High),
+        };
+        keep.then_some(score)
     }
 }
 
@@ -240,7 +254,7 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::searchmatch::{EXACT, PREFIX, TYPO, WORD};
+    use crate::backend::searchmatch::{PREFIX, TYPO, WORD};
     use serde_json::json;
 
     fn catalog(entries: serde_json::Value) -> Catalog {
@@ -352,12 +366,37 @@ mod tests {
             }
             assert!(catalog.search(query, Sensitivity::High).unwrap().is_empty());
         }
-        assert!(
-            !catalog
-                .search("frfx", Sensitivity::High)
+    }
+
+    #[test]
+    fn levels_take_fewer_spread_matches_as_they_tighten() {
+        let catalog = catalog(json!([
+            { "title":"SSH", "subtitle":"Koble til en vert i ~/.ssh/config" },
+            { "title":"Firefox" },
+            { "title":"LibreOffice Writer" },
+            { "title":"Living Room" }
+        ]));
+        let matched = |query: &str, sensitivity| {
+            catalog
+                .search(query, sensitivity)
                 .unwrap()
-                .is_empty()
-        );
+                .iter()
+                .map(|hit| hit.index)
+                .collect::<Vec<_>>()
+        };
+        // Four words apart in the subtitle (and its combined keywords).
+        assert_eq!(matched("livin", Sensitivity::Low), vec![0, 3]);
+        assert_eq!(matched("livin", Sensitivity::Medium), vec![3]);
+        assert_eq!(matched("livin", Sensitivity::High), vec![3]);
+        // Three gaps: medium's threshold, not high's.
+        assert_eq!(matched("frfx", Sensitivity::Low), vec![1]);
+        assert_eq!(matched("frfx", Sensitivity::Medium), vec![1]);
+        assert!(matched("frfx", Sensitivity::High).is_empty());
+        // Letters inside words, not at their starts: low only.
+        assert_eq!(matched("fir", Sensitivity::Low), vec![1, 2]);
+        assert_eq!(matched("fir", Sensitivity::Medium), vec![1]);
+        // Prefixes pass every level.
+        assert_eq!(matched("liv", Sensitivity::High), vec![3]);
     }
 
     #[test]

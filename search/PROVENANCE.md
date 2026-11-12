@@ -66,10 +66,15 @@ Unicode lowercasing is not scored separately. Nonempty subtitles contribute both
 subtitle duplicates the title. Bundle IDs contribute only to queries containing
 a literal period. Empty queries return `hits: []` for legacy UI suggestions.
 
-All channels drop shadow typo scores `<= SHADOW_TYPO` (`992000`). Default
-`medium` and `low` use the same upstream matching rules. `high` also drops scores
-`< NAME - HIT_SPAN` (`1900000`), retaining all name subsequences and stronger
-matches. Upstream name DP scores are bounded by `2000000 +/- 100000`; exact,
+All channels drop shadow typo scores `<= SHADOW_TYPO` (`992000`). `low` keeps
+every other score. Default `medium` and `high` keep a score of `NAME - HIT_SPAN`
+(`1900000`) or more (query letters in order: name, word, prefix, exact) only when
+the field passes the built-in matcher's threshold for that level, computed by
+`src/strictness.rs` with the same score and thresholds as `core/Ranker.js`
+(`fuzzyMatch`, `passesThreshold`), so a level matches the same rows with or
+without the helper. `medium` keeps listed typo scores; `high` drops them.
+`tests/search-parity.test.js` runs both matchers over the same queries at every
+level. Upstream name DP scores are bounded by `2000000 +/- 100000`; exact,
 prefix, and word scores are `5000000`, `4000000`, and `3500000`. Upstream listed
 typo scores are `999000` or `998000`: one edit from four alphanumeric query
 characters, two from eight, and no edits when the query starts with a

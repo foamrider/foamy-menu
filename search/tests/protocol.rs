@@ -173,6 +173,29 @@ fn default_medium_and_channel_specific_high_filter_use_real_binary() {
 }
 
 #[test]
+fn spread_subtitle_letters_match_only_at_low_through_real_binary() {
+    let output = exchange(&encode(&[
+        json!({"id":1,"entries":[{"title":"SSH","subtitle":"Koble til en vert i ~/.ssh/config"},{"title":"Living Room"}]}),
+        json!({"id":2,"query":"livin","sensitivity":"low"}),
+        json!({"id":3,"query":"livin"}),
+        json!({"id":4,"query":"livin","sensitivity":"high"}),
+        json!({"id":5,"query":"vert","sensitivity":"high"}),
+    ]));
+    let indexes = |reply: &Value| {
+        reply["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|hit| hit["index"].as_u64().unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(indexes(&output[1]), vec![0, 1]);
+    assert_eq!(indexes(&output[2]), vec![1]);
+    assert_eq!(indexes(&output[3]), vec![1]);
+    assert_eq!(output[4]["hits"][0]["subtitle"], 3_500_000);
+}
+
+#[test]
 fn every_input_text_field_checks_byte_limit_before_replacing_catalog() {
     let oversized = "x".repeat(MAX_FIELD_BYTES + 1);
     let invalid = vec![
