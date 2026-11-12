@@ -88,7 +88,10 @@ the field passes the built-in matcher's threshold for that level, computed by
 without the helper. An exact score, and a prefix score of an ASCII field for an
 ASCII query without Ranker.js separators, pass without that check: Ranker.js
 scores such a prefix above both thresholds. `low` and `medium` keep listed typo
-scores; `high` drops them.
+scores; `high` drops them. At `high` the gate runs before the matcher: a
+field it rejects keeps only an exact score, so the matcher scores such a field
+only when it has as many characters as the query. A field that starts with a
+plain ASCII query is scored as at the other levels, matcher first.
 
 Ranker.js lets a query separator (tab, newline, space, `-`, `.`, `/`, `(`, `)`,
 `[`, `]`) take any text separator or none, while the matcher reads it literally.
@@ -101,12 +104,15 @@ that lacks a character of the query other than its separators is skipped first
 
 `src/strictness.rs` lowercases the field and the query as Ranker.js does, then
 folds `ς` to `σ` as Ranker.js does after every lowercasing. It decides most
-fields without Ranker.js's alignment. Paths it scores in one pass give lower
-bounds on a field's score: the query found whole, and for queries of 8 or
-more letters the letters at their first places in order, then at places that
-prefer adjacent letters and word starts (a search capped at twice the field's
+fields without Ranker.js's alignment. It first finds the rows the alignment
+places: a query separator row takes a text separator with gain 1, or is
+skipped when its columns hold none. Paths it scores in one pass give lower
+bounds on a field's score: those rows found whole, and for queries of 8 or
+more letters the rows at their first places in order, then at places that
+prefer adjacent rows and word starts (a search capped at twice the field's
 length). For such queries, word starts, adjacent letter pairs and the field's
-stretches of query pairs give an upper bound. A field that no bound decides
+stretches of query pairs bound the letters' score, and each placed separator
+row adds at most 1, or 2 between two letters. A field that no bound decides
 runs the alignment, which fills at most one cell per query and field UTF-16
 unit, no more than the matcher's own name DP over that field.
 `tests/search-parity.test.js` runs both matchers over the same queries at every

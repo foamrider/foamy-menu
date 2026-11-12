@@ -10,13 +10,19 @@
 // Cost. `passes` first tries bounds that decide most fields without
 // Ranker.js's alignment (its dynamic program). Alignments it can score in one
 // pass give lower bounds on the best score: the query found whole in the
-// text, and for longer queries the letters at their first places in order
-// (`leftmost`) or at places that prefer adjacent letters and word starts
+// text, and for longer queries the rows at their first places in order
+// (`leftmost`) or at places that prefer adjacent rows and word starts
 // (`seeking`). For longer queries, word starts, adjacent letter pairs and
 // stretches of them give an upper bound (`ceiling`). Only a field that no
 // bound decides runs the alignment, which fills at most one cell per query
 // unit and text unit: no more cells than the matcher's own name DP over the
 // same field.
+//
+// A query separator row takes a text separator with gain 1, or is skipped
+// when its columns hold none. Which rows the alignment skips depends only on
+// the text and the query (`in_order`), so the bounds work on the rows it
+// places (`kept`): a letter row takes its letter, a separator row any text
+// separator.
 
 // Ranker.js SEPARATORS ("\t\n -./()[]"), as bits of the ASCII units.
 const SEPARATORS: u128 = 1 << b'\t'
@@ -61,6 +67,16 @@ fn ascii_lower_or_digit(unit: u16) -> bool {
 
 fn ascii_upper(unit: u16) -> bool {
     (u16::from(b'A')..=u16::from(b'Z')).contains(&unit)
+}
+
+/// Whether a query row takes a text unit: a letter the same unit, a
+/// separator any text separator.
+fn fits(row: u16, unit: u16) -> bool {
+    if separator(row) {
+        separator(unit)
+    } else {
+        row == unit
+    }
 }
 
 /// The query without Ranker.js's separators, or `None` when it has none.
@@ -130,7 +146,9 @@ struct Text {
     // those without word starts (`ceiling`).
     stretches: Vec<usize>,
     unstarted: Vec<usize>,
-    // Each row's first place in order (`in_order`) and last place (`seeking`).
+    // The rows the alignment places (`in_order`), each one's first place in
+    // order, and each one's last place (`seeking`).
+    kept: Vec<u16>,
     places: Vec<usize>,
     latest: Vec<usize>,
     // The original text's UTF-16 units, for camelCase word starts.
@@ -251,79 +269,102 @@ impl Text {
         preskipped: usize,
         level: Level,
     ) -> bool {
-        let plain = !rows.iter().any(|&unit| separator(unit));
-        if rows.is_empty() || !self.in_order(query, rows, plain) {
+        let Some(skipped) = self.in_order(query, rows) else {
+            return false;
+        };
+        if self.kept.is_empty() {
             return false;
         }
-        // Letters in order always align, so they match below medium.
-        if plain && matches!(level, Level::Low) {
+        // The kept rows at their first places are an alignment, so they
+        // match below medium.
+        if matches!(level, Level::Low) {
             return true;
         }
         self.gains(text);
         let length = query.units.len() - preskipped;
-        let long = plain && rows.len() >= CEILING_ROWS;
-        if long && threshold(level, self.leftmost(), length) {
+        let kept_length = length - skipped;
+        let long = query.letters.len() >= CEILING_ROWS;
+        if long && threshold(level, self.leftmost(), kept_length) {
             return true;
         }
-        // Found whole, every row places a cell, so nothing more is skipped.
         if self
-            .whole(rows)
-            .is_some_and(|score| threshold(level, score, length))
+            .whole()
+            .is_some_and(|score| threshold(level, score, kept_length))
         {
             return true;
         }
         if long {
-            if !threshold(level, self.ceiling(query, rows), length) {
+            if !threshold(level, self.ceiling(query), kept_length) {
                 return false;
             }
             if self
-                .seeking(rows)
-                .is_some_and(|score| threshold(level, score, length))
+                .seeking()
+                .is_some_and(|score| threshold(level, score, kept_length))
             {
                 return true;
             }
         }
         match self.align(query, rows) {
-            Some((score, skipped)) => threshold(level, score, length - skipped),
+            Some((score, aligned_skipped)) => {
+                debug_assert_eq!(aligned_skipped, skipped, "in_order keeps the aligned rows");
+                threshold(level, score, length - aligned_skipped)
+            }
             None => false,
         }
     }
 
-    /// Ranker.js's quick rejection, which it runs for more than two letters:
-    /// the letters in order, each query separator jumping past the next text
-    /// separator. Without separators it is "the letters in order", which the
-    /// alignment needs anyway, so it then runs for every length.
-    /// It keeps each letter row's place (`leftmost`).
-    fn in_order(&mut self, query: &Query, rows: &[u16], plain: bool) -> bool {
+    /// The rows the alignment places (`kept`), each at its first place in
+    /// order, and how many separator rows it skips; `None` when a letter has
+    /// no place or Ranker.js's quick rejection fails.
+    ///
+    /// The alignment places a row at its first column after the row before,
+    /// within the columns that leave room for the letters still to place. A
+    /// separator row with no text separator there is skipped. Any rows at
+    /// places in order fit those columns, so the first places are an
+    /// alignment, and the alignment fails exactly when a letter has none.
+    ///
+    /// Ranker.js runs its quick rejection for more than two letters: the
+    /// letters in order, each query separator jumping past the next text
+    /// separator wherever it is. A text separator past a separator row's
+    /// columns leaves fewer columns after it than the letters after it, so
+    /// the rejection then fails; otherwise it takes the same places.
+    fn in_order(&mut self, query: &Query, rows: &[u16]) -> Option<usize> {
         self.places.clear();
-        if !plain && query.letters.len() <= 2 {
-            return true;
-        }
+        self.kept.clear();
         let t = &self.units;
-        let mut from = 0;
+        let letters = query.letters.len();
+        let quick = letters > 2;
+        let (mut from, mut skipped) = (0, 0);
         for &unit in rows {
-            if separator(unit) {
-                if let Some(at) = t[from..].iter().position(|&u| separator(u)) {
-                    from += at + 1;
+            let found = if separator(unit) {
+                // The columns a separator row takes, as in `align`.
+                let end = t.len() - letters.saturating_sub(1 + self.kept.len());
+                match t[from..].iter().position(|&u| separator(u)) {
+                    Some(at) if from + at < end => Some(at),
+                    Some(_) if quick => return None,
+                    _ => None,
                 }
-                continue;
-            }
-            match t[from..].iter().position(|&u| u == unit) {
+            } else {
+                Some(t[from..].iter().position(|&u| u == unit)?)
+            };
+            match found {
                 Some(at) => {
                     self.places.push(from + at);
+                    self.kept.push(unit);
                     from += at + 1;
                 }
-                None => return false,
+                None => skipped += 1,
             }
         }
-        true
+        Some(skipped)
     }
 
-    /// A lower bound on the best score: the rows found whole in the text, at
-    /// the first place and at the first word start after it. The alignment
-    /// takes that path or a better one.
-    fn whole(&self, rows: &[u16]) -> Option<i32> {
-        let (t, gain, m) = (&self.units, &self.gain, rows.len());
+    /// A lower bound on the best score: the kept rows found whole in the
+    /// text, at the first place and at the first word start after it. The
+    /// alignment takes that path or a better one.
+    fn whole(&self) -> Option<i32> {
+        let (t, gain, rows) = (&self.units, &self.gain, &self.kept);
+        let m = rows.len();
         let last = t.len().checked_sub(m)?;
         let found = |at: usize| t[at] == rows[0] && t[at..at + m] == *rows;
         let score = |at: usize| {
@@ -340,69 +381,100 @@ impl Text {
         Some(score(first).max(later.map_or(0, score)))
     }
 
-    /// A lower bound on the best score for rows without separators: the rows
-    /// at their first places in order, the path `in_order` (Ranker.js's quick
-    /// rejection) walks. Any rows without separators at places in order are
-    /// an alignment (each place comes at or after its row's first place and
-    /// leaves room for the rows after it), so the best one scores at least as
-    /// much.
+    /// A lower bound on the best score: the kept rows at their first places
+    /// in order (`in_order`), an alignment, so the best one scores at least
+    /// as much.
     fn leftmost(&self) -> i32 {
         let gaps = self.places.windows(2).filter(|at| at[0] + 1 != at[1]);
-        let gains: i32 = self.places.iter().map(|&at| self.gain[at]).sum();
+        let gains: i32 = self
+            .kept
+            .iter()
+            .zip(&self.places)
+            .map(|(&row, &at)| gain_of(&self.gain, row, at))
+            .sum();
         gains - gaps.count() as i32
     }
 
-    /// Two more lower bounds for rows without separators, for texts where
-    /// the first places leave many gaps (lone letters before runs of them or
-    /// before word starts); the better one. The rows at their last places
-    /// (the latest that leave room for the rows after them). And a row that
+    /// Two more lower bounds over the kept rows, for texts where the first
+    /// places leave many gaps (lone letters before runs of them or before
+    /// word starts); the better one. The rows at their last places (the
+    /// latest that leave room for the rows after them). And a row that
     /// cannot follow the one before it without a gap takes the next place
-    /// that is a word start or that the row after it can follow without a
-    /// gap, if one comes by its last place, else its next place. The search
-    /// for such places reads at most twice the text per field; past that,
-    /// rows take their next places. `None` when the rows are not in order.
-    fn seeking(&mut self, rows: &[u16]) -> Option<i32> {
-        let (t, gain) = (&self.units, &self.gain);
+    /// that is a letter's word start or that the row after it can follow
+    /// without a gap, if one comes by its last place, else its next place.
+    /// The search for such places reads at most twice the text per field;
+    /// past that, rows take their next places. Both are alignments, as any
+    /// kept rows at places in order are (`in_order`).
+    fn seeking(&mut self) -> Option<i32> {
+        let (t, gain, rows) = (&self.units, &self.gain, &self.kept);
+        let gain_of = |row: u16, at: usize| gain_of(gain, row, at);
         // Each row's last place: the rows placed from the end, each as late
         // as it goes.
         self.latest.clear();
         self.latest.resize(rows.len(), 0);
         let mut end = t.len();
         for (row, &unit) in rows.iter().enumerate().rev() {
-            end = t[..end].iter().rposition(|&u| u == unit)?;
+            end = t[..end].iter().rposition(|&u| fits(unit, u))?;
             self.latest[row] = end;
         }
         let gaps = self.latest.windows(2).filter(|at| at[0] + 1 != at[1]);
-        let latest = self.latest.iter().map(|&at| gain[at]).sum::<i32>() - gaps.count() as i32;
+        let gains = rows
+            .iter()
+            .zip(&self.latest)
+            .map(|(&row, &at)| gain_of(row, at));
+        let latest = gains.sum::<i32>() - gaps.count() as i32;
         let mut allowance = 2 * t.len();
         let (mut score, mut next) = (0, 0);
         for (row, &unit) in rows.iter().enumerate() {
             // The row before sits at or before its last place, so `next` is
             // at or before this row's last place.
             let last = self.latest[row];
-            let at = if row > 0 && t[next] == unit {
+            let at = if row > 0 && fits(unit, t[next]) {
                 next
             } else {
-                let first = next + t[next..=last].iter().position(|&u| u == unit)?;
+                let first = next + t[next..=last].iter().position(|&u| fits(unit, u))?;
                 let after = rows.get(row + 1);
                 let good = |at: usize| {
-                    t[at] == unit
-                        && (gain[at] > 2 || after.is_some_and(|a| t.get(at + 1) == Some(a)))
+                    fits(unit, t[at])
+                        && (gain_of(unit, at) > 2
+                            || after.is_some_and(|&a| t.get(at + 1).is_some_and(|&u| fits(a, u))))
                 };
                 let span = (last + 1 - first).min(allowance);
                 let found = (first..first + span).find(|&at| good(at));
                 allowance -= found.map_or(span, |at| at + 1 - first);
                 found.unwrap_or(first)
             };
-            score += gain[at] - i32::from(row > 0 && at != next);
+            score += gain_of(unit, at) - i32::from(row > 0 && at != next);
             next = at + 1;
         }
         Some(score.max(latest))
     }
 
-    /// An upper bound on the best score for rows without separators (the
-    /// query's letters): two per letter, plus one for each word start a
-    /// letter takes (two for the text's start), less one per gap. A letter
+    /// An upper bound on the best score of the kept rows: the bound below for
+    /// the query's letters, plus what the kept separator rows can add.
+    /// Dropping the separator rows from an alignment leaves the letters in
+    /// order, an alignment of them. Each separator row adds its gain 1, and
+    /// a run of them between two letters can also save the gap the letters
+    /// alone have there (they are at least two columns apart).
+    fn ceiling(&mut self, query: &Query) -> i32 {
+        let rows = &self.kept;
+        let separators = rows.iter().filter(|&&row| separator(row)).count();
+        // Runs of separator rows with a letter row on both sides.
+        let inner = rows
+            .iter()
+            .position(|&row| !separator(row))
+            .map_or(0, |letter| {
+                let after = rows[letter..].windows(2);
+                after
+                    .filter(|pair| separator(pair[0]) && !separator(pair[1]))
+                    .count()
+            });
+        self.letters_ceiling(query) + (separators + inner) as i32
+    }
+
+    /// An upper bound on the best score for the query's letters alone: two
+    /// per letter, plus one for each word start a letter takes (two for the
+    /// text's start), less one per gap. A letter
     /// follows the one before it without a gap only where the text holds
     /// that pair, each time at a later column. So the gaps are at least the
     /// query's pairs the text never has, and at least the letters less one
@@ -416,8 +488,8 @@ impl Text {
     /// and gives back at most its own word starts: a stretch with word starts
     /// gives at most one fewer than it has, and the others cost one each, as
     /// few as hold the letters the first ones cannot.
-    fn ceiling(&mut self, query: &Query, rows: &[u16]) -> i32 {
-        let (t, gain) = (&self.units, &self.gain);
+    fn letters_ceiling(&mut self, query: &Query) -> i32 {
+        let (t, gain, rows) = (&self.units, &self.gain, &query.letters);
         let takes = |unit: u16| unit >= 128 || query.ascii & (1u128 << unit) != 0;
         // A word start after the text's first column that a letter can take.
         let start = |at: usize| usize::from(gain[at] == 3 && takes(t[at]));
@@ -562,6 +634,11 @@ impl Text {
     }
 }
 
+/// A kept row's gain at a text column: a separator row's is 1.
+fn gain_of(gain: &[i32], row: u16, at: usize) -> i32 {
+    if separator(row) { 1 } else { gain[at] }
+}
+
 /// The fewest stretches that hold `letters`, from `histogram` (how many
 /// stretches have each number of columns), longest first.
 fn fewest(histogram: &[usize], letters: usize) -> usize {
@@ -633,6 +710,27 @@ mod tests {
         gate.text.align(&gate.query, &gate.query.units)
     }
 
+    // Ranker.js's quick rejection as it reads, for more than two letters.
+    fn quick_rejection_passes(t: &[u16], query: &Query) -> bool {
+        if query.letters.len() <= 2 {
+            return true;
+        }
+        let mut from = 0;
+        for &unit in &query.units {
+            if separator(unit) {
+                if let Some(at) = t[from..].iter().position(|&u| separator(u)) {
+                    from += at + 1;
+                }
+                continue;
+            }
+            match t[from..].iter().position(|&u| u == unit) {
+                Some(at) => from += at + 1,
+                None => return false,
+            }
+        }
+        true
+    }
+
     // `passes` without its bounds or the separator-free shortcut.
     fn aligned(text: &str, query: &str, level: Level) -> bool {
         let mut gate = Gate::new(query);
@@ -644,7 +742,8 @@ mod tests {
             return true;
         }
         let length = gate.query.units.len();
-        gate.text.in_order(&gate.query, &gate.query.units, false)
+        gate.query.letters.len() <= gate.text.units.len()
+            && quick_rejection_passes(&gate.text.units, &gate.query)
             && gate
                 .text
                 .align(&gate.query, &gate.query.units)
@@ -764,8 +863,11 @@ mod tests {
         let lone_then_runs = "ab".repeat(200) + &"aaaaab".repeat(60);
         let runs_between = "ab".repeat(100) + &"aaaaab".repeat(60) + &"ba".repeat(100);
         let lone_then_starts = "ab".repeat(200) + &" a".repeat(300);
+        let runs_dash = "aaaaab".repeat(83) + "-123";
+        let runs_space_runs = "aaaaab".repeat(40) + " " + &"aaaaab".repeat(40);
+        let spaced_runs = "a".repeat(100) + " " + &"a".repeat(100);
         // [text, query, [low, medium, high]], each decided by a bound alone.
-        let cases: [(&str, &str, [bool; 3]); 18] = [
+        let cases: [(&str, &str, [bool; 3]); 23] = [
             // A prefix or a word start passes every level.
             ("Firefox", "fire", [true; 3]),
             ("Mozilla Firefox", "fire", [true; 3]),
@@ -798,6 +900,23 @@ mod tests {
             (&runs_between, &"a".repeat(256), [true, true, false]),
             // Word starts after lone letters: 3 * 256 - 255 > 2 * 256.
             (&lone_then_starts, &"a".repeat(256), [true; 3]),
+            // A query separator takes the text's separator with gain 1 and
+            // a gap: the runs decide as above.
+            (&runs_dash, &("a".repeat(32) + "-"), [true, true, false]),
+            (&runs_dash, &("a".repeat(256) + "-"), [true, true, false]),
+            (
+                &runs_space_runs,
+                &("a".repeat(100) + " " + &"a".repeat(100)),
+                [true, true, false],
+            ),
+            // The separator and the word start after it, found whole.
+            (
+                &spaced_runs,
+                &("a".repeat(60) + "-" + &"a".repeat(60)),
+                [true; 3],
+            ),
+            // A separator the text lacks is skipped.
+            (&runs, &("a".repeat(64) + "-"), [true, true, false]),
         ];
         for (text, query, expected) in cases {
             for (level, expected) in LEVELS.into_iter().zip(expected) {
@@ -921,6 +1040,15 @@ mod tests {
             let text = seeded.pick(&chunks, length);
             let length = 8 + seeded.below(110);
             let query = seeded.pick(&["a", "a", "a", "a", "a", "b"], length);
+            cases.push((text, query));
+        }
+        // The same with separators in the text and the query.
+        let chunks = ["a", "aa", "aaaaa", "b", " a", "-", "ab", "Ab", "a-a"];
+        for _ in 0..240 {
+            let length = 20 + seeded.below(120);
+            let text = seeded.pick(&chunks, length);
+            let length = 8 + seeded.below(110);
+            let query = seeded.pick(&["a", "a", "a", "a", "a", "b", " ", "-"], length);
             cases.push((text, query));
         }
         for (text, query) in cases {

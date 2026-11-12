@@ -132,8 +132,8 @@ struct Scorer {
     sensitivity: Sensitivity,
     gate: Gate,
     spaced: Option<Spaced>,
-    // An ASCII query without Ranker.js separators.
-    plain: bool,
+    // An ASCII query without Ranker.js separators, its bytes.
+    plain: Option<Vec<u8>>,
 }
 
 // Ranker.js lets a query separator stand for any text separator or for none
@@ -163,7 +163,7 @@ impl Scorer {
             edits: Scratch::default(),
             sensitivity,
             gate: Gate::new(query),
-            plain: query.is_ascii() && spaced.is_none(),
+            plain: (query.is_ascii() && spaced.is_none()).then(|| query.as_bytes().to_vec()),
             spaced,
         }
     }
@@ -194,22 +194,31 @@ impl Scorer {
     // the same rows with or without the helper. Without such a match, a
     // query with a separator still matches a field the threshold passes
     // (`Spaced`). Edit typos are the helper's own: `low` and `medium` keep
-    // them, `high` drops them.
-    fn decide(&mut self, text: &str, listed: Option<i32>, spaced: bool) -> Option<i32> {
+    // them, `high` drops them. `passed` is the gate's verdict when the
+    // caller has it.
+    fn decide(
+        &mut self,
+        text: &str,
+        listed: Option<i32>,
+        spaced: bool,
+        passed: Option<bool>,
+    ) -> Option<i32> {
         let level = self.level();
+        let passes = |gate: &mut Gate| passed.unwrap_or_else(|| gate.passes(text, level));
         if let Some(score) = listed.filter(|&score| score >= NAME - HIT_SPAN) {
             // An ASCII prefix of a plain query passes every level without the
             // gate: Ranker.js scores its letters 4 + 2 * (length - 1) or more,
             // above both thresholds (high: more than 2 * length).
             let keep = matches!(self.sensitivity, Sensitivity::Low)
                 || score == EXACT
-                || (score == PREFIX && self.plain && text.is_ascii())
-                || self.gate.passes(text, level);
+                || (score == PREFIX && self.plain.is_some() && text.is_ascii())
+                || passes(&mut self.gate);
             return keep.then_some(score);
         }
         if spaced
+            && self.spaced.is_some()
+            && passes(&mut self.gate)
             && let Some(spaced) = &mut self.spaced
-            && self.gate.passes(text, level)
         {
             let score = spaced.matcher.name_bytes(
                 text.as_bytes(),
@@ -229,17 +238,34 @@ impl Scorer {
     // character of a spaced query other than its separators can't pass the
     // gate. Non-ASCII text or queries always pass (searchbits::UNKNOWN), so
     // results are the same as scoring every field.
+    //
+    // `high` runs the gate first. It drops edit typos, so a field the gate
+    // rejects keeps only an exact score (the gate passes an ASCII prefix of
+    // a plain query, see `decide`), and the matcher scores exact only a field
+    // with as many characters as the query. Other fields skip the matcher. A
+    // field that starts with a plain query is scored as below `high`, matcher
+    // first, so its prefix score skips the gate.
     fn score_field(&mut self, field: &Field) -> Option<i32> {
-        let listed = if searchbits::possible(self.matcher.bits, field.bits, self.matcher.budget) {
-            self.listed(&field.text)
-        } else {
-            None
-        };
+        let text = &field.text;
+        let possible = searchbits::possible(self.matcher.bits, field.bits, self.matcher.budget);
         let spaced = self
             .spaced
             .as_ref()
             .is_some_and(|spaced| searchbits::possible(spaced.matcher.bits, field.bits, 0));
-        self.decide(&field.text, listed, spaced)
+        let mut passed = None;
+        let prefix = self.plain.as_ref().is_some_and(|query| {
+            let start = text.as_bytes().get(..query.len());
+            start.is_some_and(|start| start.eq_ignore_ascii_case(query))
+        });
+        if self.sensitivity == Sensitivity::High && (possible || spaced) && !prefix {
+            let passes = self.gate.passes(text, Level::High);
+            if !passes && !(possible && text.chars().count() == self.matcher.needle.len()) {
+                return None;
+            }
+            passed = Some(passes);
+        }
+        let listed = if possible { self.listed(text) } else { None };
+        self.decide(text, listed, spaced, passed)
     }
 }
 
@@ -346,6 +372,10 @@ mod tests {
             "Plus+Minus",
             "x.y.z",
             "Bluetooth Settings",
+            // The matcher lowercases "İ" to "i", the gate to "i\u{307}": an
+            // exact match the gate rejects at high.
+            "İİİİ",
+            "İstanbul",
         ];
         let queries = [
             "f",
@@ -383,6 +413,8 @@ mod tests {
             "ZZZ",
             "q",
             "tool",
+            "iiii",
+            "ist",
         ];
         for query in queries {
             for sensitivity in [Sensitivity::Low, Sensitivity::Medium, Sensitivity::High] {
@@ -391,11 +423,18 @@ mod tests {
                 for text in texts {
                     let field = Field::new(text.to_string());
                     let listed = scorer.listed(text);
-                    let scored = scorer.decide(text, listed, spaced);
+                    let scored = scorer.decide(text, listed, spaced, None);
                     assert_eq!(scorer.score_field(&field), scored, "{query:?} on {text:?}");
                 }
             }
         }
+        // `high` gates first, and still keeps an exact score the gate rejects.
+        let mut scorer = Scorer::new("iiii", Sensitivity::High);
+        assert!(!scorer.gate.passes("İİİİ", Level::High));
+        assert_eq!(
+            scorer.score_field(&Field::new("İİİİ".to_string())),
+            Some(EXACT)
+        );
     }
 
     #[test]
@@ -518,11 +557,38 @@ mod tests {
                 assert!(listed.is_some_and(|score| (NAME - HIT_SPAN..WORD).contains(&score)));
                 let start = Instant::now();
                 for title in &titles {
-                    assert_eq!(scorer.decide(title, listed, false).is_some(), passes);
+                    assert_eq!(scorer.decide(title, listed, false, None).is_some(), passes);
                 }
                 let spent = start.elapsed();
                 assert_eq!(scorer.gate.cells(), 0, "{letters} letters");
                 // About 0.4 s at most in a debug build, 25 ms in a release one.
+                assert!(spent < Duration::from_millis(2000), "{spent:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn runs_of_letters_with_separators_stay_far_inside_the_search_deadline() {
+        // The third review's repro: the titles above with a "-", and queries
+        // that end with one. With separators in the query and the title the
+        // gate ran the alignment for every title: 1,256 ms for 256 letters
+        // at medium in a release build. The separator row takes the title's
+        // "-" with gain 1, so the bounds decide as without it.
+        let titles: Vec<_> = (0..7000)
+            .map(|at| format!("{}-{at}", "aaaaab".repeat(83)))
+            .collect();
+        for letters in [31, 63, 127, 255] {
+            let query = "a".repeat(letters) + "-";
+            for (sensitivity, passes) in [(Sensitivity::Medium, true), (Sensitivity::High, false)] {
+                let mut scorer = Scorer::new(&query, sensitivity);
+                let listed = scorer.listed(&titles[0]);
+                assert!(listed.is_some_and(|score| (NAME - HIT_SPAN..WORD).contains(&score)));
+                let start = Instant::now();
+                for title in &titles {
+                    assert_eq!(scorer.decide(title, listed, false, None).is_some(), passes);
+                }
+                let spent = start.elapsed();
+                assert_eq!(scorer.gate.cells(), 0, "{letters} letters");
                 assert!(spent < Duration::from_millis(2000), "{spent:?}");
             }
         }
@@ -580,7 +646,7 @@ mod tests {
         );
         assert!(raw.is_some_and(|score| score <= SHADOW_TYPO));
         let listed = scorer.listed("Firefox");
-        assert!(scorer.decide("Firefox", listed, false).is_none());
+        assert!(scorer.decide("Firefox", listed, false, None).is_none());
         let catalog = catalog(json!([
             { "title":"Firefox", "alternateTitles":["Firefox"], "keywords":["Firefox"] },
             { "title":"zzzz", "subtitle":"Firefox" }
