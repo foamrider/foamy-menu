@@ -17,6 +17,16 @@ test("transliterate folds diacritics to ASCII", () => {
   assert.equal(R.transliterate("Café Ærø Straße"), "Cafe AEro Strasse")
 })
 
+test("the final sigma folds to sigma, as the helper lowercases letter by letter", () => {
+  assert.equal("ΟΣ".toLowerCase(), "ος")
+  assert.equal(R.transliterate("Οδυσσεύς"), "Οδυσσευσ")
+  assert.equal(R.normalize("ΟΣ").normalizedText, "οσ")
+  for (const query of ["ΟΣ", "οσ", "ος"]) assert.equal(R.fuzzyMatch("ΟΣ", query), "exact", query)
+  // "İ" lowercases to "i" and a combining dot, which transliterate removes.
+  assert.equal(R.transliterate("İstanbul".toLowerCase()), "istanbul")
+  assert.equal(R.transliterate("İstanbul"), "Istanbul")
+})
+
 test("fuzzyMatch golden scores", () => {
   assert.deepEqual(R.fuzzyMatch("Firefox", "fir"), { score: 8, skipped: 0 })
   assert.deepEqual(R.fuzzyMatch("Firefox", "fx"), { score: 5, skipped: 0 })

@@ -18,6 +18,13 @@ function isSeparator(ch) {
   return ch !== "" && SEPARATORS.indexOf(ch) !== -1
 }
 
+// Lowercase as the helper's matcher does, one letter at a time. Only the
+// final sigma lowercases by context ("ΟΣ" gives "ος", the matcher "οσ"), so
+// fold it after every lowercasing. search/src/strictness.rs does the same.
+function lower(s) {
+  return String(s).toLowerCase().replace(/ς/g, "σ")
+}
+
 
 function normalize(s) {
   var text = String(s === undefined || s === null ? "" : s)
@@ -25,7 +32,7 @@ function normalize(s) {
   for (var i = 0; i < text.length; i++) {
     boundaries.push(i > 0 && /[a-z0-9]/.test(text.charAt(i - 1)) && /[A-Z]/.test(text.charAt(i)))
   }
-  return { normalizedText: text.toLowerCase(), wordBoundaries: boundaries }
+  return { normalizedText: lower(text), wordBoundaries: boundaries }
 }
 
 var TRANSLIT = {
@@ -42,7 +49,7 @@ function transliterate(s) {
     var ch = text.charAt(i)
     out += TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch
   }
-  return out
+  return out.replace(/ς/g, "σ")
 }
 
 
@@ -51,7 +58,7 @@ function fuzzyMatch(target, query, options) {
   var tn = normalize(target)
   var t = tn.normalizedText
   var bounds = tn.wordBoundaries
-  var q = String(query === undefined || query === null ? "" : query).toLowerCase()
+  var q = lower(query === undefined || query === null ? "" : query)
 
   function querySep(ch) {
     if (literalDots && ch === ".") return false
@@ -271,11 +278,11 @@ function buildRecord(candidate, query, options) {
   var folded = fold(c.title)
   var title = folded
   if (tq.charAt(0) === "/") title = title.replace("/", " ")
-  var titleLower = title.toLowerCase()
+  var titleLower = lower(title)
   var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(fold) : []
   record.title = fuzzyMatch(title, tq, { literalQueryDots: literalDots })
   if (record.title === "exact") record.titleMatch = "exact"
-  else if (titleLower.indexOf(tq) === 0 || alternates.some(function(a) { return a.toLowerCase().indexOf(tq) === 0 }))
+  else if (titleLower.indexOf(tq) === 0 || alternates.some(function(a) { return lower(a).indexOf(tq) === 0 }))
     record.titleMatch = "prefix"
   record.titleScore = matchScore(record.title)
 

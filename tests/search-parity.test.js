@@ -30,7 +30,9 @@ const candidates = [
   { id: "bl", title: "Blåtann", type: "command" },
   { id: "wifi", title: "Wi-Fi", type: "command", subtitle: "Trådløst nettverk", keywords: ["nettverksinnstillinger"] },
   { id: "naut", title: "Filbehandler", type: "application", bundleId: "org.gnome.Nautilus" },
-  { id: "skjaer", title: "Skjærgård", type: "command", alternateTitles: ["Øyrike"] }
+  { id: "skjaer", title: "Skjærgård", type: "command", alternateTitles: ["Øyrike"] },
+  { id: "os", title: "ΟΣ", type: "command" },
+  { id: "odysseus", title: "Οδυσσεύς", type: "command" }
 ]
 
 // [query, {level: matched ids}]; every row runs through both matchers.
@@ -96,7 +98,12 @@ const SHARED = [
   ["firedragon", { low: ["dragon"], medium: ["dragon"], high: ["dragon"] }],
   ["browser fire", { low: ["firefox"], medium: ["firefox"], high: ["firefox"] }],
   ["ssh config", { low: ["ssh", "ssh-en"], medium: ["ssh", "ssh-en"], high: ["ssh", "ssh-en"] }],
-  ["trå nett", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }]
+  ["trå nett", { low: ["wifi"], medium: ["wifi"], high: ["wifi"] }],
+  // Lowercasing a whole word gives a final sigma ("ΟΣ" gives "ος"); the
+  // helper's matcher lowercases each letter ("οσ"). Both sides fold it.
+  ["ΟΣ", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
+  ["οσ", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
+  ["ος", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }]
 ]
 
 // Edit typos (swapped or wrong letters) are the helper's own: the built-in

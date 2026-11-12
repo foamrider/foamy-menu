@@ -60,8 +60,11 @@ successful load fails. `services/NativeSearch.qml` uses `root` for the root
 candidates (which submenus and the Apps grid also search) and `view` for the
 open scope's items or the settings rows.
 
-The caller applies `Ranker.transliterate` to every input string and query once.
-The helper performs no transliteration, normalization, trimming, or path search.
+The caller applies `Ranker.transliterate` to every input string and query once;
+it also folds the Greek final sigma (`ς`) to `σ`, the only letter whose
+lowercase depends on context (a word's last `Σ` lowercases to `ς` in a whole
+text, to `σ` letter by letter, as the matcher does). The helper performs no
+transliteration, normalization, trimming, or path search.
 Each score comes directly from `Matcher::name_bytes`. Before scoring, a field is
 skipped when upstream's letter-presence filter (`searchbits::possible` on the
 query's and the field's `searchbits::mask`, the field mask computed once at load)
@@ -96,11 +99,16 @@ matcher's score for the query without its separators, held to
 that lacks a character of the query other than its separators is skipped first
 (`searchbits::possible` with no edits; non-ASCII always passes).
 
-`src/strictness.rs` decides most fields without Ranker.js's alignment: the
-query found whole in the field gives a lower bound on its score, and word
-starts and adjacent letter pairs give an upper bound. A field that neither
-bound decides runs the alignment, which fills at most one cell per query and
-field UTF-16 unit, no more than the matcher's own name DP over that field.
+`src/strictness.rs` lowercases the field and the query as Ranker.js does, then
+folds `ς` to `σ` as Ranker.js does after every lowercasing. It decides most
+fields without Ranker.js's alignment. Paths it scores in one pass give lower
+bounds on a field's score: the query found whole, and for queries of 8 or
+more letters the letters at their first places in order, then at places that
+prefer adjacent letters and word starts (a search capped at twice the field's
+length). For such queries, word starts, adjacent letter pairs and the field's
+stretches of query pairs give an upper bound. A field that no bound decides
+runs the alignment, which fills at most one cell per query and field UTF-16
+unit, no more than the matcher's own name DP over that field.
 `tests/search-parity.test.js` runs both matchers over the same queries at every
 level. Upstream name DP scores are bounded by `2000000 +/- 100000`; exact,
 prefix, and word scores are `5000000`, `4000000`, and `3500000`. Upstream listed

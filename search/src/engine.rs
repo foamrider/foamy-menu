@@ -498,6 +498,37 @@ mod tests {
     }
 
     #[test]
+    fn runs_of_letters_stay_far_inside_the_search_deadline() {
+        // The second review's repro: 7,000 titles of runs of five "a" and
+        // queries of 32 to 256 "a", in order in every title but never whole.
+        // The gate ran the alignment for every title, and the search took
+        // 1,293 ms for 256 letters at medium in a release build, past
+        // NativeSearch.qml's 1,000 ms. Now the letters at their first places
+        // pass medium (one gap per run), and runs of at most five letters
+        // leave too many gaps for high, so no title runs the alignment.
+        let titles: Vec<_> = (0..7000)
+            .map(|at| format!("{}{at}", "aaaaab".repeat(83)))
+            .collect();
+        for letters in [32, 64, 128, 256] {
+            let query = "a".repeat(letters);
+            for (sensitivity, passes) in [(Sensitivity::Medium, true), (Sensitivity::High, false)] {
+                let mut scorer = Scorer::new(&query, sensitivity);
+                // The matcher scores these titles in the name range.
+                let listed = scorer.listed(&titles[0]);
+                assert!(listed.is_some_and(|score| (NAME - HIT_SPAN..WORD).contains(&score)));
+                let start = Instant::now();
+                for title in &titles {
+                    assert_eq!(scorer.decide(title, listed, false).is_some(), passes);
+                }
+                let spent = start.elapsed();
+                assert_eq!(scorer.gate.cells(), 0, "{letters} letters");
+                // About 0.4 s at most in a debug build, 25 ms in a release one.
+                assert!(spent < Duration::from_millis(2000), "{spent:?}");
+            }
+        }
+    }
+
+    #[test]
     fn query_separators_match_fields_the_matcher_reads_literally() {
         let catalog = catalog(json!([
             { "title":"GNOME Terminal" },

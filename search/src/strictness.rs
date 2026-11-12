@@ -8,12 +8,15 @@
 // does too: text and query are compared unit by unit, as the JavaScript does.
 //
 // Cost. `passes` first tries bounds that decide most fields without
-// Ranker.js's alignment (its dynamic program): the query found whole in the
-// text gives a lower bound on the best score, and for longer queries word
-// starts and adjacent letter pairs give an upper bound. Only a field that
-// neither bound decides
-// runs the alignment, which fills at most one cell per query unit and text
-// unit: no more cells than the matcher's own name DP over the same field.
+// Ranker.js's alignment (its dynamic program). Alignments it can score in one
+// pass give lower bounds on the best score: the query found whole in the
+// text, and for longer queries the letters at their first places in order
+// (`leftmost`) or at places that prefer adjacent letters and word starts
+// (`seeking`). For longer queries, word starts, adjacent letter pairs and
+// stretches of them give an upper bound (`ceiling`). Only a field that no
+// bound decides runs the alignment, which fills at most one cell per query
+// unit and text unit: no more cells than the matcher's own name DP over the
+// same field.
 
 // Ranker.js SEPARATORS ("\t\n -./()[]"), as bits of the ASCII units.
 const SEPARATORS: u128 = 1 << b'\t'
@@ -26,12 +29,26 @@ const SEPARATORS: u128 = 1 << b'\t'
     | 1 << b')'
     | 1 << b'['
     | 1 << b']';
-// Below this many rows the alignment costs about as much as the upper bound.
+// Below this many rows the alignment costs about as much as the bounds that
+// take a pass over the text for each field.
 const CEILING_ROWS: usize = 8;
 // "No alignment ends here". A cell at or below VALID is stored as NONE, so
 // sums of two of them stay far from overflow.
 const NONE: i32 = i32::MIN / 4;
 const VALID: i32 = NONE / 2;
+
+// Greek final and other small sigma. Lowercasing a whole text gives "ς" for a
+// word's last "Σ" ("ΟΣ" gives "ος"); the matcher lowercases each letter on its
+// own ("οσ"). It is the only letter that lowercases by context, and Ranker.js
+// folds it after every lowercasing, as this does.
+const FINAL_SIGMA: u16 = 0x03C2;
+const SIGMA: u16 = 0x03C3;
+
+/// Appends `text` lowercased as UTF-16 units, the final sigma folded.
+fn extend_lower(units: &mut Vec<u16>, text: &str) {
+    let fold = |unit| if unit == FINAL_SIGMA { SIGMA } else { unit };
+    units.extend(text.to_lowercase().encode_utf16().map(fold));
+}
 
 fn separator(unit: u16) -> bool {
     unit < 128 && SEPARATORS & (1 << unit) != 0
@@ -109,6 +126,15 @@ struct Text {
     current: Vec<i32>,
     // The adjacent ASCII unit pairs, 128 x 128 bits.
     pairs: Vec<u64>,
+    // How many stretches have each number of columns, and how many of
+    // those without word starts (`ceiling`).
+    stretches: Vec<usize>,
+    unstarted: Vec<usize>,
+    // Each row's first place in order (`in_order`) and last place (`seeking`).
+    places: Vec<usize>,
+    latest: Vec<usize>,
+    // The original text's UTF-16 units, for camelCase word starts.
+    original: Vec<u16>,
     #[cfg(test)]
     cells: usize,
 }
@@ -121,7 +147,8 @@ pub(crate) struct Gate {
 
 impl Gate {
     pub(crate) fn new(query: &str) -> Self {
-        let units: Vec<u16> = query.to_lowercase().encode_utf16().collect();
+        let mut units = Vec::new();
+        extend_lower(&mut units, query);
         let letters: Vec<u16> = units.iter().copied().filter(|&u| !separator(u)).collect();
         let ascii = letters
             .iter()
@@ -183,7 +210,7 @@ impl Text {
                 .map(|byte| u16::from(byte.to_ascii_lowercase()));
             self.units.extend(lower);
         } else {
-            self.units.extend(text.to_lowercase().encode_utf16());
+            extend_lower(&mut self.units, text);
         }
         self.separated = self.units.iter().any(|&unit| separator(unit));
     }
@@ -193,23 +220,27 @@ impl Text {
         // Word starts inside a word (camelCase) come from the original text by
         // the lowercased text's index, as in Ranker.js `normalize`, and the
         // rest from the lowercased text.
-        let mut before = None;
-        let mut camel = text.encode_utf16().map(|unit| {
-            let start = before.is_some_and(ascii_lower_or_digit) && ascii_upper(unit);
-            before = Some(unit);
-            start
-        });
-        self.gain.clear();
-        let mut previous = None;
-        for &unit in &self.units {
-            let start = camel.next().unwrap_or(false) || previous.is_some_and(separator);
-            self.gain.push(match (previous, start) {
-                (None, _) => 4,
-                (_, true) => 3,
-                _ => 2,
-            });
-            previous = Some(unit);
+        self.original.clear();
+        if text.is_ascii() {
+            self.original.extend(text.bytes().map(u16::from));
+        } else {
+            self.original.extend(text.encode_utf16());
         }
+        let (units, original) = (&self.units, &self.original);
+        let gain = |at: usize| {
+            if at == 0 {
+                return 4;
+            }
+            let camel = original.get(at).is_some_and(|&unit| ascii_upper(unit))
+                && ascii_lower_or_digit(original[at - 1]);
+            if camel || separator(units[at - 1]) {
+                3
+            } else {
+                2
+            }
+        };
+        self.gain.clear();
+        self.gain.extend((0..units.len()).map(gain));
     }
 
     fn decide(
@@ -230,6 +261,10 @@ impl Text {
         }
         self.gains(text);
         let length = query.units.len() - preskipped;
+        let long = plain && rows.len() >= CEILING_ROWS;
+        if long && threshold(level, self.leftmost(), length) {
+            return true;
+        }
         // Found whole, every row places a cell, so nothing more is skipped.
         if self
             .whole(rows)
@@ -237,11 +272,16 @@ impl Text {
         {
             return true;
         }
-        if plain
-            && rows.len() >= CEILING_ROWS
-            && !threshold(level, self.ceiling(query, rows), length)
-        {
-            return false;
+        if long {
+            if !threshold(level, self.ceiling(query, rows), length) {
+                return false;
+            }
+            if self
+                .seeking(rows)
+                .is_some_and(|score| threshold(level, score, length))
+            {
+                return true;
+            }
         }
         match self.align(query, rows) {
             Some((score, skipped)) => threshold(level, score, length - skipped),
@@ -253,7 +293,9 @@ impl Text {
     /// the letters in order, each query separator jumping past the next text
     /// separator. Without separators it is "the letters in order", which the
     /// alignment needs anyway, so it then runs for every length.
-    fn in_order(&self, query: &Query, rows: &[u16], plain: bool) -> bool {
+    /// It keeps each letter row's place (`leftmost`).
+    fn in_order(&mut self, query: &Query, rows: &[u16], plain: bool) -> bool {
+        self.places.clear();
         if !plain && query.letters.len() <= 2 {
             return true;
         }
@@ -267,7 +309,10 @@ impl Text {
                 continue;
             }
             match t[from..].iter().position(|&u| u == unit) {
-                Some(at) => from += at + 1,
+                Some(at) => {
+                    self.places.push(from + at);
+                    from += at + 1;
+                }
                 None => return false,
             }
         }
@@ -295,46 +340,163 @@ impl Text {
         Some(score(first).max(later.map_or(0, score)))
     }
 
+    /// A lower bound on the best score for rows without separators: the rows
+    /// at their first places in order, the path `in_order` (Ranker.js's quick
+    /// rejection) walks. Any rows without separators at places in order are
+    /// an alignment (each place comes at or after its row's first place and
+    /// leaves room for the rows after it), so the best one scores at least as
+    /// much.
+    fn leftmost(&self) -> i32 {
+        let gaps = self.places.windows(2).filter(|at| at[0] + 1 != at[1]);
+        let gains: i32 = self.places.iter().map(|&at| self.gain[at]).sum();
+        gains - gaps.count() as i32
+    }
+
+    /// Two more lower bounds for rows without separators, for texts where
+    /// the first places leave many gaps (lone letters before runs of them or
+    /// before word starts); the better one. The rows at their last places
+    /// (the latest that leave room for the rows after them). And a row that
+    /// cannot follow the one before it without a gap takes the next place
+    /// that is a word start or that the row after it can follow without a
+    /// gap, if one comes by its last place, else its next place. The search
+    /// for such places reads at most twice the text per field; past that,
+    /// rows take their next places. `None` when the rows are not in order.
+    fn seeking(&mut self, rows: &[u16]) -> Option<i32> {
+        let (t, gain) = (&self.units, &self.gain);
+        // Each row's last place: the rows placed from the end, each as late
+        // as it goes.
+        self.latest.clear();
+        self.latest.resize(rows.len(), 0);
+        let mut end = t.len();
+        for (row, &unit) in rows.iter().enumerate().rev() {
+            end = t[..end].iter().rposition(|&u| u == unit)?;
+            self.latest[row] = end;
+        }
+        let gaps = self.latest.windows(2).filter(|at| at[0] + 1 != at[1]);
+        let latest = self.latest.iter().map(|&at| gain[at]).sum::<i32>() - gaps.count() as i32;
+        let mut allowance = 2 * t.len();
+        let (mut score, mut next) = (0, 0);
+        for (row, &unit) in rows.iter().enumerate() {
+            // The row before sits at or before its last place, so `next` is
+            // at or before this row's last place.
+            let last = self.latest[row];
+            let at = if row > 0 && t[next] == unit {
+                next
+            } else {
+                let first = next + t[next..=last].iter().position(|&u| u == unit)?;
+                let after = rows.get(row + 1);
+                let good = |at: usize| {
+                    t[at] == unit
+                        && (gain[at] > 2 || after.is_some_and(|a| t.get(at + 1) == Some(a)))
+                };
+                let span = (last + 1 - first).min(allowance);
+                let found = (first..first + span).find(|&at| good(at));
+                allowance -= found.map_or(span, |at| at + 1 - first);
+                found.unwrap_or(first)
+            };
+            score += gain[at] - i32::from(row > 0 && at != next);
+            next = at + 1;
+        }
+        Some(score.max(latest))
+    }
+
     /// An upper bound on the best score for rows without separators (the
     /// query's letters): two per letter, plus one for each word start a
-    /// letter could take (two for the text's start), less one per gap. A
-    /// letter follows the one before it without a gap only where the text
-    /// holds that pair, each time at a later column, so the gaps are at least
-    /// the query's pairs the text never has, and at least the letters less
-    /// one less the columns where the text holds some query pair.
+    /// letter takes (two for the text's start), less one per gap. A letter
+    /// follows the one before it without a gap only where the text holds
+    /// that pair, each time at a later column. So the gaps are at least the
+    /// query's pairs the text never has, and at least the letters less one
+    /// less the columns where the text holds some query pair.
+    ///
+    /// And a run of letters without a gap lies inside one stretch of the
+    /// text, where each adjacent pair is a query pair, and holds no more
+    /// letters than the stretch has columns. So there are at least as many
+    /// runs as the fewest stretches whose columns hold every letter. Counted
+    /// by stretch, every stretch the letters touch but the first costs a gap
+    /// and gives back at most its own word starts: a stretch with word starts
+    /// gives at most one fewer than it has, and the others cost one each, as
+    /// few as hold the letters the first ones cannot.
     fn ceiling(&mut self, query: &Query, rows: &[u16]) -> i32 {
-        let t = &self.units;
+        let (t, gain) = (&self.units, &self.gain);
         let takes = |unit: u16| unit >= 128 || query.ascii & (1u128 << unit) != 0;
-        let starts = self.gain[1..]
-            .iter()
-            .zip(&t[1..])
-            .filter(|&(&gain, &unit)| gain == 3 && takes(unit))
-            .count()
-            .min(rows.len());
-        let bonus = if t[0] == rows[0] { 2 } else { 0 } + starts as i32;
-        // A pair with a non-ASCII unit counts as present.
+        // A word start after the text's first column that a letter can take.
+        let start = |at: usize| usize::from(gain[at] == 3 && takes(t[at]));
+        // `pairs` marks the query pairs the text holds; a pair with a
+        // non-ASCII unit counts as present.
         self.pairs.resize(128 * 128 / 64, 0);
-        let mut taken = 0;
-        for units in t.windows(2) {
-            match pair(units) {
-                Some(bit) => {
-                    self.pairs[bit / 64] |= 1 << (bit % 64);
-                    taken += usize::from(has(&query.pairs, bit));
-                }
-                None => taken += 1,
+        let (pairs, stretches, unstarted) =
+            (&mut self.pairs, &mut self.stretches, &mut self.unstarted);
+        for histogram in [&mut *stretches, &mut *unstarted] {
+            histogram.clear();
+            histogram.resize(t.len() + 1, 0);
+        }
+        let (mut taken, mut starts) = (0, 0);
+        // The stretch so far: its columns and its word starts.
+        let (mut columns, mut inner) = (1, 0);
+        // The stretches with word starts: their columns, and their word
+        // starts less one each.
+        let (mut started, mut returned) = (0, 0);
+        // The stretch that holds the text's first column, once closed.
+        let mut opening = None;
+        for at in 1..=t.len() {
+            let joined = at < t.len()
+                && match pair(&t[at - 1..=at]) {
+                    Some(bit) if has(&query.pairs, bit) => {
+                        pairs[bit / 64] |= 1 << (bit % 64);
+                        true
+                    }
+                    Some(_) => false,
+                    None => true,
+                };
+            if joined {
+                taken += 1;
+                columns += 1;
+                inner += start(at);
+                continue;
+            }
+            stretches[columns] += 1;
+            opening.get_or_insert((columns, inner));
+            if inner > 0 {
+                started += columns;
+                returned += inner - 1;
+            } else {
+                unstarted[columns] += 1;
+            }
+            starts += inner;
+            if at < t.len() {
+                (columns, inner) = (1, start(at));
             }
         }
+        let m = rows.len();
         let missing = rows
             .windows(2)
             .filter_map(pair)
-            .filter(|&bit| !has(&self.pairs, bit))
+            .filter(|&bit| !has(pairs, bit))
             .count();
-        // Clear only the words this text set: cheaper than the whole table.
-        for bit in t.windows(2).filter_map(pair) {
-            self.pairs[bit / 64] = 0;
+        // Only query pairs were set: clear their words, not the whole table.
+        for bit in rows.windows(2).filter_map(pair) {
+            pairs[bit / 64] = 0;
         }
-        let gaps = missing.max((rows.len() - 1).saturating_sub(taken));
-        2 * rows.len() as i32 + bonus - gaps as i32
+        let first = if t[0] == rows[0] { 2 } else { 0 };
+        let gaps = missing
+            .max((m - 1).saturating_sub(taken))
+            .max(fewest(stretches, m).saturating_sub(1));
+        let by_pairs = 2 * m as i32 + first + starts.min(m) as i32 - gaps as i32;
+        // Without the text's first column; then, when a letter can take it,
+        // with it, which touches the stretch that holds it.
+        let costs = fewest(unstarted, m.saturating_sub(started));
+        let mut by_stretches = 2 * m as i32 + 1 + returned as i32 - costs as i32;
+        if let Some((columns, 0)) = opening.filter(|_| first > 0) {
+            unstarted[columns] -= 1;
+            let costs = 1 + fewest(unstarted, m.saturating_sub(started + columns));
+            unstarted[columns] += 1;
+            by_stretches =
+                by_stretches.max(2 * m as i32 + first + 1 + returned as i32 - costs as i32);
+        } else {
+            // The first column's stretch has word starts and is counted.
+            by_stretches += first;
+        }
+        by_pairs.min(by_stretches)
     }
 
     /// Ranker.js `fuzzyMatch`'s alignment: the best score and the query
@@ -398,6 +560,25 @@ impl Text {
         let best = self.previous[placed].iter().copied().max()?;
         (best > VALID).then_some((best, skipped))
     }
+}
+
+/// The fewest stretches that hold `letters`, from `histogram` (how many
+/// stretches have each number of columns), longest first.
+fn fewest(histogram: &[usize], letters: usize) -> usize {
+    let (mut held, mut used) = (0, 0);
+    for (columns, &count) in histogram.iter().enumerate().skip(1).rev() {
+        if held >= letters {
+            break;
+        }
+        // Most lengths have no stretch: skip them before dividing.
+        if count == 0 {
+            continue;
+        }
+        let taken = (letters - held).div_ceil(columns).min(count);
+        held += taken * columns;
+        used += taken;
+    }
+    used
 }
 
 /// One alignment row over `columns`: a cell is its gain plus the best cell
@@ -516,6 +697,21 @@ mod tests {
     }
 
     #[test]
+    fn the_final_sigma_folds_to_sigma() {
+        // Lowercasing the whole text gives "ος"; the matcher gives "οσ".
+        for (text, query) in [("ΟΣ", "ΟΣ"), ("ΟΣ", "οσ"), ("ΟΣ", "ος"), ("ΟΣΟΣ", "οσοσ")]
+        {
+            for level in LEVELS {
+                assert!(
+                    Gate::new(query).passes(text, level),
+                    "{query:?} in {text:?}"
+                );
+            }
+        }
+        assert_eq!(letters("Οδυσσευς", "σς"), Some((4, 0)));
+    }
+
+    #[test]
     fn spread_letters_pass_only_below_medium() {
         // l…i…v…i…n over four words of the SSH scope's Norwegian subtitle.
         let text = "Koble til en vert i ~/.ssh/config";
@@ -562,8 +758,14 @@ mod tests {
         let long = "a".repeat(450);
         let spaced = "a".to_owned() + &" a".repeat(127);
         let paired = "a".to_owned() + &"ab".repeat(300) + "aa";
+        let runs = "aaaaab".repeat(83) + "123";
+        let run_then_spread = "a".repeat(200) + &"ba".repeat(100);
+        let short_runs = "aabab".repeat(100);
+        let lone_then_runs = "ab".repeat(200) + &"aaaaab".repeat(60);
+        let runs_between = "ab".repeat(100) + &"aaaaab".repeat(60) + &"ba".repeat(100);
+        let lone_then_starts = "ab".repeat(200) + &" a".repeat(300);
         // [text, query, [low, medium, high]], each decided by a bound alone.
-        let cases: [(&str, &str, [bool; 3]); 9] = [
+        let cases: [(&str, &str, [bool; 3]); 18] = [
             // A prefix or a word start passes every level.
             ("Firefox", "fire", [true; 3]),
             ("Mozilla Firefox", "fire", [true; 3]),
@@ -578,6 +780,24 @@ mod tests {
             (&paired, &"a".repeat(40), [true, false, false]),
             // The separators skipped, the letters a prefix.
             (&long, &spaced, [true; 3]),
+            // Runs of five "a": the first places leave one gap per run, few
+            // enough for medium; no run holds more than five letters, so
+            // there are too many gaps for high.
+            (&runs, &"a".repeat(32), [true, true, false]),
+            (&runs, &"a".repeat(64), [true, true, false]),
+            (&runs, &"a".repeat(256), [true, true, false]),
+            // One run of 200, then one "a" per gap: 56 gaps.
+            (&run_then_spread, &"a".repeat(256), [true, true, false]),
+            // Runs of two and one: 155 gaps or more.
+            (&short_runs, &"a".repeat(256), [true, false, false]),
+            // The runs of two alone: 19 gaps.
+            (&short_runs, &"a".repeat(40), [true, true, false]),
+            // Lone letters before or around the runs: the first places take
+            // the lone ones, a gap each; places where "aa" starts do not.
+            (&lone_then_runs, &"a".repeat(256), [true, true, false]),
+            (&runs_between, &"a".repeat(256), [true, true, false]),
+            // Word starts after lone letters: 3 * 256 - 255 > 2 * 256.
+            (&lone_then_starts, &"a".repeat(256), [true; 3]),
         ];
         for (text, query, expected) in cases {
             for (level, expected) in LEVELS.into_iter().zip(expected) {
@@ -661,6 +881,55 @@ mod tests {
                         "{query:?} in {text:?}"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn bounds_agree_with_the_alignment_on_seeded_random_fields() {
+        // A fixed linear congruential generator: the same fields every run.
+        struct Seeded(u64);
+        impl Seeded {
+            fn below(&mut self, bound: usize) -> usize {
+                self.0 = self
+                    .0
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
+                (self.0 >> 33) as usize % bound
+            }
+            fn pick(&mut self, from: &[&str], length: usize) -> String {
+                (0..length).map(|_| from[self.below(from.len())]).collect()
+            }
+        }
+        let mut seeded = Seeded(0x2545_f491);
+        // Short fields: separators, camelCase, non-ASCII and both sigmas.
+        let text_units = ["a", "a", "b", "A", "B", " ", "-", "é", "Σ", "ς", "x"];
+        let query_units = ["a", "a", "b", " ", "-", "é", "σ"];
+        let mut cases = Vec::new();
+        for _ in 0..4000 {
+            let length = seeded.below(40);
+            let text = seeded.pick(&text_units, length);
+            let length = 1 + seeded.below(14);
+            let query = seeded.pick(&query_units, length);
+            cases.push((text, query));
+        }
+        // Long fields of runs, lone letters and word starts, and long
+        // queries, which the bounds decide or leave to the alignment.
+        let chunks = ["a", "aa", "aaaaa", "b", " a", "ab", "Ab", "aab"];
+        for _ in 0..120 {
+            let length = 40 + seeded.below(120);
+            let text = seeded.pick(&chunks, length);
+            let length = 8 + seeded.below(110);
+            let query = seeded.pick(&["a", "a", "a", "a", "a", "b"], length);
+            cases.push((text, query));
+        }
+        for (text, query) in cases {
+            for level in LEVELS {
+                assert_eq!(
+                    Gate::new(&query).passes(&text, level),
+                    aligned(&text, &query, level),
+                    "{query:?} in {text:?}"
+                );
             }
         }
     }

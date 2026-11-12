@@ -105,3 +105,27 @@ test("built helper feeds every view's sections, misspellings included", { skip: 
   assert.deepEqual(found(Root.settingsSections(values, "stricntess", ctx(null), deps)), [])
   child.stdin.end()
 })
+
+// Lowercasing a whole word gives a final sigma ("ΟΣ" gives "ος"); the
+// helper's matcher lowercases each letter ("οσ"). Unless both sides fold it,
+// the helper finds no item and its empty hits keep the built-in matcher out.
+test("built helper finds a scope item whose title ends in a capital sigma", { skip: helper.skip, timeout: 10000 }, async t => {
+  const child = spawn(helper.argv[0], helper.argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
+  t.after(() => child.kill())
+  const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]()
+  let serial = 0
+  const ask = async obj => { child.stdin.write(JSON.stringify({ id: ++serial, ...obj }) + "\n"); return JSON.parse((await lines.next()).value) }
+  const deps = { Ranker: R, Frecency, Scopes }
+  const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find(s => s.id === "ssh")
+  const hosts = ["ΟΣ", "Οδυσσεύς", "db"].map(value => Scopes.itemCandidate(ssh, { title: value, value, subtitle: "" }, s => s))
+  const ids = hosts.map(c => c.id)
+  assert.equal((await ask({ catalog: "view", entries: F.entries(hosts, R.transliterate) })).loaded, hosts.length)
+  for (const query of ["ΟΣ", "ος", "οσ"]) {
+    const reply = await ask({ catalog: "view", query: R.transliterate(query.toLowerCase()), sensitivity: "medium" })
+    const fleaHits = F.hits(F.reply(JSON.stringify(reply)), ids)
+    const ctx = { commands: {}, frecency: {}, nowMs: 1000, filter: "all", searchScopes, fleaHits, t: s => s }
+    const found = Root.scopeSections(hosts, query, ctx, deps, "Hosts", false).flatMap(s => s.rows.map(r => r.candidate.id))
+    assert.deepEqual(found.sort(), ["scope-item:ssh:ΟΣ", "scope-item:ssh:Οδυσσεύς"], query)
+  }
+  child.stdin.end()
+})
