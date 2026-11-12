@@ -126,7 +126,27 @@ ShellRoot {
       test.capture(wrapper.menuSurface, name)
     })
   }
-  function setConfig(bar) {
+  // A settings or menu file write lands later, through FileView and the
+  // menu's file watcher, and a destroyed facade goes on a later event loop
+  // pass. The stage after one waits for its effect, up to 20 ticks (10 s),
+  // instead of assuming one 500 ms tick is enough: under load it was not.
+  // After the deadline the stage's checks run and report what they see.
+  property int waitTicks: 0
+  function waiting(arrived) {
+    if (arrived || ++waitTicks >= 20) {
+      waitTicks = 0
+      return false
+    }
+    stage--
+    return true
+  }
+  // The first foamy.menu width in the written config, as the menu reads it.
+  property var expectedWidthSetting: undefined
+  function configArrived() {
+    return wrapper.configuredWidthSetting === expectedWidthSetting
+  }
+  function setConfig(bar, widthSetting) {
+    expectedWidthSetting = widthSetting
     settingsFixture.setText(JSON.stringify({
       version: 1,
       bar: bar
@@ -257,10 +277,12 @@ ShellRoot {
               }
             ]
           }
-        })
+        }, 440)
         wrapper.open('{"menu":"root"}')
         break
       case 4:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.menuSurface.width === Style.space(440), "configuration updates live in another bar section")
         // The font picker is one of the stock menus wider than 440 (4.5 renamed it).
         wrapper.open(JSON.stringify({
@@ -286,10 +308,12 @@ ShellRoot {
               }
             ]
           }
-        })
+        }, 0)
         wrapper.open('{"menu":"root"}')
         break
       case 8:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.menuSurface.width === stock.cardWidth, "zero restores stock width")
         test.setConfig({
           layout: {
@@ -300,9 +324,11 @@ ShellRoot {
               }
             ]
           }
-        })
+        }, -20)
         break
       case 9:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.configuredWidth === 360 && wrapper.menuSurface.width === Style.space(360), "invalid setting falls back with warning")
         test.check(wrapper.reportedWidthSetting === "number -20", "invalid width is reported once")
         test.setConfig({
@@ -314,28 +340,38 @@ ShellRoot {
               }
             ]
           }
-        })
+        }, 4096)
         break
       case 10:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.menuSurface.width <= wrapper.menuWindow.width - Style.gapsOut * 2, "oversized width stays within the screen")
         test.check(wrapper.reportedWidthSetting === "", "valid width clears the warning")
         test.setMenuTestEntry(true)
         break
       case 11:
+        if (test.waiting(stock.item("foamy-test") !== null))
+          break
         test.check(stock.item("foamy-test") !== null, "new entry appears through stock file watcher")
         test.setMenuTestEntry(false)
         break
       case 12:
+        if (test.waiting(stock.item("foamy-test") === null))
+          break
         test.check(stock.item("foamy-test") === null, "removed entry disappears through stock file watcher")
         wrapper.close()
         // Revocation destroys the actual facade object, as the host does on reload.
         wrapper.shell.destroy()
         break
       case 13:
+        if (test.waiting(!wrapper.usingSharedAppLibrary))
+          break
         test.check(!wrapper.usingSharedAppLibrary && test.fallbackActive(), "revoked facade activates the packaged fallback")
         wrapper.open('{"menu":"apps"}')
         break
       case 14:
+        if (test.waiting(stock.childCount("apps") > 0))
+          break
         test.check(stock.childCount("apps") > 0, "applications remain available after capability loss")
         stock.setFilter("firefox")
         wrapper.shell = facade.createObject(null)
@@ -376,7 +412,7 @@ ShellRoot {
                 }
               ]
             }
-          })
+          }, 460)
           test.stage = 20
           break
         }
@@ -394,15 +430,19 @@ ShellRoot {
         ]
         test.setConfig({
           layout: layout
-        })
+        }, 610 + test.sectionIndex)
         wrapper.open('{"menu":"root"}')
         break
       case 19:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.configuredWidth === 610 + test.sectionIndex && wrapper.menuSurface.width === Style.space(610 + test.sectionIndex), test.sections[test.sectionIndex] + " retains width through the file watcher")
         test.sectionIndex++
         test.stage = 18
         break
       case 20:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.configuredWidth === 460, "malformed section is skipped")
         test.setConfig({
           layout: {
@@ -413,17 +453,21 @@ ShellRoot {
               }
             ]
           }
-        })
+        }, "440")
         break
       case 21:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.configuredWidth === 360 && wrapper.reportedWidthSetting === "string 440", "non-numeric width in tray falls back")
         test.setConfig({
           layout: {
             centerEnd: ["foamy.menu"]
           }
-        })
+        }, undefined)
         break
       case 22:
+        if (test.waiting(test.configArrived()))
+          break
         test.check(wrapper.configuredWidth === 360, "string entry keeps default width")
         wrapper.close()
         test.checkBarWidget()
@@ -441,10 +485,12 @@ ShellRoot {
               }
             ]
           }
-        })
+        }, 360)
         wrapper.open('{"menu":"root"}')
         break
       case 25:
+        if (test.waiting(test.configArrived()))
+          break
         test.captureMenu("menu-root")
         break
       case 26:
