@@ -271,6 +271,36 @@ function passesFilter(candidate, filter) {
   return (candidate.type === "application") === (filter === "applications")
 }
 
+// Items of a rootSection scope (ctx.sectionScopes: [{ id, title }], in scope
+// order, title already in the shown language) get a section of their own
+// after Applications, and while typing after Results. The title passes as
+// "%1" so the UI does not translate it again.
+function scopeSection(scope, rows) {
+  return { id: "scope-section:" + scope.id, title: "%1", titleValues: [scope.title], rows: rows }
+}
+
+// Whether a candidate is a root item of one of the section scopes.
+function inSection(c, sectionScopes) {
+  if (c.kind !== "scope-item" || c.type !== "application") return false
+  for (var s = 0; s < sectionScopes.length; s++) if (sectionScopes[s].id === c.scopeId) return true
+  return false
+}
+
+// Ranked rows split by section scope, keeping their order: { rest, byScope }.
+function splitBySection(rows, sectionScopes) {
+  var byScope = {}
+  for (var s = 0; s < sectionScopes.length; s++) byScope[sectionScopes[s].id] = []
+  var rest = []
+  for (var i = 0; i < rows.length; i++)
+    (inSection(rows[i].candidate, sectionScopes) ? byScope[rows[i].candidate.scopeId] : rest).push(rows[i])
+  return { rest: rest, byScope: byScope }
+}
+
+function appendScopeSections(out, sectionScopes, byScope) {
+  for (var s = 0; s < sectionScopes.length; s++)
+    if (byScope[sectionScopes[s].id].length) out.push(scopeSection(sectionScopes[s], byScope[sectionScopes[s].id]))
+}
+
 function rootSections(candidates, query, ctx, deps) {
   var q = String(query || "").trim()
   var filtered = ctx.filter && ctx.filter !== "all"
@@ -280,13 +310,16 @@ function rootSections(candidates, query, ctx, deps) {
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
+  var sectionScopes = ctx.sectionScopes || []
 
   if (q) {
     var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
-    var results = deps.Ranker.rank(searchable, q, opts)
+    var split = splitBySection(deps.Ranker.rank(searchable, q, opts), sectionScopes)
+    var results = split.rest
     var sections = []
     if (ctx.calculation && !filtered) sections.push({ id: "calculator", title: "Calculator", rows: [{ candidate: calculatorCandidate(ctx.calculation), record: null }] })
     if (results.length > 0) sections.push({ id: "results", title: "Results", rows: results })
+    appendScopeSections(sections, sectionScopes, split.byScope)
     var searches = filtered ? [] : searchRows(q, ctx, deps)
     if (searches.length) sections.push({ id: "fallback-commands", title: "Use “%1” with…", titleValues: [q], rows: searches })
     return sections
@@ -302,6 +335,10 @@ function rootSections(candidates, query, ctx, deps) {
     .slice(0, SUGGESTIONS_LIMIT)
   suggestions.forEach(function(r) { taken[r.candidate.id] = true })
 
+  // Root items of scopes are not among the shown rows (they show while
+  // searching), so a section takes them from every candidate.
+  var sectionRows = deps.Ranker.rank(decorated.filter(function(c) { return !taken[c.id] && inSection(c, sectionScopes) }), "", opts)
+  var inSections = splitBySection(sectionRows, sectionScopes).byScope
   var rest = shown.filter(function(c) { return !taken[c.id] })
   var commands = deps.Ranker.rank(rest.filter(function(c) { return c.type !== "application" }), "", opts)
   var apps = deps.Ranker.rank(rest.filter(function(c) { return c.type === "application" }), "", opts)
@@ -311,6 +348,7 @@ function rootSections(candidates, query, ctx, deps) {
   if (suggestions.length) out.push({ id: "suggestions", title: "Suggestions", rows: suggestions })
   if (commands.length) out.push({ id: "commands", title: "Commands", rows: commands })
   if (apps.length) out.push({ id: "apps", title: "Applications", rows: apps })
+  appendScopeSections(out, sectionScopes, inSections)
   return out
 }
 
