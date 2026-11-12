@@ -2,7 +2,7 @@
 # Hashes are of each file's body (the file without its stamp line);
 # notices and REVIEW.md are hashed whole. tests/kit-check.sh verifies them.
 version 0.9.0
-source 2dae544b0373
+source 6d0346d6a41b
 components FoamyI18n,FoamyIpc,FoamyMotion,FoamyNative,FoamyPrefs
 83e74c61df1740955057fad78e77dc347f783f735dd61b7a21b49461641bc270  .github/workflows/checks.yml
 98bd9e4430551129a6f4c309ee8ba59b66514db5ca1d4c5b7151ec308f6d632b  .github/workflows/verify-native.yml
@@ -16,8 +16,8 @@ a541e98f164e6c2e83b493341e50b128ba539dc4f32cf2253fb688731a513c3c  kit/FoamyI18nT
 72e0502f9cd35ca638b6af1c5e3e5411738a161cff2ed18f5751e11e9365f48c  kit/FoamyIpcResolver.js
 ac985fdddb1be105d4ca5590c31fb7972e55cf5b05a792ef618a80afda25980f  kit/FoamyMotion.qml
 0e877660044748bd8926a24de47ee8f6f194e085fb20b794e0621b039eda1eb4  kit/FoamyNative.js
-58aa5fea59b665ca743da0688fdfa37914ea1a191f14e4605e6a9f03eef8eb4f  kit/FoamyPrefs.js
-6680bf7efe5b60c263ef9910f095dd1f7b2eb9a8286c0bc6caf5b408054831a2  kit/FoamyPrefsQueue.qml
+6cc5852ff9a1eabd8b4868035a9e246f36382c48fc90bebeafb87859239d3432  kit/FoamyPrefs.js
+7a2d60361f0ea0176830ab8c3911a4ed157c0b9b6171b70bb1ae283611c0d7e9  kit/FoamyPrefsQueue.qml
 31cd6228f43b6b189e993ba517cbf8f18c4ba2681a4e71be49b853a39d6114ba  kit/native/build-native.sh
 a4bc7f02a0306d8440f7c20b801f1ffd6318dc4d1bc252732b5840d559d11bf3  kit/native/native.py
 90b1a10f5f5005c94031f36fef0ad3d8e705cf4e13372dd8362ef4579e0a93df  kit/node-loader.cjs
