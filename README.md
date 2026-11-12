@@ -89,7 +89,7 @@ Open **Foamy Menu Settings** with **Ctrl+,** or by searching "settings":
   Enter saves, Esc cancels. Empty means the default.
 - Typing filters the list. Ctrl+K offers **Reset to Default** and **Copy
   Setting Command** (the `omarchy bar set` line, for your dotfiles).
-- Sections: **Window**, **Search** (typo tolerance, SSH hosts, Steam games
+- Sections: **Window**, **Search** (search strictness, SSH hosts, Steam games
   in search, **Open Scopes Folder**), **Web Search** (save web searches, web
   search suggestions, **Clear Saved Web Searches**), **Calculator** and
   **Bar Button**.
@@ -118,7 +118,7 @@ omarchy bar get foamy.menu webSearchHistory
 | `escapeKeyBehavior` | `"pop-back-or-close"` | `pop-back-or-close` / `close-and-pop-to-root` | Esc: go back one level, or close and start over |
 | `popToRootTimeout` | `90` | 0–3600 | Seconds a closed launcher keeps its place (0 = always start over) |
 | `navigationBindings` | `"emacs"` | `emacs` / `vim-motions` | Move keys besides the arrows: Ctrl+N/P (emacs) or Ctrl+J/K (vim-motions) |
-| `rootSearchSensitivity` | `"medium"` | `low` / `medium` / `high` | How loosely search matches typos |
+| `rootSearchSensitivity` | `"medium"` | `low` / `medium` / `high` | How strictly search matches; low allows the most typos |
 | `keepVisibleOnFocusLoss` | `false` | boolean | Stay open when clicking outside |
 | `sshScope` | `true` | boolean | SSH scope (ssh + Tab) |
 | `steamGames` | `false` | boolean | Find installed Steam games in the root search, as apps are (the Games grid shows whenever Steam is installed) |

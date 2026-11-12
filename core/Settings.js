@@ -30,9 +30,9 @@ var fields = [
   { key: "navigationBindings", type: "enum", label: "Move keys besides the arrows: Ctrl+N/P (emacs) or Ctrl+J/K (vim-motions)",
     options: ["emacs", "vim-motions"], defaultValue: "emacs",
     section: "Window", title: "Move keys", optionTitles: { emacs: "Ctrl+N/P", "vim-motions": "Ctrl+J/K" } },
-  { key: "rootSearchSensitivity", type: "enum", label: "How loosely search matches typos",
+  { key: "rootSearchSensitivity", type: "enum", label: "How strictly search matches; low allows the most typos",
     options: ["low", "medium", "high"], defaultValue: "medium",
-    section: "Search", title: "Typo tolerance", optionTitles: { low: "Low", medium: "Medium", high: "High" } },
+    section: "Search", title: "Search strictness", optionTitles: { low: "Low", medium: "Medium", high: "High" } },
   { key: "keepVisibleOnFocusLoss", type: "boolean", label: "Stay open when clicking outside", defaultValue: false,
     section: "Window", title: "Stay open when clicking outside" },
   { key: "sshScope", type: "boolean", label: "SSH scope (ssh + Tab)", defaultValue: true,
@@ -58,7 +58,7 @@ var fields = [
 ]
 
 // The settings view's sections, in order. Search holds what the root search
-// finds (typo tolerance, SSH hosts, Steam games); Web Search the Google and
+// finds (search strictness, SSH hosts, Steam games); Web Search the Google and
 // DuckDuckGo scopes.
 var SECTIONS = ["Window", "Search", "Web Search", "Calculator", "Bar Button"]
 
