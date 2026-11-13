@@ -19,11 +19,18 @@ The bundled flea-search helper retains its license and provenance in `search/`.
 
 Requires Omarchy 4.5 with Quickshell and the stock menu components.
 Search uses the bundled helper (`bin/x86_64/` and `bin/aarch64/foamy-menu-search`,
-static binaries, no Rust needed). It starts with the first search and keeps
-running; it receives the app and command list once, then one query per
-keystroke, and skips fields that cannot match before scoring them. On other
-CPUs, or when the helper exits or takes over a second to answer, the menu
-uses its built-in matcher for the rest of the shell session. The same binary
+static binaries, no Rust needed) in every view: the root search, submenus,
+the Apps grid, a scope's items and the settings. It starts with the first
+search and keeps running. It receives each list once, and again only when it
+changes: the app and command list (which the root search, submenus and the
+Apps grid share) and the list of the open scope or the settings. Then it gets
+one query per keystroke, and skips fields that cannot match before scoring
+them. So every view matches the same rows at each strictness, misspellings
+included. The built-in matcher takes over in every view for the rest of the
+shell session when the helper is missing for the CPU, exits, fails or takes
+over a second to answer. It also matches a query over 256 characters, and
+the views the helper does not search: a web search scope's saved searches and
+Calculator History. The same binary
 lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`) and the Games
 scope's Steam games (`foamy-menu-search steam-games`), one short run each time
 the scope loads; on a CPU without it, those scopes say the helper isn't
@@ -89,7 +96,7 @@ Open **Foamy Menu Settings** with **Ctrl+,** or by searching "settings":
   Enter saves, Esc cancels. Empty means the default.
 - Typing filters the list. Ctrl+K offers **Reset to Default** and **Copy
   Setting Command** (the `omarchy bar set` line, for your dotfiles).
-- Sections: **Window**, **Search** (typo tolerance, SSH hosts, Steam games
+- Sections: **Window**, **Search** (search strictness, SSH hosts, Steam games
   in search, **Open Scopes Folder**), **Web Search** (save web searches, web
   search suggestions, **Clear Saved Web Searches**), **Calculator** and
   **Bar Button**.
@@ -118,7 +125,7 @@ omarchy bar get foamy.menu webSearchHistory
 | `escapeKeyBehavior` | `"pop-back-or-close"` | `pop-back-or-close` / `close-and-pop-to-root` | Esc: go back one level, or close and start over |
 | `popToRootTimeout` | `90` | 0–3600 | Seconds a closed launcher keeps its place (0 = always start over) |
 | `navigationBindings` | `"emacs"` | `emacs` / `vim-motions` | Move keys besides the arrows: Ctrl+N/P (emacs) or Ctrl+J/K (vim-motions) |
-| `rootSearchSensitivity` | `"medium"` | `low` / `medium` / `high` | How loosely search matches typos |
+| `rootSearchSensitivity` | `"medium"` | `low` / `medium` / `high` | How strictly search matches; low allows the most typos |
 | `keepVisibleOnFocusLoss` | `false` | boolean | Stay open when clicking outside |
 | `sshScope` | `true` | boolean | SSH scope (ssh + Tab) |
 | `steamGames` | `false` | boolean | Find installed Steam games in the root search, as apps are (the Games grid shows whenever Steam is installed) |
@@ -151,6 +158,21 @@ Backspace on an empty search, Esc or a click on the tag leaves the scope.
 Items are searched only inside their scope, not in the root search, unless
 the scope sets `rootSearch` (Games does when `steamGames` is on). Recently
 used items come first; the rest follow in the source's order.
+
+A scope that sets `rootSection` also lists its items in the root search
+with nothing typed, except those already under **Favorites** or
+**Suggestions** (recently used items stay there). Without
+`rootSectionTitle` they join **Applications**; with it they get a heading
+of their own after Applications. Scopes with the same `rootSectionTitle`
+share one section, their items sorted together. Several sections follow
+scope order: built-ins first, then scope files by name. While typing, neither is used:
+matching items show in **Results**, ranked with everything else. A scope
+file turns it on for a built-in too: `{"id": "steam", "rootSection": true}`
+lists Steam games among the apps, and this gives them a heading of their own:
+
+```json
+{"id": "steam", "rootSection": true, "rootSectionTitle": "Steam"}
+```
 
 ### SSH (built in)
 
@@ -300,6 +322,8 @@ or a fixed list of bookmarks:
 | `suggestUrl` | none | Required for `suggest`: an https URL with `{query}` that returns OpenSearch suggestions (`["q", ["one", "two"]]`) |
 | `valuePattern` | none | Regular expression a value must match before it is used |
 | `rootSearch` | `false` | `true` lists the items in the root search while typing, ranked as applications (read at start and each time the launcher opens); not for query scopes |
+| `rootSection` | `false` | `true` lists the items in the root search when nothing is typed: among Applications, or under their own heading with `rootSectionTitle` (while typing, matches stay in Results); turns on `rootSearch`; not for query scopes |
+| `rootSectionTitle` | none | A heading of their own for the `rootSection` items, after Applications, shown as written; scopes with the same title share the section |
 | `requireItems` | `false` | `true` offers the scope (its row and keyword) only once its source lists something (Games: Steam installed with games); loads at start and each time the launcher opens |
 | `itemLabel` | the title | The type shown beside each item ("Game") |
 | `layout` | `"list"` | `list`, or a grid like Apps: `icons` (each item's icon) or `covers` (portrait cover art); not for query scopes. A grid scope opens like Apps: its row reads "Menu", and the search field shows no tag |
@@ -411,7 +435,7 @@ for the pinned tools; `--ci` is what GitHub's runner can do). It runs
 `omarchy plugin validate .` among its checks.
 
 The search helper is committed for x86_64 and aarch64 and falls back to the
-built-in matcher when it is missing for the CPU or fails. After changing
+built-in matcher in every view when it is missing for the CPU or fails. After changing
 `search/`, rebuild it with `bin/build-search` (also `foamy-menu build-search`):
 it runs the plugin's own `kit/native/build-native.sh`,
 which builds static musl binaries for both arches reproducibly with the pinned

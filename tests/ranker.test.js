@@ -17,6 +17,16 @@ test("transliterate folds diacritics to ASCII", () => {
   assert.equal(R.transliterate("Café Ærø Straße"), "Cafe AEro Strasse")
 })
 
+test("the final sigma folds to sigma, as the helper lowercases letter by letter", () => {
+  assert.equal("ΟΣ".toLowerCase(), "ος")
+  assert.equal(R.transliterate("Οδυσσεύς"), "Οδυσσευσ")
+  assert.equal(R.normalize("ΟΣ").normalizedText, "οσ")
+  for (const query of ["ΟΣ", "οσ", "ος"]) assert.equal(R.fuzzyMatch("ΟΣ", query), "exact", query)
+  // "İ" lowercases to "i" and a combining dot, which transliterate removes.
+  assert.equal(R.transliterate("İstanbul".toLowerCase()), "istanbul")
+  assert.equal(R.transliterate("İstanbul"), "Istanbul")
+})
+
 test("fuzzyMatch golden scores", () => {
   assert.deepEqual(R.fuzzyMatch("Firefox", "fir"), { score: 8, skipped: 0 })
   assert.deepEqual(R.fuzzyMatch("Firefox", "fx"), { score: 5, skipped: 0 })
@@ -151,6 +161,24 @@ test("subtitles count only when they differ from the title", () => {
   const r2 = R.buildRecord(app("Nautilus", { subtitle: "Files" }), "files", { nowMs: NOW })
   assert.ok(r2.subtitleExact)
   assert.ok(r2.isMatching)
+})
+
+test("every field folds like the title and the query", () => {
+  const c = app("Innstillinger", {
+    subtitle: "Åpne søkeinnstillinger", alternateTitles: ["Blåtann"], keywords: ["språk"], bundleId: "no.Ærlig.app"
+  })
+  for (const query of ["sok", "søk", "apne", "blat", "blå", "sprak", "språk", "no.aer", "no.ær"])
+    assert.ok(R.buildRecord(c, query, { nowMs: NOW, sensitivity: "high" }).isMatching, query)
+  assert.ok(R.buildRecord(app("Kart", { subtitle: "Åpne" }), "apne", { nowMs: NOW }).subtitleExact)
+  // A folded alternate title counts as a title prefix for ranking.
+  assert.equal(R.buildRecord(c, "blå", { nowMs: NOW }).titleMatch, "prefix")
+  // A subtitle that folds to the title is not scored on its own.
+  assert.equal(R.buildRecord(app("Ærlig", { subtitle: "aerlig" }), "aer", { nowMs: NOW }).subtitle, null)
+  // The threshold counts the folded query: "jær" is four letters, inside a
+  // word, so it matches only below high.
+  const skjaer = app("Skjærgård")
+  assert.ok(R.buildRecord(skjaer, "jær", { nowMs: NOW, sensitivity: "medium" }).isMatching)
+  assert.ok(!R.buildRecord(skjaer, "jær", { nowMs: NOW, sensitivity: "high" }).isMatching)
 })
 
 test("bundle ids match only when the query has a dot", () => {

@@ -187,3 +187,38 @@ test("suggestion replies: OpenSearch lists and DuckDuckGo phrases, bounded", () 
   assert.equal(Scopes.parseSuggestions(JSON.stringify(["q", Array.from({ length: 20 }, (_, i) => "s" + i)])).length, 8)
   assert.equal(Scopes.fillText(queryScope().suggestUrl, "a&b"), "https://suggestqueries.google.com/complete/search?client=firefox&q=a%26b")
 })
+
+test("rootSection: off by default; on, it implies rootSearch", () => {
+  const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true"] }
+  const plain = Scopes.normalize(base).scope
+  assert.deepEqual([plain.rootSection, plain.rootSectionTitle, plain.rootSearch], [false, "", false])
+  const on = Scopes.normalize(Object.assign({}, base, { rootSection: true })).scope
+  assert.deepEqual([on.rootSection, on.rootSectionTitle, on.rootSearch], [true, "", true])
+  const off = Scopes.normalize(Object.assign({}, base, { rootSection: true, rootSearch: false })).scope
+  assert.equal(off.rootSearch, true, "rootSection wins over rootSearch: false")
+  assert.equal(Scopes.loadsEarly(on), true, "its items load without entering the scope")
+  assert.equal(Scopes.normalize(Object.assign({}, base, { rootSection: true, rootSectionTitle: "My Notes" })).scope.rootSectionTitle, "My Notes")
+})
+
+test("rootSection: wrong types, an over-long title and query scopes are rejected", () => {
+  const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true"] }
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { rootSection: "yes" })).errors, ["rootSection must be true or false"])
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { rootSectionTitle: 5 })).errors, ["rootSectionTitle must be a string"])
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { rootSectionTitle: "x".repeat(513) })).errors, ["rootSectionTitle is longer than 512 characters"])
+  const query = { id: "q", title: "Q", source: { type: "query" }, open: ["true"], rootSection: true }
+  assert.deepEqual(Scopes.normalize(query).errors, ["a query scope has no items for rootSection"])
+  const merged = Scopes.merge(Scopes.BUILTINS, [file("google.json", { id: "google", rootSection: true })])
+  assert.ok(!merged.scopes.some((s) => s.id === "google"), "the invalid override drops the scope")
+  assert.deepEqual(merged.errors.map((e) => [e.id, e.file]), [["google", "google.json"]])
+})
+
+test("rootSection: a scope file turns it on for a built-in, over the steamGames setting", () => {
+  const Settings = require("../core/Settings.js")
+  const builtins = Settings.applyToScopes(Scopes.BUILTINS, { sshScope: true, steamGames: false, webSearchHistory: false, webSearchSuggestions: false })
+  const steam = (files) => Scopes.merge(builtins, files).scopes.find((s) => s.id === "steam")
+  assert.deepEqual([steam([]).rootSection, steam([]).rootSearch], [false, false])
+  const on = steam([file("steam.json", { id: "steam", rootSection: true, rootSectionTitle: "Steam" })])
+  assert.deepEqual([on.rootSection, on.rootSearch, on.rootSectionTitle], [true, true, "Steam"])
+  assert.equal(steam([file("steam.json", { id: "steam", rootSection: true })]).rootSectionTitle, "", "no heading unless set")
+})
+

@@ -105,7 +105,7 @@
       {
         "key": "rootSearchSensitivity",
         "type": "enum",
-        "label": "How loosely search matches typos",
+        "label": "How strictly search matches; low allows the most typos",
         "options": [
           "low",
           "medium",

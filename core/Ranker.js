@@ -18,6 +18,13 @@ function isSeparator(ch) {
   return ch !== "" && SEPARATORS.indexOf(ch) !== -1
 }
 
+// Lowercase as the helper's matcher does, one letter at a time. Only the
+// final sigma lowercases by context ("ΟΣ" gives "ος", the matcher "οσ"), so
+// fold it after every lowercasing. search/src/strictness.rs does the same.
+function lower(s) {
+  return String(s).toLowerCase().replace(/ς/g, "σ")
+}
+
 
 function normalize(s) {
   var text = String(s === undefined || s === null ? "" : s)
@@ -25,7 +32,7 @@ function normalize(s) {
   for (var i = 0; i < text.length; i++) {
     boundaries.push(i > 0 && /[a-z0-9]/.test(text.charAt(i - 1)) && /[A-Z]/.test(text.charAt(i)))
   }
-  return { normalizedText: text.toLowerCase(), wordBoundaries: boundaries }
+  return { normalizedText: lower(text), wordBoundaries: boundaries }
 }
 
 var TRANSLIT = {
@@ -42,7 +49,7 @@ function transliterate(s) {
     var ch = text.charAt(i)
     out += TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch
   }
-  return out
+  return out.replace(/ς/g, "σ")
 }
 
 
@@ -51,7 +58,7 @@ function fuzzyMatch(target, query, options) {
   var tn = normalize(target)
   var t = tn.normalizedText
   var bounds = tn.wordBoundaries
-  var q = String(query === undefined || query === null ? "" : query).toLowerCase()
+  var q = lower(query === undefined || query === null ? "" : query)
 
   function querySep(ch) {
     if (literalDots && ch === ".") return false
@@ -149,6 +156,9 @@ function matchScore(match) {
   return match.score
 }
 
+// The search strictness levels. The helper applies the same score and
+// thresholds (search/src/strictness.rs); change both together, and
+// tests/search-parity.test.js checks that they agree.
 function passesThreshold(match, queryLength, sensitivity) {
   if (match === "exact") return true
   if (!match || match === "unmatched") return false
@@ -262,38 +272,42 @@ function buildRecord(candidate, query, options) {
 
   if (opts.fleaHits) return fleaRecord(record, opts.fleaHits[c.id], frecency, nowMs)
 
-  var title = transliterate(String(c.title || ""))
+  // Every field is folded as the query is (transliterate), the way the
+  // helper receives them (FleaSearch.entries), so both match the same rows.
+  function fold(value) { return transliterate(String(value || "")) }
+  var folded = fold(c.title)
+  var title = folded
   if (tq.charAt(0) === "/") title = title.replace("/", " ")
-  var titleLower = title.toLowerCase()
-  var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(function(a) { return String(a || "") }) : []
+  var titleLower = lower(title)
+  var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(fold) : []
   record.title = fuzzyMatch(title, tq, { literalQueryDots: literalDots })
   if (record.title === "exact") record.titleMatch = "exact"
-  else if (titleLower.indexOf(q) === 0 || alternates.some(function(a) { return a.toLowerCase().indexOf(q) === 0 }))
+  else if (titleLower.indexOf(tq) === 0 || alternates.some(function(a) { return lower(a).indexOf(tq) === 0 }))
     record.titleMatch = "prefix"
   record.titleScore = matchScore(record.title)
 
-  record.alternates = alternates.map(function(a) { return fuzzyMatch(a, q, { literalQueryDots: literalDots }) })
+  record.alternates = alternates.map(function(a) { return fuzzyMatch(a, tq, { literalQueryDots: literalDots }) })
 
-  var subtitle = String(c.subtitle || "")
-  if (subtitle && subtitle.toLowerCase() !== String(c.title || "").toLowerCase()) {
-    record.subtitle = fuzzyMatch(subtitle, q, { literalQueryDots: literalDots })
+  var subtitle = fold(c.subtitle)
+  if (subtitle && subtitle.toLowerCase() !== folded.toLowerCase()) {
+    record.subtitle = fuzzyMatch(subtitle, tq, { literalQueryDots: literalDots })
     record.subtitleExact = record.subtitle === "exact"
     record.subtitleScore = matchScore(record.subtitle)
   }
 
-  var keywords = Array.isArray(c.keywords) ? c.keywords.slice() : []
+  var keywords = Array.isArray(c.keywords) ? c.keywords.map(fold) : []
   if (subtitle) {
-    keywords.push(String(c.title || "") + " " + subtitle)
-    keywords.push(subtitle + " " + String(c.title || ""))
+    keywords.push(folded + " " + subtitle)
+    keywords.push(subtitle + " " + folded)
   }
-  if (c.bundleId && q.indexOf(".") !== -1) keywords.push(String(c.bundleId))
-  record.keywords = keywords.map(function(k) { return fuzzyMatch(String(k || ""), q, { literalQueryDots: literalDots }) })
+  if (c.bundleId && tq.indexOf(".") !== -1) keywords.push(fold(c.bundleId))
+  record.keywords = keywords.map(function(k) { return fuzzyMatch(k, tq, { literalQueryDots: literalDots }) })
 
   record.searchTerm = searchTermMatch(c.searchTerms, q, frecency, c.openedAt, nowMs)
 
-  if (q.length >= 3 && !/\s/.test(q)) {
+  if (tq.length >= 3 && !/\s/.test(tq)) {
     if (record.title !== "exact" && wholeWordIn(title, tq)) {
-      var floor = 4 + (q.length - 1) * 2 + 0.5
+      var floor = 4 + (tq.length - 1) * 2 + 0.5
       if (record.titleScore < floor) record.titleScore = floor
     }
     var exactAlternate = record.alternates.some(function(m) { return m === "exact" })
@@ -307,7 +321,8 @@ function buildRecord(candidate, query, options) {
     }
   }
 
-  var len = q.length
+  // The length of the query as matched, as the helper counts it.
+  var len = tq.length
   record.textMatched = record.alias !== "unmatched"
     || passesThreshold(record.title, len, sensitivity)
     || record.alternates.some(function(m) { return passesThreshold(m, len, sensitivity) })

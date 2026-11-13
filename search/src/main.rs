@@ -4,10 +4,12 @@
 #[rustfmt::skip]
 #[allow(dead_code, clippy::unnecessary_map_or)]
 mod backend;
+mod catalogs;
 mod engine;
 mod protocol;
 mod ssh_hosts;
 mod steam_games;
+mod strictness;
 
 use std::io::{self, BufWriter};
 use std::process::ExitCode;

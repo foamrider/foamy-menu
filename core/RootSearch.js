@@ -271,6 +271,43 @@ function passesFilter(candidate, filter) {
   return (candidate.type === "application") === (filter === "applications")
 }
 
+// Items of a rootSection scope (ctx.sectionScopes: [{ id, title }], in scope
+// order) show in the empty view: with a title, in a section after
+// Applications that they share with scopes of the same title; without one,
+// among the Applications. While typing
+// they rank in Results like every other match. The title is shown as
+// written, so it passes as "%1" and the UI does not translate it.
+function scopeSection(scope, rows) {
+  return { id: "scope-section:" + scope.id, title: "%1", titleValues: [scope.title], rows: rows }
+}
+
+// Whether a candidate is a root item of one of the section scopes.
+function inSection(c, sectionScopes) {
+  if (c.kind !== "scope-item" || c.type !== "application") return false
+  for (var s = 0; s < sectionScopes.length; s++) if (sectionScopes[s].id === c.scopeId) return true
+  return false
+}
+
+// Ranked rows of the section scopes, one section per title: scopes with the
+// same title share one, at the place of the first of them, and their rows
+// keep the joint ranking. A title with no rows gets no section.
+function appendScopeSections(out, sectionScopes, rows) {
+  var firstScope = {}
+  var titleOf = {}
+  var order = []
+  for (var s = 0; s < sectionScopes.length; s++) {
+    var title = sectionScopes[s].title
+    titleOf[sectionScopes[s].id] = title
+    if (Object.prototype.hasOwnProperty.call(firstScope, title)) continue
+    firstScope[title] = sectionScopes[s]
+    order.push(title)
+  }
+  for (var t = 0; t < order.length; t++) {
+    var own = rows.filter(function(r) { return titleOf[r.candidate.scopeId] === order[t] })
+    if (own.length) out.push(scopeSection(firstScope[order[t]], own))
+  }
+}
+
 function rootSections(candidates, query, ctx, deps) {
   var q = String(query || "").trim()
   var filtered = ctx.filter && ctx.filter !== "all"
@@ -280,6 +317,7 @@ function rootSections(candidates, query, ctx, deps) {
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
+  var sectionScopes = ctx.sectionScopes || []
 
   if (q) {
     var searchable = decorated.filter(function(c) { return c.rootSearch.when !== "empty" })
@@ -302,15 +340,23 @@ function rootSections(candidates, query, ctx, deps) {
     .slice(0, SUGGESTIONS_LIMIT)
   suggestions.forEach(function(r) { taken[r.candidate.id] = true })
 
-  var rest = shown.filter(function(c) { return !taken[c.id] })
+  // Root items of scopes are not among the shown rows (they show while
+  // searching), so the sections and Applications take them from every
+  // candidate; inSection keeps a shown one from being listed twice.
+  var titled = sectionScopes.filter(function(s) { return s.title })
+  var untitled = sectionScopes.filter(function(s) { return !s.title })
+  var sectionRows = deps.Ranker.rank(decorated.filter(function(c) { return !taken[c.id] && inSection(c, titled) }), "", opts)
+  var inApps = decorated.filter(function(c) { return !taken[c.id] && inSection(c, untitled) })
+  var rest = shown.filter(function(c) { return !taken[c.id] && !inSection(c, sectionScopes) })
   var commands = deps.Ranker.rank(rest.filter(function(c) { return c.type !== "application" }), "", opts)
-  var apps = deps.Ranker.rank(rest.filter(function(c) { return c.type === "application" }), "", opts)
+  var apps = deps.Ranker.rank(rest.filter(function(c) { return c.type === "application" }).concat(inApps), "", opts)
 
   var out = []
   if (favorites.length) out.push({ id: "favorites", title: "Favorites", rows: favorites.map(function(c) { return { candidate: c, record: null } }) })
   if (suggestions.length) out.push({ id: "suggestions", title: "Suggestions", rows: suggestions })
   if (commands.length) out.push({ id: "commands", title: "Commands", rows: commands })
   if (apps.length) out.push({ id: "apps", title: "Applications", rows: apps })
+  appendScopeSections(out, titled, sectionRows)
   return out
 }
 
