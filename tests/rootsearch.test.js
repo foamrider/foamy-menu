@@ -268,6 +268,24 @@ test("rootSection: the empty root lists untitled scopes' items among Application
   assert.ok(!titles(RS.rootSections(withSections(), "", ctx(), deps)[1]).includes("Hades"), "no games without rootSection")
 })
 
+test("rootSection: scopes with the same title share one section, sorted together", () => {
+  const merged = Scopes.merge(Scopes.BUILTINS, [
+    { name: "steam.json", definition: { id: "steam", rootSection: true, rootSectionTitle: "Spill" } },
+    { name: "notes.json", definition: { id: "notes", title: "Notes", rootSection: true, rootSectionTitle: "Notater", source: { type: "list", items: ["Firefox tips"] }, open: ["true"] } },
+    { name: "prism.json", definition: { id: "prism", title: "Minecraft", rootSection: true, rootSectionTitle: "Spill", source: { type: "list", items: ["Atlas", "Zebra"] }, open: ["true"] } }
+  ]).scopes
+  const scopes = merged.filter((s) => s.rootSection).map((s) => ({ id: s.id, title: s.rootSectionTitle }))
+  assert.deepEqual(scopes.map((s) => s.id), ["steam", "notes", "prism"], "scope order puts another section between them")
+  const all = candidates()
+    .concat(games.map((g) => Scopes.rootItemCandidate(merged.find((s) => s.id === "steam"), g)))
+    .concat(["notes", "prism"].flatMap((id) => { const sc = merged.find((s) => s.id === id); return sc.source.items.map((item) => Scopes.rootItemCandidate(sc, item)) }))
+  const sections = RS.rootSections(all, "", ctx({ sectionScopes: scopes }), deps)
+  assert.deepEqual(sections.map((s) => [s.id, s.titleValues]), [["commands", undefined], ["apps", undefined], ["scope-section:steam", ["Spill"]], ["scope-section:notes", ["Notater"]]])
+  assert.deepEqual(titles(sections[2]), ["Atlas", "Deep Rock Galactic", "Hades", "Portal 2", "Zebra"], "games and instances in one ranked list")
+  const onlyPrism = all.filter((c) => c.scopeId !== "steam")
+  assert.deepEqual(titles(RS.rootSections(onlyPrism, "", ctx({ sectionScopes: scopes }), deps).find((s) => s.titleValues && s.titleValues[0] === "Spill")), ["Atlas", "Zebra"], "the section stays when the first scope has no items")
+})
+
 test("rootSection: favorites and recently used items are not repeated among Applications or in a section", () => {
   const c = sectionCtx({
     commands: { "scope-item:steam:620": { favoriteOrder: 0 }, "scope-item:notes:Portal ideas": { favoriteOrder: 1 } },

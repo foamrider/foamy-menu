@@ -163,8 +163,9 @@ A scope that sets `rootSection` also lists its items in the root search
 with nothing typed, except those already under **Favorites** or
 **Suggestions** (recently used items stay there). Without
 `rootSectionTitle` they join **Applications**; with it they get a heading
-of their own after Applications. Several such sections follow scope order:
-built-ins first, then scope files by name. While typing, neither is used:
+of their own after Applications. Scopes with the same `rootSectionTitle`
+share one section, their items sorted together. Several sections follow
+scope order: built-ins first, then scope files by name. While typing, neither is used:
 matching items show in **Results**, ranked with everything else. A scope
 file turns it on for a built-in too: `{"id": "steam", "rootSection": true}`
 lists Steam games among the apps, and this gives them a heading of their own:
@@ -322,7 +323,7 @@ or a fixed list of bookmarks:
 | `valuePattern` | none | Regular expression a value must match before it is used |
 | `rootSearch` | `false` | `true` lists the items in the root search while typing, ranked as applications (read at start and each time the launcher opens); not for query scopes |
 | `rootSection` | `false` | `true` lists the items in the root search when nothing is typed: among Applications, or under their own heading with `rootSectionTitle` (while typing, matches stay in Results); turns on `rootSearch`; not for query scopes |
-| `rootSectionTitle` | none | A heading of their own for the `rootSection` items, after Applications, shown as written |
+| `rootSectionTitle` | none | A heading of their own for the `rootSection` items, after Applications, shown as written; scopes with the same title share the section |
 | `requireItems` | `false` | `true` offers the scope (its row and keyword) only once its source lists something (Games: Steam installed with games); loads at start and each time the launcher opens |
 | `itemLabel` | the title | The type shown beside each item ("Game") |
 | `layout` | `"list"` | `list`, or a grid like Apps: `icons` (each item's icon) or `covers` (portrait cover art); not for query scopes. A grid scope opens like Apps: its row reads "Menu", and the search field shows no tag |

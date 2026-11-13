@@ -272,8 +272,9 @@ function passesFilter(candidate, filter) {
 }
 
 // Items of a rootSection scope (ctx.sectionScopes: [{ id, title }], in scope
-// order) show in the empty view: with a title, in a section of their own
-// after Applications; without one, among the Applications. While typing
+// order) show in the empty view: with a title, in a section after
+// Applications that they share with scopes of the same title; without one,
+// among the Applications. While typing
 // they rank in Results like every other match. The title is shown as
 // written, so it passes as "%1" and the UI does not translate it.
 function scopeSection(scope, rows) {
@@ -287,12 +288,23 @@ function inSection(c, sectionScopes) {
   return false
 }
 
-// Ranked rows of the section scopes, one section each in scope order; a
-// scope with no rows gets no section.
+// Ranked rows of the section scopes, one section per title: scopes with the
+// same title share one, at the place of the first of them, and their rows
+// keep the joint ranking. A title with no rows gets no section.
 function appendScopeSections(out, sectionScopes, rows) {
+  var firstScope = {}
+  var titleOf = {}
+  var order = []
   for (var s = 0; s < sectionScopes.length; s++) {
-    var own = rows.filter(function(r) { return r.candidate.scopeId === sectionScopes[s].id })
-    if (own.length) out.push(scopeSection(sectionScopes[s], own))
+    var title = sectionScopes[s].title
+    titleOf[sectionScopes[s].id] = title
+    if (Object.prototype.hasOwnProperty.call(firstScope, title)) continue
+    firstScope[title] = sectionScopes[s]
+    order.push(title)
+  }
+  for (var t = 0; t < order.length; t++) {
+    var own = rows.filter(function(r) { return titleOf[r.candidate.scopeId] === order[t] })
+    if (own.length) out.push(scopeSection(firstScope[order[t]], own))
   }
 }
 
