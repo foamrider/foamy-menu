@@ -243,14 +243,15 @@ Item {
       sensitivity: backend.settings.rootSearchSensitivity,
       // Query scopes (web search) offer the typed text under "Use “…” with…".
       searchScopes: scopeSource.scopes.filter(Scopes.isQuery),
-      // rootSection scopes list their items under their own heading, in
-      // scope order (built-ins first, then scope files).
+      // rootSection scopes list their items in the empty root view: under
+      // their own heading when they set one, in scope order (built-ins
+      // first, then scope files), else under Applications.
       sectionScopes: backend.scopes.filter(function (s) {
         return s.rootSection
       }).map(function (s) {
         return {
           id: s.id,
-          title: Scopes.sectionTitle(s, backend.tr)
+          title: s.rootSectionTitle
         }
       }),
       t: backend.tr

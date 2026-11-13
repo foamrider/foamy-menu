@@ -292,7 +292,7 @@ function normalize(raw) {
     layout: layout,
     rootSearch: rootSection || (!isQuery && raw.rootSearch === true),
     rootSection: rootSection,
-    // Empty when left out: the heading is then the title (sectionTitle).
+    // Empty when left out: the items then join Applications.
     rootSectionTitle: text(raw.rootSectionTitle, "rootSectionTitle", errors, false),
     requireItems: !isQuery && raw.requireItems === true,
     itemLabel: text(raw.itemLabel, "itemLabel", errors, false),
@@ -480,13 +480,6 @@ function rootItemCandidate(scope, item, t) {
   return c
 }
 
-// The heading of a rootSection scope's section in the root view. The
-// default (the title) is translated as the scope's row is; a title of its
-// own is shown as written.
-function sectionTitle(scope, t) {
-  var tr = typeof t === "function" ? t : function(s) { return s }
-  return scope.rootSectionTitle || tr(scope.title)
-}
 
 // Whether a scope is offered (its row, its keyword): a requireItems scope only
 // once its source has listed something (Games: Steam is installed with games).
@@ -659,7 +652,6 @@ if (typeof module !== "undefined") {
     scopeCandidate: scopeCandidate,
     itemCandidate: itemCandidate,
     rootItemCandidate: rootItemCandidate,
-    sectionTitle: sectionTitle,
     valueAllowed: valueAllowed,
     fill: fill,
     fillText: fillText,

@@ -237,13 +237,14 @@ test("actions: apps offer Open New Window on Shift+Enter", () => {
   assert.equal(openNew.shortcut, "Shift ↵")
 })
 
-// Two rootSection scopes: the built-in Steam turned on by a scope file, then
-// a user scope. Their root items join the usual candidates.
+// Two rootSection scopes: the built-in Steam turned on by a scope file with
+// no heading, then a user scope with one. Their root items join the usual
+// candidates.
 const sectionMerge = Scopes.merge(Scopes.BUILTINS, [
   { name: "steam.json", definition: { id: "steam", rootSection: true } },
   { name: "notes.json", definition: { id: "notes", title: "Notes", rootSection: true, rootSectionTitle: "My Notes", source: { type: "list", items: ["Firefox tips", "Portal ideas"] }, open: ["true"] } }
 ]).scopes
-const sectionScopes = sectionMerge.filter((s) => s.rootSection).map((s) => ({ id: s.id, title: Scopes.sectionTitle(s) }))
+const sectionScopes = sectionMerge.filter((s) => s.rootSection).map((s) => ({ id: s.id, title: s.rootSectionTitle }))
 const games = [{ title: "Portal 2", value: "620", subtitle: "" }, { title: "Hades", value: "1145360", subtitle: "" }, { title: "Deep Rock Galactic", value: "548430", subtitle: "" }]
 function withSections() {
   const steam = sectionMerge.find((s) => s.id === "steam")
@@ -255,26 +256,29 @@ function withSections() {
 const sectionCtx = (extra) => ctx(Object.assign({ sectionScopes }, extra || {}))
 const ids = (section) => section.rows.map((r) => r.candidate.id)
 
-test("rootSection: the empty root lists each scope's items after Applications, in scope order", () => {
+test("rootSection: the empty root lists untitled scopes' items among Applications, titled ones after it", () => {
   const sections = RS.rootSections(withSections(), "", sectionCtx(), deps)
-  assert.deepEqual(sections.map((s) => s.id), ["commands", "apps", "scope-section:steam", "scope-section:notes"])
-  assert.deepEqual(sections.slice(2).map((s) => [s.title, s.titleValues]), [["%1", ["Games"]], ["%1", ["My Notes"]]])
-  assert.deepEqual(titles(sections[2]).sort(), ["Deep Rock Galactic", "Hades", "Portal 2"])
-  assert.deepEqual(titles(sections[3]).sort(), ["Firefox tips", "Portal ideas"])
-  assert.ok(!titles(sections[1]).includes("Hades"), "not also under Applications")
+  assert.deepEqual(sections.map((s) => s.id), ["commands", "apps", "scope-section:notes"])
+  const plainApps = titles(RS.rootSections(withSections(), "", ctx(), deps)[1])
+  assert.deepEqual(titles(sections[1]).sort(), plainApps.concat(["Deep Rock Galactic", "Hades", "Portal 2"]).sort(), "Steam has no heading, so its games join Applications")
+  assert.deepEqual([sections[2].title, sections[2].titleValues], ["%1", ["My Notes"]])
+  assert.deepEqual(titles(sections[2]).sort(), ["Firefox tips", "Portal ideas"])
+  assert.ok(!titles(sections[1]).includes("Portal ideas"), "a titled scope's items are not also under Applications")
   assert.deepEqual(RS.rootSections(withSections(), "", ctx(), deps).map((s) => s.id), ["commands", "apps"], "no section without rootSection")
+  assert.ok(!titles(RS.rootSections(withSections(), "", ctx(), deps)[1]).includes("Hades"), "no games without rootSection")
 })
 
-test("rootSection: favorites and recently used items are not repeated in the section", () => {
+test("rootSection: favorites and recently used items are not repeated among Applications or in a section", () => {
   const c = sectionCtx({
-    commands: { "scope-item:steam:620": { favoriteOrder: 0 } },
+    commands: { "scope-item:steam:620": { favoriteOrder: 0 }, "scope-item:notes:Portal ideas": { favoriteOrder: 1 } },
     frecency: { "scope-item:steam:1145360": Frecency.recordVisit(null, NOW - 1000, "") }
   })
   const sections = RS.rootSections(withSections(), "", c, deps)
-  assert.deepEqual(sections.map((s) => s.id), ["favorites", "suggestions", "commands", "apps", "scope-section:steam", "scope-section:notes"])
-  assert.deepEqual(ids(sections[0]), ["scope-item:steam:620"])
+  assert.deepEqual(sections.map((s) => s.id), ["favorites", "suggestions", "commands", "apps", "scope-section:notes"])
+  assert.deepEqual(ids(sections[0]), ["scope-item:steam:620", "scope-item:notes:Portal ideas"])
   assert.deepEqual(ids(sections[1]), ["scope-item:steam:1145360"], "a recently used game stays under Suggestions")
-  assert.deepEqual(ids(sections[4]), ["scope-item:steam:548430"])
+  assert.deepEqual(ids(sections[3]).filter((id) => id.startsWith("scope-item:")), ["scope-item:steam:548430"])
+  assert.deepEqual(ids(sections[4]), ["scope-item:notes:Firefox tips"])
 })
 
 test("rootSection: while typing, section items rank in Results with everything else", () => {
@@ -299,7 +303,10 @@ test("rootSection: while typing, the helper's hits put section items in Results"
   assert.deepEqual(ids(sections[0]), ["scope-item:steam:1145360"])
 })
 
-test("rootSection: the Commands filter hides the sections, Applications keeps them", () => {
-  assert.ok(!RS.rootSections(withSections(), "", sectionCtx({ filter: "commands" }), deps).some((s) => s.id.startsWith("scope-section:")))
-  assert.deepEqual(RS.rootSections(withSections(), "", sectionCtx({ filter: "applications" }), deps).map((s) => s.id), ["apps", "scope-section:steam", "scope-section:notes"])
+test("rootSection: the Commands filter hides the scope items, Applications keeps them", () => {
+  const commands = RS.rootSections(withSections(), "", sectionCtx({ filter: "commands" }), deps)
+  assert.ok(!commands.some((s) => s.rows.some((r) => r.candidate.scopeId)))
+  const apps = RS.rootSections(withSections(), "", sectionCtx({ filter: "applications" }), deps)
+  assert.deepEqual(apps.map((s) => s.id), ["apps", "scope-section:notes"])
+  assert.ok(titles(apps[0]).includes("Hades"))
 })

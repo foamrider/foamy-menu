@@ -272,10 +272,10 @@ function passesFilter(candidate, filter) {
 }
 
 // Items of a rootSection scope (ctx.sectionScopes: [{ id, title }], in scope
-// order, title already in the shown language) get a section of their own
-// after Applications in the empty view. While typing they rank in Results
-// like every other match. The title passes as "%1" so the UI does not
-// translate it again.
+// order) show in the empty view: with a title, in a section of their own
+// after Applications; without one, among the Applications. While typing
+// they rank in Results like every other match. The title is shown as
+// written, so it passes as "%1" and the UI does not translate it.
 function scopeSection(scope, rows) {
   return { id: "scope-section:" + scope.id, title: "%1", titleValues: [scope.title], rows: rows }
 }
@@ -329,18 +329,22 @@ function rootSections(candidates, query, ctx, deps) {
   suggestions.forEach(function(r) { taken[r.candidate.id] = true })
 
   // Root items of scopes are not among the shown rows (they show while
-  // searching), so a section takes them from every candidate.
-  var sectionRows = deps.Ranker.rank(decorated.filter(function(c) { return !taken[c.id] && inSection(c, sectionScopes) }), "", opts)
-  var rest = shown.filter(function(c) { return !taken[c.id] })
+  // searching), so the sections and Applications take them from every
+  // candidate; inSection keeps a shown one from being listed twice.
+  var titled = sectionScopes.filter(function(s) { return s.title })
+  var untitled = sectionScopes.filter(function(s) { return !s.title })
+  var sectionRows = deps.Ranker.rank(decorated.filter(function(c) { return !taken[c.id] && inSection(c, titled) }), "", opts)
+  var inApps = decorated.filter(function(c) { return !taken[c.id] && inSection(c, untitled) })
+  var rest = shown.filter(function(c) { return !taken[c.id] && !inSection(c, sectionScopes) })
   var commands = deps.Ranker.rank(rest.filter(function(c) { return c.type !== "application" }), "", opts)
-  var apps = deps.Ranker.rank(rest.filter(function(c) { return c.type === "application" }), "", opts)
+  var apps = deps.Ranker.rank(rest.filter(function(c) { return c.type === "application" }).concat(inApps), "", opts)
 
   var out = []
   if (favorites.length) out.push({ id: "favorites", title: "Favorites", rows: favorites.map(function(c) { return { candidate: c, record: null } }) })
   if (suggestions.length) out.push({ id: "suggestions", title: "Suggestions", rows: suggestions })
   if (commands.length) out.push({ id: "commands", title: "Commands", rows: commands })
   if (apps.length) out.push({ id: "apps", title: "Applications", rows: apps })
-  appendScopeSections(out, sectionScopes, sectionRows)
+  appendScopeSections(out, titled, sectionRows)
   return out
 }
 
