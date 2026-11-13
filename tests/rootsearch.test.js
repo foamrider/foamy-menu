@@ -277,27 +277,25 @@ test("rootSection: favorites and recently used items are not repeated in the sec
   assert.deepEqual(ids(sections[4]), ["scope-item:steam:548430"])
 })
 
-test("rootSection: while typing, matches show in their section after Results, not in Results", () => {
-  const sections = RS.rootSections(withSections(), "portal", sectionCtx(), deps)
-  assert.deepEqual(sections.map((s) => s.id), ["scope-section:steam", "scope-section:notes", "fallback-commands"], "no Results section when only section items match")
-  assert.deepEqual(ids(sections[0]), ["scope-item:steam:620"])
-  const fir = RS.rootSections(withSections(), "fir", sectionCtx(), deps)
-  assert.deepEqual(fir.map((s) => s.id), ["results", "scope-section:notes", "fallback-commands"], "an empty section is hidden")
-  assert.equal(titles(fir[0])[0], "Firefox")
-  assert.ok(!fir[0].rows.some((r) => r.candidate.scopeId), "section items are not also in Results")
-  assert.deepEqual(titles(fir[1]), ["Firefox tips"])
+test("rootSection: while typing, section items rank in Results with everything else", () => {
+  const all = withSections()
+  for (const q of ["portal", "fir", "deep", "rock", "ha"]) {
+    const sections = RS.rootSections(all, q, sectionCtx(), deps)
+    assert.ok(!sections.some((s) => s.id.startsWith("scope-section:")), `no section heading for "${q}"`)
+    assert.deepEqual(sections, RS.rootSections(all, q, ctx(), deps), `"${q}" ranks as without rootSection`)
+  }
+  const portal = RS.rootSections(all, "portal", sectionCtx(), deps)
+  assert.deepEqual(portal[0].id, "results")
+  assert.ok(ids(portal[0]).includes("scope-item:steam:620"))
+  assert.equal(titles(RS.rootSections(all, "fir", sectionCtx(), deps)[0])[0], "Firefox")
 })
 
-test("rootSection: a section ranks like Results, by the helper's hits when they are given", () => {
+test("rootSection: while typing, the helper's hits put section items in Results", () => {
   const all = withSections()
-  const plain = RS.rootSections(all, "deep", ctx(), deps)
-  const expected = plain[0].rows.filter((r) => r.candidate.scopeId === "steam").map((r) => r.candidate.id)
-  assert.deepEqual(ids(RS.rootSections(all, "deep", sectionCtx(), deps).find((s) => s.id === "scope-section:steam")), expected)
-  // A helper hit decides what matches: only Hades, by its title.
   const fleaHits = { "scope-item:steam:1145360": { index: 0, title: 4000000, alternate: null, subtitle: null, keyword: null } }
-  assert.ok(!RS.rootSections(all, "qqq", sectionCtx(), deps).some((s) => s.id === "scope-section:steam"), "the JS ranker finds nothing")
+  assert.ok(!RS.rootSections(all, "qqq", sectionCtx(), deps).some((s) => s.id === "results"), "the JS ranker finds nothing")
   const sections = RS.rootSections(all, "qqq", sectionCtx({ fleaHits }), deps)
-  assert.deepEqual(sections.map((s) => s.id), ["scope-section:steam", "fallback-commands"])
+  assert.deepEqual(sections.map((s) => s.id), ["results", "fallback-commands"])
   assert.deepEqual(ids(sections[0]), ["scope-item:steam:1145360"])
 })
 

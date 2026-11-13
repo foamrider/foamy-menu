@@ -163,9 +163,9 @@ A scope that sets `rootSection` also gets a heading of its own in the root
 search, as **Applications** has. With nothing typed, the section follows
 Applications and lists the scope's items, except those already under
 **Favorites** or **Suggestions** (recently used items stay there). While
-typing, matching items show in the section after **Results** instead of in
-Results, ranked the same way; a section with no match is hidden. Several
-such sections follow scope order: built-ins first, then scope files by name.
+typing, the heading is not used: matching items show in **Results**, ranked
+with everything else. Several such sections follow scope order: built-ins
+first, then scope files by name.
 A scope file turns it on for a built-in too, for example Steam games under
 their own heading:
 
@@ -321,7 +321,7 @@ or a fixed list of bookmarks:
 | `suggestUrl` | none | Required for `suggest`: an https URL with `{query}` that returns OpenSearch suggestions (`["q", ["one", "two"]]`) |
 | `valuePattern` | none | Regular expression a value must match before it is used |
 | `rootSearch` | `false` | `true` lists the items in the root search while typing, ranked as applications (read at start and each time the launcher opens); not for query scopes |
-| `rootSection` | `false` | `true` lists the items under their own heading in the root search, after Applications (and after Results while typing); turns on `rootSearch`; not for query scopes |
+| `rootSection` | `false` | `true` lists the items under their own heading in the root search, after Applications when nothing is typed (while typing, matches stay in Results); turns on `rootSearch`; not for query scopes |
 | `rootSectionTitle` | the title | The section's heading. Left out, it is the title, translated as the scope's row is; set, it is shown as written |
 | `requireItems` | `false` | `true` offers the scope (its row and keyword) only once its source lists something (Games: Steam installed with games); loads at start and each time the launcher opens |
 | `itemLabel` | the title | The type shown beside each item ("Game") |
