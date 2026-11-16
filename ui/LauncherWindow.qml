@@ -9,6 +9,7 @@ import "../core/Rows.js" as Rows
 import "../core/Scopes.js" as Scopes
 import "../core/QueryEdit.js" as QueryEdit
 import "../kit"
+import "../services"
 
 // The shell's own full-screen overlay (qs.Ui.OverlayWindow, as the stock
 // menu uses): a fresh layer surface on the focused monitor each time it is
@@ -186,6 +187,7 @@ OverlayWindow {
     window.searchSerial++
     window.backend.cancelSearch()
     window.searchPending = false
+    window.cancelPaste()
     window.closePopups()
     var seconds = Number(window.general.popToRootTimeout)
     if (!(seconds > 0))
@@ -713,8 +715,11 @@ OverlayWindow {
   // query (a view, history, a scope keyword) puts it at the end.
   property int cursorPos: 0
   property bool keepCursor: false
-  onQueryChanged: if (!window.keepCursor)
-    window.cursorPos = window.query.length
+  onQueryChanged: {
+    window.editRevision++
+    if (!window.keepCursor)
+      window.cursorPos = window.query.length
+  }
 
   // Applies a QueryEdit result: the text (searching again when it changed)
   // and the cursor.
@@ -775,12 +780,41 @@ OverlayWindow {
     return false
   }
 
+  // Paste reads the clipboard out of process (services/ClipboardReader.qml),
+  // never through Qt, so the text arrives later. editRevision counts every
+  // change a paste could land in the wrong place after: the query, the
+  // cursor, the view, the action panel opening or closing, and a popup
+  // filter edit (handlePopupKey).
+  // A paste keeps the revision it started at (pasteRevision, -1 for none);
+  // a result that finds another one, or the launcher closed, is dropped, so
+  // a slow clipboard never overwrites newer typing, even typing since undone.
+  property int editRevision: 0
+  property int pasteRevision: -1
+  onCursorPosChanged: window.editRevision++
+  onViewChanged: window.editRevision++
+  onActionPanelOpenChanged: window.editRevision++
+
   function pasteClipboard() {
-    clipboardInput.clear()
-    clipboardInput.paste()
-    var text = clipboardInput.text.replace(/[\r\n\u2028\u2029]+/g, " ")
-    clipboardInput.clear()
-    if (!text)
+    if (clipboardReader.busy)
+      return
+    window.pasteRevision = window.editRevision
+    clipboardReader.start()
+  }
+
+  function cancelPaste() {
+    window.pasteRevision = -1
+    clipboardReader.cancel()
+  }
+
+  // Whether the paste's result still applies; it is used up either way.
+  function takePaste() {
+    var current = window.pasteRevision >= 0 && window.pasteRevision === window.editRevision && window.shown
+    window.pasteRevision = -1
+    return current
+  }
+
+  function insertPaste(text) {
+    if (!window.takePaste() || !text)
       return
     if (window.actionPanelOpen)
       actionPanel.item.filter += text
@@ -791,10 +825,20 @@ OverlayWindow {
     }
   }
 
-  TextEdit {
-    id: clipboardInput
-    visible: false
-    textFormat: TextEdit.PlainText
+  function pasteFailed(message) {
+    if (window.takePaste())
+      window.showToast("failure", message)
+  }
+
+  ClipboardReader {
+    id: clipboardReader
+    pluginDir: window.backend.pluginDir
+    onRead: function (text) {
+      window.insertPaste(text)
+    }
+    onFailed: function (message) {
+      window.pasteFailed(message)
+    }
   }
 
   function recallHistory(direction) {
@@ -888,12 +932,15 @@ OverlayWindow {
       panel.activateSelected()
       return true
     }
+    // A filter edit is an edit a paste in flight must not land after.
     if (Util.editsFilter(event, panel.filter)) {
       panel.filter = Util.editedFilter(event, panel.filter)
+      window.editRevision++
       return true
     }
     if (window.isTyping(event)) {
       panel.filter += event.text
+      window.editRevision++
       return true
     }
     return true

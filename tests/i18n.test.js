@@ -60,6 +60,8 @@ function usedKeys() {
     }
     keys.add(Settings.hint(f)[0])
   }
+  // The paste failures services/ClipboardReader.qml reports for the launcher's toast.
+  for (const [, key] of read("services/ClipboardReader.qml").matchAll(/reader\.failed\("([^"]+)"\)/g)) keys.add(key)
   keys.add("That value isn't allowed.")
   keys.add("Couldn't save the setting.")
   return keys
