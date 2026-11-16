@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# foamy-kit 0.9.0 d5377f7e0337828bc9950e0e651403e128e8216bb4673b2ec173fde63f24be1b — do not edit; change foamy-kit and run sync
+# foamy-kit 0.10.0 d5377f7e0337828bc9950e0e651403e128e8216bb4673b2ec173fde63f24be1b — do not edit; change foamy-kit and run sync
 """The one validation command of foamy-kit and every Foamy plugin.
 
 Run it as `tests/validate.sh` (sync.sh writes that wrapper and this file into
