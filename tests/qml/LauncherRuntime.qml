@@ -182,6 +182,36 @@ ShellRoot {
     printErrors: false
     blockLoading: true
   }
+  // Paste through kit/clipboard.sh against the kit's wl-paste stand-in
+  // (hostenv.clipboard_fakes in launcher.py): clipboardMode() sets what the
+  // next paste reads, and the stage waits for it to be set.
+  Process {
+    id: clipboardFixture
+    property bool done: false
+    onExited: clipboardFixture.done = true
+  }
+  function clipboardMode(mode) {
+    clipboardFixture.done = false
+    clipboardFixture.command = ["clipboard-fixture", mode]
+    clipboardFixture.running = true
+  }
+  function paste() {
+    view.toast = null
+    test.pasteStarted = Date.now()
+    key(Qt.Key_V, Qt.ControlModifier)
+  }
+  property double pasteStarted: 0
+  // The stand-in writes each paste's wl-paste pid here.
+  FileView {
+    id: pastePid
+    path: Quickshell.env("TEST_CLIPBOARD_STATE") + ".pid"
+    printErrors: false
+    blockLoading: true
+  }
+  property string previousPid: ""
+  function failureToast(english, norwegian) {
+    return !!view.toast && view.toast.style === "failure" && view.toast.title === test.said(english, norwegian)
+  }
   // The services' fetches against launcher.py's local HTTPS server.
   readonly property string fetchUrl: Quickshell.env("FOAMY_FETCH_URL")
   FoamyServices.CalculatorData {
@@ -746,6 +776,103 @@ ShellRoot {
         test.check(guardProbe.said.indexOf("Menu guard refresh failed; keeping previous results.") >= 0 && Object.keys(guardProbe.guards.when).length === 0, "a hung guard batch ends and keeps the previous results: " + guardProbe.said)
         break
       case 37:
+        menu.open('{"menu":"root"}')
+        view.popToRoot()
+        test.clipboardMode("unicode")
+        break
+      case 38:
+        if (test.waitFor(clipboardFixture.done && launcher.opened))
+          break
+        test.paste()
+        test.check(view.query === "", "paste waits for the bounded read")
+        break
+      case 39:
+        if (test.waitFor(view.query !== ""))
+          break
+        test.check(view.query === "/home/test/Blåbær 📁" && view.cursorPos === view.query.length, "Ctrl+V pastes the clipboard's text through kit/clipboard.sh: " + view.query)
+        view.setQuery("")
+        test.clipboardMode("stream")
+        break
+      case 40:
+        if (test.waitFor(clipboardFixture.done))
+          break
+        test.paste()
+        break
+      case 41:
+        if (test.waitFor(!!view.toast))
+          break
+        test.check(test.failureToast("Clipboard text is too large or contains invalid characters.", "Teksten på utklippstavlen er for stor eller inneholder ugyldige tegn.") && view.query === "", "an endless clipboard is refused at the byte cap, with a toast: " + JSON.stringify(view.toast))
+        test.clipboardMode("delayed")
+        break
+      case 42:
+        if (test.waitFor(clipboardFixture.done))
+          break
+        // Type and delete a character before the delayed read answers: the
+        // query is back as it was, but the paste is still stale.
+        test.paste()
+        test.type("x")
+        key(Qt.Key_Backspace)
+        break
+      case 43:
+        // The delayed read answers after 0.4 s; give it a second.
+        if (test.waitFor(Date.now() - test.pasteStarted > 1000))
+          break
+        test.check(view.query === "" && !view.toast, "a paste that answers after typing (even typing undone) is dropped: " + view.query)
+        view.setQuery("")
+        test.clipboardMode("stall")
+        break
+      case 44:
+        if (test.waitFor(clipboardFixture.done))
+          break
+        test.paste()
+        break
+      case 45:
+        if (test.waitFor(!!view.toast))
+          break
+        var waited = Date.now() - test.pasteStarted
+        test.check(test.failureToast("Clipboard paste timed out. Copy the text again.", "Innliming fra utklippstavlen tok for lang tid. Kopier teksten på nytt.") && waited < 5000 && view.query === "", "a stalled clipboard ends at the 2 s deadline, with a toast, after " + waited + " ms")
+        test.clipboardMode("ignore")
+        break
+      case 46:
+        if (test.waitFor(clipboardFixture.done))
+          break
+        pastePid.reload()
+        test.previousPid = pastePid.text()
+        test.paste()
+        break
+      case 47:
+        pastePid.reload()
+        if (test.waitFor(pastePid.text() !== test.previousPid))
+          break
+        // launcher.py checks that this paste's wl-paste (which ignores
+        // TERM) is gone at the end.
+        console.log("FOAMY PASTE PID " + pastePid.text())
+        test.clipboardMode("normal")
+        break
+      case 48:
+        if (test.waitFor(clipboardFixture.done))
+          break
+        // Closing mid-read stops it. Reopening and pasting at once, while
+        // the stopped read is still ending, must neither start a second
+        // read nor take the stopped one's exit as its own failure.
+        menu.close()
+        test.check(!menu.opened && view.pasteRevision === -1, "closing the launcher cancels its paste")
+        menu.open('{"menu":"root"}')
+        test.paste()
+        break
+      case 49:
+        if (test.waitFor(Date.now() - test.pasteStarted > 1000))
+          break
+        test.check(!view.toast && (view.query === "" || view.query === "folder"), "a paste right after a cancelled one gets no stale failure: " + JSON.stringify(view.toast) + " " + view.query)
+        view.setQuery("")
+        test.paste()
+        break
+      case 50:
+        if (test.waitFor(view.query !== "" || !!view.toast))
+          break
+        test.check(view.query === "folder" && !view.toast, "the next paste works: " + view.query)
+        break
+      case 51:
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

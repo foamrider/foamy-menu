@@ -54,6 +54,11 @@ Right-clicking the bar button opens the default terminal.
   character, and clicking the text places it. Backspace/Delete remove a
   character, with Ctrl a word; Ctrl+U clears up to the cursor. Typing and
   pasting insert at the cursor.
+- Ctrl+V, Ctrl+Shift+V and Shift+Insert paste plain text, read outside the
+  shell by foamy-kit's `kit/clipboard.sh`: at most 16 KiB, line breaks as
+  spaces, within 2 s. Larger text, a read that takes longer or no text on the
+  clipboard shows an error toast instead; text that arrives after you typed
+  or moved on is dropped.
 - **Apps** opens an icon grid of every application inside the launcher, A–Z,
   with the search field on top. Typing narrows and ranks the grid; arrow keys
   move in two dimensions; Esc clears the search, then goes back.

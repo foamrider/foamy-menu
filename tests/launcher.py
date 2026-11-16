@@ -28,6 +28,7 @@ if not os.environ.get("FOAMY_HOST_45"):
     os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
 sys.path.insert(0, str(KIT / "preview"))
 import harness
+import hostenv
 
 spec = importlib.util.spec_from_file_location("stock_runtime", PLUGIN / "tests/runtime.py")
 stock_runtime = importlib.util.module_from_spec(spec)
@@ -332,6 +333,9 @@ with open(path, "w") as f:
         )
     )
     run.env.update({"FOAMY_SCOPE_PIDS": str(pids), "FOAMY_GUARD_OMARCHY": str(run.base / "guard-omarchy")})
+    # Paste runs kit/clipboard.sh against the kit's wl-paste stand-in.
+    clipboard = hostenv.clipboard_fakes(run.base / "clipboard", run.env)
+    run.env.update(clipboard)
     # Saved searches are opt-in; this turns them on for DuckDuckGo only.
     (scopes / "duckduckgo.json").write_text(json.dumps({"id": "duckduckgo", "history": True}))
     # Rates and suggestions through BoundedFetch, from a local server.
@@ -379,6 +383,15 @@ with open(path, "w") as f:
     if len(listed) < 4 or left:
         run.ok = False
         result += f"; hung scope/guard processes: listed {listed!r}, still running {left!r}"
+    # The cancelled paste's wl-paste ignores TERM; closing the launcher
+    # mid-read must still end it.
+    paste_pids = [
+        line.split("FOAMY PASTE PID ", 1)[1].strip() for line in run.log.splitlines() if "FOAMY PASTE PID " in line
+    ]
+    paste_left = left_running(paste_pids) if paste_pids else ["no paste was cancelled"]
+    if paste_left:
+        run.ok = False
+        result += f"; a cancelled paste left wl-paste running: {paste_left!r}"
     label = "" if native else "/no-native-helper"
     print(f"{'PASS' if run.ok else 'FAIL'} launcher {host}/{theme}/{width}/{language}{label}: {result}")
     if not run.ok:
