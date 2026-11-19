@@ -172,6 +172,19 @@ test("saved searches and suggestions, when on: ranked, without repeating the typ
   assert.ok(RS.confirmationFor("scope-item:google:x", "clear-history").destructive)
 })
 
+test("Object.prototype names are ordinary values, keywords and searches", () => {
+  assert.deepEqual(Scopes.parseOutput("constructor\ntoString\nx\t__proto__\nconstructor\n").map((i) => i.value), ["constructor", "toString", "__proto__"])
+  const web = (id, keyword) => file(id + ".json", { id, keyword, title: "T", source: { type: "query" }, open: ["xdg-open", "{query}"] })
+  const merged = Scopes.merge(Scopes.BUILTINS, [web("a", "constructor"), web("b", "tostring")])
+  assert.deepEqual(merged.errors, [])
+  assert.deepEqual(merged.scopes.filter((s) => s.id === "a" || s.id === "b").map((s) => s.keyword), ["constructor", "tostring"])
+  assert.deepEqual(Scopes.merge(Scopes.BUILTINS, [web("constructor", "c")]).errors.map((e) => e.errors), [["id \"constructor\" is reserved"]],
+    "a scope id that per-scope state cannot hold is an error, not a silently missing scope")
+  const google = queryScope({ suggest: true })
+  const sections = RS.querySections(google, "q", [], ["constructor", "toString"], qctx(), deps)
+  assert.deepEqual(sections.at(-1).rows.map((r) => r.candidate.value), ["constructor", "toString"])
+})
+
 test("saved searches are capped per scope, least recent first", () => {
   const visits = {}
   for (let i = 0; i < 5; i++) visits[Scopes.itemId("google", "q" + i)] = { anchor: 1, openedAt: 100 + i }

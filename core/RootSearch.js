@@ -463,7 +463,8 @@ function querySections(scope, query, saved, suggestions, ctx, deps) {
   var q = String(query || "").trim()
   var out = []
   if (q || scope.home) out.push({ id: "query", title: "", rows: [{ candidate: deps.Scopes.queryCandidate(scope, q, ctx.t, false), record: null }] })
-  var taken = {}
+  // Keyed by typed text, so no prototype: "constructor" is a search too.
+  var taken = Object.create(null)
   taken[q.toLowerCase()] = true
   if (scope.history && saved.length) {
     var decorated = saved.map(function(c) { return decorate(c, ctx, deps) })

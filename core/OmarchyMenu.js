@@ -104,8 +104,10 @@ function parseCatalog(raw) {
   }
 }
 
+// Maps keyed by item ids have no prototype, so an item named "constructor"
+// or "toString" is not found before it is added.
 function buildTree(defaultItems, userItems) {
-  var byId = {}
+  var byId = Object.create(null)
   var order = []
   var sources = [defaultItems || [], userItems || []]
   for (var s = 0; s < sources.length; s++) {
@@ -131,7 +133,8 @@ function buildTree(defaultItems, userItems) {
     }
   }
 
-  var children = { root: [] }
+  var children = Object.create(null)
+  children.root = []
   for (var j = 0; j < order.length; j++) {
     var item = byId[order[j]]
     item.order = j
@@ -146,7 +149,7 @@ function buildTree(defaultItems, userItems) {
 // extension may set "parent" instead of a dotted id).
 function ancestors(tree, id) {
   var out = []
-  var seen = {}
+  var seen = Object.create(null)
   var item = tree.items[id]
   var parent = item ? item.parent : "root"
   while (parent && parent !== "root" && tree.items[parent] && !seen[parent]) {
@@ -159,7 +162,7 @@ function ancestors(tree, id) {
 
 function breadcrumb(tree, id) {
   var labels = []
-  var seen = {}
+  var seen = Object.create(null)
   var item = tree.items[id]
   var parent = item ? item.parent : "root"
   while (parent && parent !== "root" && tree.items[parent] && !seen[parent]) {
@@ -175,7 +178,7 @@ function depth(tree, id) {
 }
 
 function isVisible(tree, guards, id) {
-  var seen = {}
+  var seen = Object.create(null)
   var current = id
   while (current && current !== "root" && tree.items[current] && !seen[current]) {
     seen[current] = true
@@ -209,7 +212,7 @@ function guardScript(tree) {
 }
 
 function parseGuardOutput(text) {
-  var out = { when: {}, checked: {}, disabled: {} }
+  var out = { when: Object.create(null), checked: Object.create(null), disabled: Object.create(null) }
   var lines = String(text || "").split("\n")
   for (var i = 0; i < lines.length; i++) {
     var m = /^([A-Za-z0-9._-]+):([wcd]):([01])$/.exec(lines[i].trim())
