@@ -495,8 +495,7 @@ function settingCandidate(f, value, t, deps) {
     type: "command",
     kind: "setting",
     title: title,
-    // A note beside the title ("Needs Foamy Todoist").
-    subtitle: f.note ? tr(f.note) : "",
+    subtitle: "",
     keywords: [f.key, f.title, f.section].concat(title !== f.title ? [tr(f.section)] : []),
     typeLabel: shown[0],
     typeLabelValues: shown[1],
@@ -604,7 +603,7 @@ function actionsFor(candidate) {
     case "omarchy-menu":
     case "omarchy-link": primary = { id: "open", title: "Open Menu", icon: "\uf054" }; break
     // A grid scope (Games) opens like Apps, whose row runs.
-    case "scope": primary = candidate.grid ? { id: "open", title: "Run", icon: "\uf04b" } : candidate.input ? { id: "open", title: "Add Task", icon: "\uf067" } : { id: "open", title: "Open Scope", icon: "\uf002" }; break
+    case "scope": primary = candidate.grid ? { id: "open", title: "Run", icon: "\uf04b" } : { id: "open", title: "Open Scope", icon: "\uf002" }; break
     default: primary = { id: "open", title: "Open Command", icon: "\uf054" }
   }
   primary.shortcut = "↵"
