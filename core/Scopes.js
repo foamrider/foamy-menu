@@ -84,7 +84,7 @@ var BUILTINS = [
     id: "ssh",
     enabled: true,
     title: "SSH",
-    subtitle: "Connect to a host in ~/.ssh/config or any destination",
+    subtitle: "Connect to a host",
     keyword: "ssh",
     icon: "\u{f048d}",
     itemsTitle: "Hosts",

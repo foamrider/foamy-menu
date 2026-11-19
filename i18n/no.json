@@ -52,7 +52,7 @@
   "Commands": "Kommandoer",
   "Compact": "Kompakt",
   "Connect": "Koble til",
-  "Connect to a host in ~/.ssh/config or any destination": "Koble til en vert i ~/.ssh/config eller en hvilken som helst adresse",
+  "Connect to a host": "Koble til en vert",
   "Copied to Clipboard": "Kopiert til utklippstavlen",
   "Copy Answer": "Kopier svar",
   "Copy App ID": "Kopier app-ID",

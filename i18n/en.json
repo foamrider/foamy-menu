@@ -52,7 +52,7 @@
   "Commands": "Commands",
   "Compact": "Compact",
   "Connect": "Connect",
-  "Connect to a host in ~/.ssh/config or any destination": "Connect to a host in ~/.ssh/config or any destination",
+  "Connect to a host": "Connect to a host",
   "Copied to Clipboard": "Copied to Clipboard",
   "Copy Answer": "Copy Answer",
   "Copy App ID": "Copy App ID",
