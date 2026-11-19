@@ -424,13 +424,47 @@ function scopeSections(itemCandidates, query, ctx, deps, itemsTitle, grid) {
   return out
 }
 
+// Inside a freeText scope: the items and the values typed before (saved:
+// true) ranked together, then the typed text as its own row when it is a
+// valid value no listed row has. With nothing typed, saved values show only
+// among Recent; the item list stays the source's. A grid keeps its one
+// untitled section, the typed value last in it.
+function freeTextSections(scope, itemCandidates, saved, query, ctx, deps, itemsTitle) {
+  var q = String(query || "").trim()
+  var grid = deps.Scopes.isGrid(scope)
+  // Values compare exactly: an ssh user name is case-sensitive. No
+  // prototype, so a host named "constructor" is not already known.
+  var known = Object.create(null)
+  itemCandidates.forEach(function(c) { known[c.value] = true })
+  // A saved value that is now an item (a host added to ~/.ssh/config) shows
+  // once, as the item.
+  var extra = saved.filter(function(c) {
+    if (known[c.value]) return false
+    known[c.value] = true
+    return true
+  })
+  var out = scopeSections(itemCandidates.concat(extra), q, ctx, deps, itemsTitle, grid)
+  if (!q) {
+    out = out.map(function(s) {
+      return s.id === "items" ? { id: s.id, title: s.title, rows: s.rows.filter(function(r) { return !r.candidate.saved }) } : s
+    }).filter(function(s) { return s.rows.length })
+  }
+  if (q && !known[q] && deps.Scopes.typedValueAllowed(scope, q)) {
+    var row = { candidate: deps.Scopes.queryCandidate(scope, q, ctx.t, false), record: null }
+    if (grid && out.length) out[0].rows.push(row)
+    else out.push({ id: grid ? "items" : "typed", title: "", rows: [row] })
+  }
+  return out
+}
+
 // Inside a query scope: the typed text first, then saved searches (when the
 // scope keeps them) and the engine's suggestions (when it asks for them).
 function querySections(scope, query, saved, suggestions, ctx, deps) {
   var q = String(query || "").trim()
   var out = []
   if (q || scope.home) out.push({ id: "query", title: "", rows: [{ candidate: deps.Scopes.queryCandidate(scope, q, ctx.t, false), record: null }] })
-  var taken = {}
+  // Keyed by typed text, so no prototype: "constructor" is a search too.
+  var taken = Object.create(null)
   taken[q.toLowerCase()] = true
   if (scope.history && saved.length) {
     var decorated = saved.map(function(c) { return decorate(c, ctx, deps) })
@@ -539,7 +573,7 @@ function actionsFor(candidate) {
       inScope.push({ id: "scope-action:" + a, title: extra[a].title, shortcut: "", section: extra[a].copy !== undefined ? "copy" : "primary", icon: "" })
     if (candidate.saved) {
       inScope.push({ id: "delete-history", title: "Delete from History", shortcut: "Ctrl D", section: "delete", icon: "" })
-      inScope.push({ id: "clear-history", title: "Clear Search History", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
+      inScope.push({ id: "clear-history", title: candidate.typed ? "Clear History" : "Clear Search History", shortcut: "Ctrl Shift D", section: "delete", icon: "" })
     } else if (candidate.kind === "scope-item" && candidate.frecency > 1) {
       inScope.push({ id: "reset-ranking", title: "Reset Ranking", shortcut: "", section: "configure", icon: "" })
     }
@@ -626,7 +660,9 @@ var CONFIRMATIONS = {
 function confirmationFor(id, action) {
   var c = action === "open" ? CONFIRMATIONS[id] : null
   if (id === "settings-action:clear-searches" && action === "open") c = { title: "Clear Saved Web Searches", message: "This removes every saved search in every web search scope.", primary: "Clear" }
-  if (action === "clear-history") c = { title: "Clear Search History", message: "This removes every saved search in this scope.", primary: "Clear" }
+  if (action === "clear-history") c = String(id).indexOf("scope-typed:") === 0
+    ? { title: "Clear History", message: "This removes every typed entry saved in this scope.", primary: "Clear" }
+    : { title: "Clear Search History", message: "This removes every saved search in this scope.", primary: "Clear" }
   if (action === "delete-all-entries") c = { title: "Delete All Entries", message: "This removes every calculation from Calculator History.", primary: "Delete All" }
   return c ? { title: c.title, message: c.message, primary: c.primary, destructive: true } : null
 }
@@ -659,7 +695,7 @@ function aboutFor(c, nowMs) {
   if (c.kind === "omarchy-action") add("Command", c.action)
   if (c.kind === "omarchy-link") add("Opens", c.target)
   if (c.kind === "scope-item") add("Value", c.value)
-  if (c.kind === "scope-query") add("Query", c.value)
+  if (c.kind === "scope-query") add(c.typed ? "Value" : "Query", c.value)
   if (c.kind === "scope") add("Keyword", c.scopeKeyword)
   add("Keywords", (c.keywords || []).join(", "))
   add("Alias", c.alias)
@@ -692,6 +728,7 @@ if (typeof module !== "undefined") {
     submenuSections: submenuSections,
     appGridSections: appGridSections,
     scopeSections: scopeSections,
+    freeTextSections: freeTextSections,
     isAppGridItem: isAppGridItem,
     actionsFor: actionsFor,
     reorderFavorites: reorderFavorites,

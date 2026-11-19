@@ -172,12 +172,113 @@ test("saved searches and suggestions, when on: ranked, without repeating the typ
   assert.ok(RS.confirmationFor("scope-item:google:x", "clear-history").destructive)
 })
 
+test("Object.prototype names are ordinary values, keywords and searches", () => {
+  assert.deepEqual(Scopes.parseOutput("constructor\ntoString\nx\t__proto__\nconstructor\n").map((i) => i.value), ["constructor", "toString", "__proto__"])
+  const web = (id, keyword) => file(id + ".json", { id, keyword, title: "T", source: { type: "query" }, open: ["xdg-open", "{query}"] })
+  const merged = Scopes.merge(Scopes.BUILTINS, [web("a", "constructor"), web("b", "tostring")])
+  assert.deepEqual(merged.errors, [])
+  assert.deepEqual(merged.scopes.filter((s) => s.id === "a" || s.id === "b").map((s) => s.keyword), ["constructor", "tostring"])
+  assert.deepEqual(Scopes.merge(Scopes.BUILTINS, [web("constructor", "c")]).errors.map((e) => e.errors), [["id \"constructor\" is reserved"]],
+    "a scope id that per-scope state cannot hold is an error, not a silently missing scope")
+  const google = queryScope({ suggest: true })
+  const sections = RS.querySections(google, "q", [], ["constructor", "toString"], qctx(), deps)
+  assert.deepEqual(sections.at(-1).rows.map((r) => r.candidate.value), ["constructor", "toString"])
+})
+
 test("saved searches are capped per scope, least recent first", () => {
   const visits = {}
   for (let i = 0; i < 5; i++) visits[Scopes.itemId("google", "q" + i)] = { anchor: 1, openedAt: 100 + i }
   visits[Scopes.itemId("ssh", "web")] = { anchor: 1, openedAt: 1 }
-  assert.deepEqual(Scopes.historyOverflow("google", visits, 3), [Scopes.itemId("google", "q0"), Scopes.itemId("google", "q1")])
-  assert.deepEqual(Scopes.historyOverflow("google", visits), [])
+  const google = queryScope()
+  assert.deepEqual(Scopes.historyOverflow(google, visits, 3), [Scopes.itemId("google", "q0"), Scopes.itemId("google", "q1")])
+  assert.deepEqual(Scopes.historyOverflow(google, visits), [])
+})
+
+const sshScope = () => Scopes.merge(Scopes.BUILTINS, []).scopes[0]
+const hosts = (ssh) => ["db", "web"].map((h) => Scopes.itemCandidate(ssh, { title: h, value: h, subtitle: h + ".internal" }))
+const rowsOf = (sections) => sections.map((s) => [s.id, s.rows.map((r) => r.candidate.id)])
+
+test("freeText: SSH takes any valid destination; user scopes need a pattern, query scopes refuse it", () => {
+  const ssh = sshScope()
+  assert.deepEqual([ssh.freeText, ssh.history], [true, true])
+  assert.ok(Scopes.acceptsTypedText(ssh) && Scopes.acceptsTypedText(queryScope()))
+  const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true", "{value}"] }
+  assert.equal(Scopes.normalize(base).scope.freeText, false, "off by default")
+  assert.ok(!Scopes.acceptsTypedText(Scopes.normalize(base).scope))
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { freeText: "yes", valuePattern: "^a$" })).errors, ["freeText must be true or false"])
+  assert.deepEqual(Scopes.normalize(Object.assign({}, base, { freeText: true })).errors, ["freeText needs a valuePattern"])
+  const typed = Scopes.normalize(Object.assign({}, base, { freeText: true, valuePattern: "^[a-z]+$", history: true })).scope
+  assert.deepEqual([typed.freeText, typed.history], [true, true], "a freeText scope may keep history")
+  assert.match(Scopes.normalize({ id: "q", title: "Q", source: { type: "query" }, open: ["a"], freeText: true }).errors.join(), /freeText is for list and command scopes/)
+  // A scope file can turn it off for the built-in.
+  const off = Scopes.merge(Scopes.BUILTINS, [file("ssh.json", { id: "ssh", freeText: false })]).scopes[0]
+  assert.equal(off.freeText, false)
+  assert.equal(Scopes.normalize(Object.assign({}, base, { history: true })).scope.history, false, "without freeText a list scope keeps no history")
+})
+
+test("freeText: the typed destination follows matching hosts, only when valid and new", () => {
+  const ssh = sshScope()
+  const items = hosts(ssh)
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, [], "deploy@new.example", ctx(), deps, "Hosts")), [["typed", ["scope-query:ssh"]]],
+    "nothing matches: the typed row is the only one")
+  const typed = RS.freeTextSections(ssh, items, [], "deploy@new.example", ctx(), deps, "Hosts")[0].rows[0].candidate
+  assert.equal(typed.title, "Connect “deploy@new.example”")
+  assert.deepEqual(RS.actionsFor(typed).map((a) => a.title), ["Connect", "Copy SSH Command", "Copy Host Name", "Open in Files (SFTP)"])
+  const partial = RS.freeTextSections(ssh, items, [], "we", ctx(), deps, "Hosts")
+  assert.deepEqual(rowsOf(partial), [["results", ["scope-item:ssh:web"]], ["typed", ["scope-query:ssh"]]], "a matching host stays first, so Enter opens it")
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, [], "web", ctx(), deps, "Hosts")), [["results", ["scope-item:ssh:web"]]], "a host's own name is not offered twice")
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, [], "WEB", ctx(), deps, "Hosts")), [["results", ["scope-item:ssh:web"]], ["typed", ["scope-query:ssh"]]],
+    "values compare exactly: an ssh user name is case-sensitive")
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, [], [], "constructor", ctx(), deps, "Hosts")), [["typed", ["scope-query:ssh"]]], "no inherited names count as known")
+  const long = "a".repeat(Scopes.MAX_TEXT + 1)
+  assert.ok(Scopes.valueAllowed(ssh, long) && !Scopes.typedValueAllowed(ssh, long))
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, [], [], long, ctx(), deps, "Hosts")), [], "an over-long value is not offered")
+  assert.deepEqual(Scopes.historyCandidates(ssh, { [Scopes.typedId("ssh", long)]: Frecency.recordVisit(null, NOW, "") }), [], "nor listed when saved")
+  // A grid keeps one untitled section, the typed value last in it.
+  const grid = Scopes.merge(Scopes.BUILTINS, [file("ssh.json", { id: "ssh", layout: "icons" })]).scopes[0]
+  const gridItems = hosts(grid)
+  assert.deepEqual(rowsOf(RS.freeTextSections(grid, gridItems, [], "we", ctx(), deps, "Hosts")), [["items", ["scope-item:ssh:web", "scope-query:ssh"]]])
+  assert.deepEqual(rowsOf(RS.freeTextSections(grid, gridItems, [], "admin@new.example", ctx(), deps, "Hosts")), [["items", ["scope-query:ssh"]]])
+  const gridSaved = [Scopes.savedCandidate(grid, "admin@new.example")]
+  assert.deepEqual(rowsOf(RS.freeTextSections(grid, gridItems, gridSaved, "", ctx(), deps, "Hosts")), [["items", ["scope-item:ssh:db", "scope-item:ssh:web"]]])
+  for (const bad of ["-oProxyCommand=x", "web; rm", "user@host -p 22"])
+    assert.ok(!RS.freeTextSections(ssh, items, [], bad, ctx(), deps, "Hosts").some((s) => s.id === "typed"), bad)
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, [], [], "", ctx(), deps, "Hosts")), [], "an empty config and no text: nothing (the scope's empty text shows)")
+  assert.deepEqual(RS.aboutFor(Object.assign({}, typed, { value: "deploy@new.example" }), NOW).find((r) => r.label === "Value").value, "deploy@new.example")
+})
+
+test("freeText history: saved destinations rank with hosts, show once, and clear apart from them", () => {
+  const ssh = sshScope()
+  const items = hosts(ssh)
+  const visits = {
+    [Scopes.typedId("ssh", "deploy@new.example")]: Frecency.recordVisit(null, NOW, ""),
+    // Typed before, now a host in ~/.ssh/config: listed once, as the host.
+    [Scopes.typedId("ssh", "db")]: Frecency.recordVisit(null, NOW, ""),
+    [Scopes.itemId("ssh", "web")]: Frecency.recordVisit(null, NOW - 1000, ""),
+    [Scopes.itemId("google", "deploy")]: Frecency.recordVisit(null, NOW, "")
+  }
+  const saved = Scopes.historyCandidates(ssh, visits)
+  assert.deepEqual(saved.map((c) => [c.id, c.value, c.saved, c.typed]).sort(), [
+    ["scope-typed:ssh:db", "db", true, true], ["scope-typed:ssh:deploy@new.example", "deploy@new.example", true, true]
+  ], "only the scope's typed values, not its hosts' ranking or another scope's searches")
+  const empty = RS.freeTextSections(ssh, items, saved, "", ctx({ frecency: visits }), deps, "Hosts")
+  assert.deepEqual(rowsOf(empty), [["recent", ["scope-typed:ssh:deploy@new.example", "scope-item:ssh:web"]], ["items", ["scope-item:ssh:db"]]],
+    "saved destinations join Recent; the host list stays the config's")
+  const searched = RS.freeTextSections(ssh, items, saved, "deploy", ctx({ frecency: visits }), deps, "Hosts")
+  assert.deepEqual(rowsOf(searched), [["results", ["scope-typed:ssh:deploy@new.example"]], ["typed", ["scope-query:ssh"]]])
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, saved, "deploy@new.example", ctx({ frecency: visits }), deps, "Hosts")),
+    [["results", ["scope-typed:ssh:deploy@new.example"]]], "the saved row replaces the typed one")
+  const row = searched[0].rows[0].candidate
+  assert.deepEqual(RS.actionsFor(row).slice(-2).map((a) => [a.id, a.title]), [["delete-history", "Delete from History"], ["clear-history", "Clear History"]])
+  assert.equal(RS.confirmationFor(row.id, "clear-history").title, "Clear History")
+  assert.equal(RS.confirmationFor("scope-item:google:x", "clear-history").title, "Clear Search History")
+  // Clearing removes keys under this prefix: typed values only.
+  assert.deepEqual(Object.keys(visits).filter((k) => k.startsWith(Scopes.historyPrefix(ssh))).sort(), ["scope-typed:ssh:db", "scope-typed:ssh:deploy@new.example"])
+  assert.equal(Scopes.historyPrefix(queryScope()), Scopes.itemId("google", ""), "web searches keep their ids")
+  const capped = {}
+  for (let i = 0; i < 4; i++) capped[Scopes.typedId("ssh", "h" + i)] = { anchor: 1, openedAt: 100 + i }
+  capped[Scopes.itemId("ssh", "web")] = { anchor: 1, openedAt: 1 }
+  assert.deepEqual(Scopes.historyOverflow(ssh, capped, 2), [Scopes.typedId("ssh", "h0"), Scopes.typedId("ssh", "h1")], "the cap counts typed values only")
 })
 
 test("suggestion replies: OpenSearch lists and DuckDuckGo phrases, bounded", () => {
