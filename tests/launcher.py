@@ -157,17 +157,31 @@ def left_running(pids):
     return left()
 
 
-def run_case(host, theme, width, language, shots, native=True):
-    run = harness.Run(
-        host,
-        (PLUGIN / "tests/qml/LauncherRuntime.qml").read_text(),
-        plugin=PLUGIN,
-        theme=theme,
-        language=language,
-        prefix="foamy-menu-launcher-",
-    )
-    stock_runtime.build(run)
-    # Only window plumbing is replaced. Production logic, services and UI run unchanged.
+# No shell facade offscreen, so settings save through `omarchy bar set`: this
+# stand-in writes the value into the test shell.json entry.
+OMARCHY_STUB = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+if args[:2] != ["bar", "set"] or len(args) < 5:
+    sys.exit(1)
+widget, key, raw = args[2], args[3], args[4]
+value = json.loads(raw) if "--json" in args else raw
+path = os.path.join(os.environ["HOME"], ".config/omarchy/shell.json")
+with open(path) as f:
+    config = json.load(f)
+for entries in config["bar"]["layout"].values():
+    for entry in entries:
+        if entry.get("id") == widget:
+            entry[key] = value
+with open(path, "w") as f:
+    json.dump(config, f)
+"""
+
+
+def adopt(run, native=True):
+    """The plugin as the launcher runs offscreen: a copy whose window
+    plumbing is replaced (no compositor); production logic, services and UI
+    run unchanged. Returns the copy's directory."""
     (run.root / "plugin").unlink()
     local = run.root / "plugin"
     shutil.copytree(PLUGIN, local, ignore=shutil.ignore_patterns(".git", "__pycache__"))
@@ -204,6 +218,20 @@ def run_case(host, theme, width, language, shots, native=True):
     start = text.index("  GlobalShortcut {")
     end = text.index("\n  }", start) + len("\n  }")
     launcher.write_text(text[:start] + text[end:])
+    return local
+
+
+def run_case(host, theme, width, language, shots, native=True):
+    run = harness.Run(
+        host,
+        (PLUGIN / "tests/qml/LauncherRuntime.qml").read_text(),
+        plugin=PLUGIN,
+        theme=theme,
+        language=language,
+        prefix="foamy-menu-launcher-",
+    )
+    stock_runtime.build(run)
+    adopt(run, native)
     home = Path(run.env["HOME"])
     config = home / ".config/foamy-menu"
     config.mkdir(parents=True)
@@ -273,25 +301,7 @@ def run_case(host, theme, width, language, shots, native=True):
     (stubs / "omarchy-launch-tui").chmod(0o755)
     (stubs / "omarchy-launch-browser").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_BROWSER_FILE"\n')
     (stubs / "omarchy-launch-browser").chmod(0o755)
-    # No shell facade offscreen, so settings save through `omarchy bar set`:
-    # this stand-in writes the value into the test shell.json entry.
-    (stubs / "omarchy").write_text("""#!/usr/bin/env python3
-import json, os, sys
-args = sys.argv[1:]
-if args[:2] != ["bar", "set"] or len(args) < 5:
-    sys.exit(1)
-widget, key, raw = args[2], args[3], args[4]
-value = json.loads(raw) if "--json" in args else raw
-path = os.path.join(os.environ["HOME"], ".config/omarchy/shell.json")
-with open(path) as f:
-    config = json.load(f)
-for entries in config["bar"]["layout"].values():
-    for entry in entries:
-        if entry.get("id") == widget:
-            entry[key] = value
-with open(path, "w") as f:
-    json.dump(config, f)
-""")
+    (stubs / "omarchy").write_text(OMARCHY_STUB)
     (stubs / "omarchy").chmod(0o755)
     # Steam Games (off until the test turns it on): two installed games, one
     # with a cover and a small icon, one with neither; a tool is left out.

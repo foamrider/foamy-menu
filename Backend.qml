@@ -14,6 +14,7 @@ import "core/RootSearch.js" as RootSearch
 import "core/Calculator.js" as Calculator
 import "core/Scopes.js" as Scopes
 import "core/Settings.js" as Settings
+import "core/TodoistInput.js" as TodoistInput
 import "kit/FoamyPrefs.js" as Prefs
 import "services"
 import "kit"
@@ -48,8 +49,13 @@ Item {
       out[waiting[i].key] = waiting[i].value
     return out
   }
-  // Built-in scopes with the SSH, Steam and web-search settings applied.
-  readonly property var builtinScopes: Settings.applyToScopes(Scopes.BUILTINS, backend.settings)
+  // Built-in scopes with the SSH, Steam, web-search and Todoist settings
+  // applied; the Todoist input also needs Foamy Todoist installed (D5).
+  readonly property var builtinScopes: Settings.applyToScopes(Scopes.BUILTINS, backend.settings, {
+    todoistInstalled: todoistSource.installed
+  })
+  // Whether the launcher is on screen (window.visibilityChanged).
+  property bool launcherVisible: false
   property bool directoriesReady: false
   readonly property bool ready: directoriesReady && settingsStore.loaded && frecencyStore.loaded && calculatorStore.loaded
 
@@ -117,7 +123,7 @@ Item {
       return "root"
     if (kind === "scope") {
       const scope = scopeSource.scope(view.scopeId)
-      if (!scope || Scopes.isQuery(scope))
+      if (!scope || Scopes.isQuery(scope) || Scopes.isInput(scope))
         return ""
       backend.setViewCatalog(scope.freeText ? backend.freeTextCandidates(scope).all : backend.scopeItems(scope.id))
       return "view"
@@ -624,6 +630,120 @@ Item {
     Util.execArgv(Scopes.fill(extra ? extra.open : scope.open, value, backend.pluginDir))
     return {
       close: true
+    }
+  }
+
+  // --------------------------------------------------------------- todoist
+
+  readonly property alias todoist: todoistSource
+  readonly property bool todoistAdding: todoistSource.adding
+
+  // What TodoistInput.sections and .actions read. hiddenKey: the suggestion
+  // list closed with Esc.
+  function todoistEnv(hiddenKey) {
+    return {
+      model: todoistSource.model,
+      state: todoistSource.inputState,
+      recent: todoistSource.recent,
+      lastTaskId: todoistSource.lastTaskId,
+      nowMs: Date.now(),
+      hiddenKey: String(hiddenKey || ""),
+      t: backend.tr,
+      relative: RootSearch.relativeParts,
+      // A due day (YYYY-MM-DD) as the language writes a short date.
+      formatDay: function (key) {
+        const parts = String(key).split("-")
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).toLocaleDateString(backend.numberLocale, "ddd d MMM")
+      }
+    }
+  }
+
+  // The view on screen changed: entering an input starts a visit, anything
+  // else ends one.
+  function viewChanged(view) {
+    var scope = view && view.kind === "scope" ? scopeSource.scope(view.scopeId) : null
+    if (Scopes.isInput(scope))
+      todoistSource.enter()
+    else
+      todoistSource.leave()
+  }
+
+  // Enter, Tab and the actions on the input's rows. With text, Enter adds
+  // (Shift+Enter the other way round from todoistCloseOnAdd); a click on a
+  // suggestion inserts it.
+  function todoistAction(data) {
+    var id = String(data.id || "")
+    var action = String(data.action || "open")
+    var text = String(data.query || "")
+    var env = backend.todoistEnv(data.hideSuggestions)
+    var edit = null
+    var task = ""
+    // The card adds the typed text; with the field empty after an add it is
+    // that task, and opens it.
+    if (action === "open" && id === TodoistInput.CARD_ID)
+      action = text.trim() === "" ? "todoist-open-last" : "todoist-add"
+    if (action === "open" && id.indexOf("todoist:suggest:") === 0)
+      action = "todoist-insert"
+    switch (action) {
+    case "todoist-add":
+    case "todoist-add-alt":
+      if (!todoistSource.add(text))
+        return {}
+      return backend.settings.todoistCloseOnAdd !== (action === "todoist-add-alt") ? {
+        close: true
+      } : {}
+    case "todoist-insert":
+      edit = TodoistInput.insertFor(id, text, Number(data.cursor), env)
+      return edit ? {
+        edit: edit
+      } : {}
+    // Opens stay open until Foamy Todoist's IPC answered (todoist.opened
+    // closes the launcher, todoist.openFailed says why it didn't work).
+    case "todoist-open-last":
+      todoistSource.openTask(todoistSource.lastTaskId)
+      return {}
+    case "todoist-open-inbox":
+      todoistSource.openInbox()
+      return {}
+    case "todoist-open-app":
+      todoistSource.openApp()
+      return {}
+    case "todoist-copy-text":
+      clipboard.copy(text.trim())
+      return {
+        close: true,
+        hud: backend.tr("Copied to Clipboard")
+      }
+    case "open":
+      task = TodoistInput.rowTask(id)
+      if (task)
+        todoistSource.openTask(task)
+      else if (id === "todoist:open-inbox")
+        todoistSource.openInbox()
+      else if (id === "todoist:open-app")
+        todoistSource.openApp()
+      return {}
+    }
+    throw new Error("Unknown action " + action)
+  }
+
+  TodoistSource {
+    id: todoistSource
+    pluginDir: backend.paths.todoistPlugin
+    launcherOpen: backend.launcherVisible
+    onRevisionChanged: backend.candidatesRevision++
+    onMessage: function (level, text, metadata) {
+      backend.log(level, "todoist", text, metadata)
+    }
+    onTextAdded: backend.emit("todoist.added", null)
+    onOpenFinished: function (ok) {
+      backend.emit(ok ? "todoist.opened" : "todoist.openFailed", null)
+    }
+    onEarlierResult: function (style, text) {
+      backend.emit("todoist.earlierResult", {
+        style: style,
+        text: text
+      })
     }
   }
 
@@ -1151,7 +1271,9 @@ Item {
           sections = RootSearch.submenuSections(backend.candidates, view.menuId, query, ctx, backend.deps)
         else if (view && view.kind === "scope") {
           var scope = scopeSource.scope(view.scopeId)
-          if (scope && Scopes.isQuery(scope))
+          if (scope && Scopes.isInput(scope))
+            sections = TodoistInput.sections(query, Number(data.cursor), backend.todoistEnv(data.hideSuggestions))
+          else if (scope && Scopes.isQuery(scope))
             sections = backend.querySearch(scope, query, ctx)
           else if (scope && scope.freeText)
             sections = backend.freeTextSearch(scope, query, ctx)
@@ -1174,6 +1296,7 @@ Item {
             id: s.id,
             title: s.title,
             titleValues: s.titleValues || null,
+            caretKey: s.caretKey || "",
             rows: s.rows.map(function (r) {
               return r.candidate
             })
@@ -1182,6 +1305,8 @@ Item {
       },
       getActions: function (data) {
         var rowId = String(data && data.id || "")
+        if (rowId.indexOf("todoist:") === 0)
+          return TodoistInput.actions(rowId, String(data.query || ""), Number(data.cursor), backend.todoistEnv(data.hideSuggestions), backend.settings.todoistCloseOnAdd)
         if (rowId === RootSearch.CALCULATOR_ID)
           return RootSearch.actionsFor({
             kind: "calculator"
@@ -1198,6 +1323,9 @@ Item {
       getItemInfo: function (data) {
         var rowId = String(data && data.id || "")
         var nowMs = Date.now()
+        // The input's rows are the typed text and Todoist's tasks: no About.
+        if (rowId.indexOf("todoist:") === 0)
+          return []
         if (rowId === RootSearch.CALCULATOR_ID) {
           var calc = backend.calculate(String(data.query || ""))
           return calc ? RootSearch.aboutFor(RootSearch.calculatorCandidate(calc), nowMs) : []
@@ -1235,6 +1363,8 @@ Item {
             kind: calc.kind
           }, "")
         }
+        if (data && String(data.id).indexOf("todoist:") === 0)
+          return backend.todoistAction(data)
         if (data && String(data.id).indexOf("calculator-history:") === 0) {
           var entry = backend.historyEntry(data.id)
           if (!entry)
@@ -1335,10 +1465,13 @@ Item {
     calculatorStore.flush()
   }
   onNotification: function (method, data) {
+    if (method === "window.visibilityChanged")
+      backend.launcherVisible = !!(data && data.visible)
     if (method === "window.visibilityChanged" && data && data.visible) {
       menuSource.refresh()
       calculatorData.refresh()
       backend.refreshRootScopes()
+      todoistSource.launcherShown()
     }
   }
 
@@ -1418,12 +1551,15 @@ Item {
   // State of the scope on screen, for its empty and loading text.
   function scopeState(scopeId) {
     var scope = scopeSource.scope(scopeId)
+    var input = Scopes.isInput(scope)
+    var added = input && !!todoistSource.result && todoistSource.result.kind === "added"
     return {
-      loaded: Scopes.isQuery(scope) || !!scopeSource.items[scopeId],
+      loaded: Scopes.isQuery(scope) || input || !!scopeSource.items[scopeId],
       loading: scopeSource.loading,
       failure: scopeSource.failures[scopeId] || "",
       emptyText: scope ? scope.emptyText : "",
-      placeholder: scope ? scope.placeholder : "",
+      placeholder: added ? "Add another task…" : scope ? scope.placeholder : "",
+      input: input,
       keyword: scope ? scope.keyword : "",
       layout: scope ? scope.layout : "list"
     }

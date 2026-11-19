@@ -9,8 +9,9 @@
 // they stay in ~/.local/share/foamy-menu/db/.
 
 // Besides the manifest schema keys, each field carries what the launcher's
-// settings view shows: section and title (short, translated), optionTitles,
-// unit, and hidden for those left to shell.json.
+// settings view shows: section and title (short, translated), optionTitles
+// (a switch's too, by "true"/"false"), note (beside the title), unit, and
+// hidden for those left to shell.json.
 var fields = [
   { key: "width", type: "integer", label: "Minimum menu width (0 = default)", defaultValue: 360, min: 0, max: 4096, step: 10,
     section: "Bar Button", title: "Minimum width", unit: "px" },
@@ -43,6 +44,12 @@ var fields = [
     section: "Web Search", title: "Save web searches" },
   { key: "webSearchSuggestions", type: "boolean", label: "Show the search engine's suggestions while typing a web search (sends what you type to the engine)", defaultValue: false,
     section: "Web Search", title: "Web search suggestions" },
+  // The Todoist input (td + Tab) runs Foamy Todoist's helper: without that
+  // plugin the switch stays shown and the input stays hidden (D5).
+  { key: "todoistQuickAdd", type: "boolean", label: "Add Todoist tasks with td + Tab (needs Foamy Todoist)", defaultValue: false,
+    section: "Todoist", title: "Add Todoist tasks (td)", note: "Needs Foamy Todoist" },
+  { key: "todoistCloseOnAdd", type: "boolean", label: "Close the launcher after adding a Todoist task (Shift+Enter does the other)", defaultValue: false,
+    section: "Todoist", title: "After adding", optionTitles: { "false": "Stay open", "true": "Close" } },
   // Daily ECB reference rates from frankfurter.dev for currency conversion.
   { key: "currencyRates", type: "boolean", label: "Download exchange rates for currency conversion", defaultValue: true,
     section: "Calculator", title: "Exchange rates" },
@@ -59,8 +66,8 @@ var fields = [
 
 // The settings view's sections, in order. Search holds what the root search
 // finds (search strictness, SSH hosts, Steam games); Web Search the Google and
-// DuckDuckGo scopes.
-var SECTIONS = ["Window", "Search", "Web Search", "Calculator", "Bar Button"]
+// DuckDuckGo scopes; Todoist the Todoist input.
+var SECTIONS = ["Window", "Search", "Web Search", "Todoist", "Calculator", "Bar Button"]
 
 function field(key) {
   for (var i = 0; i < fields.length; i++) if (fields[i].key === key) return fields[i]
@@ -70,7 +77,7 @@ function field(key) {
 // How a value reads in the settings view: [English template, values] for the
 // UI to translate ("On", "Expanded", "%1 s" with [90]).
 function display(f, value) {
-  if (f.type === "boolean") return [value ? "On" : "Off", []]
+  if (f.type === "boolean") return [(f.optionTitles && f.optionTitles[String(!!value)]) || (value ? "On" : "Off"), []]
   if (f.type === "enum") return [(f.optionTitles && f.optionTitles[value]) || String(value), []]
   if (f.type === "integer" || f.type === "number") {
     if (f.key === "width" && value === 0) return ["Default", []]
@@ -124,15 +131,17 @@ function resolve(Prefs, entry) {
 }
 
 // The built-in scopes with these settings applied: the SSH switch, Steam
-// games in the root search, and the web searches' saved searches and
-// suggestions. A scope file can still
+// games in the root search, the web searches' saved searches and
+// suggestions, and the Todoist input (its switch, and only while Foamy
+// Todoist is installed: host.todoistInstalled). A scope file can still
 // override a built-in afterwards.
-function applyToScopes(builtins, settings) {
+function applyToScopes(builtins, settings, host) {
   return builtins.map(function(scope) {
     var next = {}
     for (var k in scope) next[k] = scope[k]
     if (scope.id === "ssh") next.enabled = settings.sshScope
     if (scope.id === "steam") next.rootSearch = settings.steamGames
+    if (scope.id === "todoist") next.enabled = settings.todoistQuickAdd === true && !!host && host.todoistInstalled === true
     if (scope.source && scope.source.type === "query") {
       next.history = settings.webSearchHistory
       next.suggest = settings.webSearchSuggestions

@@ -57,7 +57,7 @@ test("the guard script runs in bash and reports each guard", () => {
   const tree = M.buildTree(M.parse(sample).items, [])
   const script = M.guardScript(tree)
   const out = execFileSync("bash", ["-c", script], { encoding: "utf8" })
-  assert.deepEqual(M.parseGuardOutput(out).when, { "system.suspend": false })
+  assert.deepEqual({ ...M.parseGuardOutput(out).when }, { "system.suspend": false })
 })
 
 test("provider output becomes action rows with quoted commands", () => {
@@ -99,4 +99,16 @@ test("trailing commas go, but never from inside a string", () => {
   assert.equal(parsed.error, "")
   assert.deepEqual(parsed.items.map((i) => [i.id, i.label, i.action]),
     [["x", "X, y", 'printf %s ",}" ",]"'], ["z", "a\\", "true"], ["y", "Y", "true"]])
+})
+
+test("items named after Object.prototype keys build a normal tree", () => {
+  const user = M.parse(`{"constructor":{"label":"C","action":"c"},"tools":{"label":"Tools"},"tools.x":{"label":"X","action":"a","parent":"toString"}}`).items
+  const tree = M.buildTree([], user)
+  assert.equal(tree.items.constructor.label, "C")
+  assert.deepEqual(tree.children.root, ["constructor", "tools", "tools.x"], "an unknown parent puts the item at the root")
+  assert.deepEqual(M.ancestors(tree, "tools.x"), [])
+  assert.equal(M.isVisible(tree, M.parseGuardOutput(""), "constructor"), true)
+  const guards = M.parseGuardOutput("tools:c:1\n")
+  assert.equal(guards.checked.constructor, undefined)
+  assert.equal(guards.checked.tools, true)
 })

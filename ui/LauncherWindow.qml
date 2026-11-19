@@ -8,6 +8,7 @@ import "../core/RootSearch.js" as RootSearch
 import "../core/Rows.js" as Rows
 import "../core/Scopes.js" as Scopes
 import "../core/QueryEdit.js" as QueryEdit
+import "../core/TodoistInput.js" as TodoistInput
 import "../kit"
 import "../services"
 
@@ -65,11 +66,40 @@ OverlayWindow {
   }
 
   readonly property var look: ({
+      tokens: window.tokenColors,
+      tones: window.toneColors,
       background: Commons.Color.menu.background,
       foreground: Commons.Color.menu.text,
       accent: Commons.Color.menu.selectedText,
       selectedBackground: Commons.Color.menu.selectedBackground,
       fontFamily: Style.font.menuFamily
+    })
+  // The host's menu colours and type scale are untyped QtObjects: read
+  // through these.
+  readonly property var menuColors: Commons.Color.menu
+  readonly property var hostFont: Style.font
+  // The Todoist input's Quick Add tokens (search field and chips) and its
+  // status lines, from the theme: the shell's palette has an accent and an
+  // urgent colour, so labels tint the text toward the accent, and deadlines
+  // and descriptions are muted text.
+  readonly property var tokenColors: ({
+      plain: window.menuColors.text,
+      date: window.menuColors.text,
+      project: window.menuColors.selectedText,
+      section: window.menuColors.selectedText,
+      assignee: window.menuColors.selectedText,
+      label: Qt.tint(window.menuColors.text, Util.alpha(window.menuColors.selectedText, 0.55)),
+      priority: Commons.Color.urgent,
+      reminder: Commons.Color.urgent,
+      deadline: Util.alpha(window.menuColors.text, 0.6),
+      description: Util.alpha(window.menuColors.text, 0.5)
+    })
+  readonly property var toneColors: ({
+      muted: Util.alpha(window.menuColors.text, 0.55),
+      accent: window.menuColors.selectedText,
+      success: window.menuColors.selectedText,
+      warning: Qt.tint(window.menuColors.text, Util.alpha(Commons.Color.urgent, 0.6)),
+      error: Commons.Color.urgent
     })
   readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
 
@@ -124,6 +154,17 @@ OverlayWindow {
   readonly property bool gridView: window.view.kind === "apps" || (!!window.scopeState && window.scopeState.layout !== "list")
   readonly property bool coverGrid: !!window.scopeState && window.scopeState.layout === "covers"
   readonly property int gridColumns: grid.columns
+  // An input on screen (the Todoist input): what is typed is the task.
+  readonly property bool inputView: !!window.scopeState && !!window.scopeState.input
+  // While an add runs the input takes no edits; Esc closes the launcher
+  // (the add goes on, and a notification reports it).
+  readonly property bool inputLocked: window.inputView && window.backend.todoistAdding
+  // The suggestion list on screen ("12:project", the word it is for), and
+  // the one Esc closed.
+  property string todoistSuggestKey: ""
+  property string todoistHiddenKey: ""
+  // The search field's text as Quick Add reads it, in coloured runs.
+  readonly property var queryRuns: window.inputView && window.query ? TodoistInput.runs(window.query) : []
   // Views whose search field is a value being typed (no list below).
   readonly property bool editing: window.view.kind === "alias" || window.view.kind === "setting-edit"
   readonly property string placeholder: window.view.kind === "alias" ? window.t("Type an alias, then press ↵") : window.view.kind === "setting-edit" ? window.t("Type a value, then press ↵") : window.view.kind === "settings" ? window.t("Search settings…") : window.view.kind === "apps" ? window.t("Search apps…") : window.view.kind === "scope" ? (window.scopeState && window.scopeState.placeholder ? window.t(window.scopeState.placeholder) : window.t("Search %1…", [window.view.title])) : window.view.kind === "menu" ? window.t("Search %1…", [window.view.title]) : window.view.kind === "calculator-history" ? window.t("Search calculations…") : window.t("Search for apps and commands…")
@@ -297,7 +338,10 @@ OverlayWindow {
     window.backend.searchAsync({
       query: window.query,
       view: window.view,
-      filter: window.atRoot ? window.rootFilter : "all"
+      filter: window.atRoot ? window.rootFilter : "all",
+      // An input's suggestions are for the word at the cursor.
+      cursor: window.cursorPos,
+      hideSuggestions: window.todoistHiddenKey
     }, function (result) {
       if (serial !== window.searchSerial || revision !== window.backend.candidatesRevision)
         return
@@ -315,8 +359,14 @@ OverlayWindow {
       return
     }
     var keepIndex = -1, next = []
+    var suggestKey = ""
+    var caretKey = ""
     for (var s = 0; s < result.data.length; s++) {
       var section = result.data[s]
+      if (String(section.id).indexOf("todoist-suggestions:") === 0)
+        suggestKey = String(section.id).slice("todoist-suggestions:".length)
+      if (section.id === "todoist-card")
+        caretKey = String(section.caretKey || "")
       if (section.title || s > 0)
         next.push(window.rowData({
           id: "section:" + section.id,
@@ -326,9 +376,14 @@ OverlayWindow {
         var c = section.rows[r]
         if (c.id === keepId)
           keepIndex = next.length
-        next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : "item"))
+        next.push(window.rowData(c, c.kind === "calculator" ? "calculator" : c.kind === "todoist-card" ? (c.selectable ? "todoist" : "todoist-static") : "item"))
       }
     }
+    window.todoistSuggestKey = suggestKey
+    // Esc hid the list for one word: once the caret is in another word (or
+    // the word is gone), the same keys must not stay hidden for a new one.
+    if (window.inputView && window.todoistHiddenKey !== "" && caretKey !== window.todoistHiddenKey)
+      window.todoistHiddenKey = ""
     Rows.update(rows, next)
     if (restoreIndex >= 0 && restoreIndex < rows.count && window.isSelectable(restoreIndex))
       window.select(restoreIndex)
@@ -349,19 +404,23 @@ OverlayWindow {
       cover: String(c.cover || ""),
       fallbackIcon: String(c.fallbackIcon || ""),
       typeLabel: c.typeLabel ? window.t(c.typeLabel, c.typeLabelValues || undefined) : "",
+      // The type label is a shortcut ("Ctrl 1"): drawn as keys, like the footer's.
+      typeIsKeys: !!c.typeIsKeys,
       isSetting: c.kind === "setting",
       alias: String(c.alias || ""),
       checked: !!c.checked,
       disabled: !!c.disabled,
       favorite: typeof c.favoriteOrder === "number",
       calcResult: String(c.calcResult || ""),
-      calcContext: c.calcContext ? window.t(c.calcContext, c.calcContextValues) : ""
+      calcContext: c.calcContext ? window.t(c.calcContext, c.calcContextValues) : "",
+      // The Todoist card, as JSON (TodoistInput.sections).
+      card: String(c.card || "")
     }
   }
 
   function isSelectable(index) {
     var kind = rows.get(index).rowKind
-    return kind === "item" || kind === "calculator"
+    return kind === "item" || kind === "calculator" || kind === "todoist"
   }
 
   function nextSelectable(from, direction) {
@@ -442,11 +501,35 @@ OverlayWindow {
     return -1
   }
 
+  // The Todoist input's Ctrl+N: the nth task the search found; the card and
+  // the other rows are not counted.
+  function nthTask(n) {
+    let seen = 0
+    for (let i = 0; i < rows.count; i++) {
+      if (!TodoistInput.isTaskRow(rows.get(i).itemId))
+        continue
+      if (++seen === n)
+        return i
+    }
+    return -1
+  }
+
+  // Ctrl+1…9 opens the nth row Enter could run, or in the Todoist input the
+  // nth task the search found.
+  function openNth(n) {
+    const target = window.inputView ? window.nthTask(n) : window.nthItem(n)
+    if (target >= 0)
+      window.perform("open", target)
+  }
+
   function actionsForSelected() {
     if (window.searchPending || !window.selectedRow)
       return []
     var r = window.backend.callSync("rootSearch.getActions", {
-      id: window.selectedRow.itemId
+      id: window.selectedRow.itemId,
+      query: window.query,
+      cursor: window.cursorPos,
+      hideSuggestions: window.todoistHiddenKey
     })
     return r.ok ? r.data : []
   }
@@ -462,7 +545,9 @@ OverlayWindow {
     window.request({
       id: window.selectedRow.itemId,
       action: actionId,
-      query: window.query
+      query: window.query,
+      cursor: window.cursorPos,
+      hideSuggestions: window.todoistHiddenKey
     })
   }
 
@@ -483,6 +568,11 @@ OverlayWindow {
         spec: spec,
         payload: payload
       }
+      return
+    }
+    // An edit of the search field (an inserted suggestion).
+    if (outcome.edit) {
+      window.applyEdit(outcome.edit)
       return
     }
     if (outcome.push) {
@@ -722,12 +812,17 @@ OverlayWindow {
   }
 
   // Applies a QueryEdit result: the text (searching again when it changed)
-  // and the cursor.
+  // and the cursor, set first so the search sees where it is. In an input
+  // the suggestions follow the cursor, so a move alone lists again.
   function applyEdit(next) {
+    var changed = next.text !== window.query
+    var moved = next.cursor !== window.cursorPos
     window.keepCursor = true
+    window.cursorPos = next.cursor
     window.setQuery(next.text)
     window.keepCursor = false
-    window.cursorPos = next.cursor
+    if (!changed && moved && window.inputView)
+      window.rebuild(false)
   }
 
   function queryState() {
@@ -791,7 +886,11 @@ OverlayWindow {
   property int editRevision: 0
   property int pasteRevision: -1
   onCursorPosChanged: window.editRevision++
-  onViewChanged: window.editRevision++
+  onViewChanged: {
+    window.editRevision++
+    window.todoistHiddenKey = ""
+    window.backend.viewChanged(window.view)
+  }
   onActionPanelOpenChanged: window.editRevision++
 
   function pasteClipboard() {
@@ -814,7 +913,7 @@ OverlayWindow {
   }
 
   function insertPaste(text) {
-    if (!window.takePaste() || !text)
+    if (!window.takePaste() || !text || window.inputLocked)
       return
     if (window.actionPanelOpen)
       actionPanel.item.filter += text
@@ -881,6 +980,16 @@ OverlayWindow {
     }
     if (window.actionPanelOpen) {
       window.actionPanelOpen = false
+      return
+    }
+    if (window.inputLocked) {
+      window.dismissRequested()
+      return
+    }
+    // Esc in an input closes its suggestions first.
+    if (window.inputView && window.todoistSuggestKey && !shift) {
+      window.todoistHiddenKey = window.todoistSuggestKey
+      window.rebuild(false)
       return
     }
     if (shift) {
@@ -976,6 +1085,9 @@ OverlayWindow {
       window.setZoom(1)
       return true
     }
+    // An add in flight keeps its text: no edits, paste, Enter or moves.
+    if (window.inputLocked)
+      return true
     if (ctrl && key === Qt.Key_BracketLeft) {
       window.closePopups()
       window.pop()
@@ -1053,8 +1165,22 @@ OverlayWindow {
         window.toggleToastPanel()
         return true
       }
-      // Shift+Enter opens a new window for apps; Enter focuses an open one.
-      if (enter && shift && !ctrl && !alt && window.performIfOffered(["open-new"]))
+      if (window.inputView && ctrl && !shift && !alt && key === Qt.Key_O) {
+        window.request({
+          id: TodoistInput.CARD_ID,
+          action: "todoist-open-last",
+          query: window.query
+        })
+        return true
+      }
+      // Tab in an input inserts the suggestion (the first one from the card).
+      if (window.inputView && key === Qt.Key_Tab && !shift && !ctrl && !alt) {
+        window.performIfOffered(["todoist-insert"])
+        return true
+      }
+      // Shift+Enter opens a new window for apps (Enter focuses an open one);
+      // in the Todoist input it adds the other way round from the setting.
+      if (enter && shift && !ctrl && !alt && window.performIfOffered(["open-new", "todoist-add-alt"]))
         return true
       if (enter && ctrl && shift) {
         window.performNth(2)
@@ -1142,7 +1268,7 @@ OverlayWindow {
         return true
       }
       if (ctrl && shift && key === Qt.Key_C) {
-        window.performIfOffered(["copy-command", "copy-id", "copy-plain", "copy-setting-command"])
+        window.performIfOffered(["copy-command", "copy-id", "copy-plain", "copy-setting-command", "todoist-copy-text"])
         return true
       }
       if (ctrl && shift && key === Qt.Key_D) {
@@ -1158,9 +1284,7 @@ OverlayWindow {
         return true
       }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
-        var target = window.nthItem(key - Qt.Key_0)
-        if (target >= 0)
-          window.perform("open", target)
+        window.openNth(key - Qt.Key_0)
         return true
       }
     }
@@ -1185,6 +1309,17 @@ OverlayWindow {
     function onNotification(method, data) {
       if (method === "settings.saveFailed" && window.shown)
         window.showToast("failure", data.error)
+      // The task was added: the field empties for the next one.
+      if (method === "todoist.added" && window.inputView) {
+        window.todoistHiddenKey = ""
+        window.setQuery("")
+      }
+      if (method === "todoist.earlierResult" && window.shown)
+        window.showToast(data.style, data.text)
+      if (method === "todoist.opened" && window.shown)
+        window.dismissRequested()
+      if (method === "todoist.openFailed" && window.shown)
+        window.showToast("failure", window.t("Can't reach Foamy Todoist. Turn it on and keep it on the bar to open Todoist from here."))
     }
     function onCandidatesRevisionChanged() {
       if (window.shown && !window.actionPanelOpen && !window.alert)
@@ -1361,10 +1496,42 @@ OverlayWindow {
           x: -queryBox.scroll
           anchors.verticalCenter: parent.verticalCenter
           text: window.query || window.placeholder
-          color: window.look.foreground
+          // In an input the runs below draw the text; this one still sizes
+          // the box.
+          color: window.queryRuns.length ? "transparent" : window.look.foreground
           opacity: window.query ? 1 : 0.45
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.heading * 1.15 * window.zoom)
+        }
+
+        // The Todoist input's text, each Quick Add token in its colour. Each
+        // run starts where the same font puts that prefix, as the cursor
+        // does, so runs and cursor line up; the runs carry what they draw.
+        Item {
+          x: -queryBox.scroll
+          height: parent.height
+          Repeater {
+            model: window.queryRuns.map(function (run) {
+              return {
+                text: run.text,
+                x: queryFont.advanceWidth(window.query.slice(0, run.start)),
+                color: window.look.tokens[run.kind] || window.look.foreground,
+                family: queryText.font.family,
+                size: queryText.font.pixelSize
+              }
+            })
+            Text {
+              id: queryRun
+              required property var modelData
+              textFormat: Text.PlainText
+              x: queryRun.modelData.x
+              anchors.verticalCenter: parent.verticalCenter
+              text: queryRun.modelData.text
+              color: queryRun.modelData.color
+              font.family: queryRun.modelData.family
+              font.pixelSize: queryRun.modelData.size
+            }
+          }
         }
 
         // A click puts the cursor at the nearest character boundary.
@@ -1678,12 +1845,40 @@ OverlayWindow {
         KeyHint {
           visible: footerActions.primary !== null
           anchors.verticalCenter: parent.verticalCenter
-          keys: "↵"
+          // Enter runs it; the Todoist card after an add shows its own key.
+          keys: footerActions.primary && footerActions.primary.id === "todoist-open-last" ? footerActions.primary.shortcut : "↵"
           color: window.look.foreground
           zoom: window.zoom
         }
+        // Tab inserts while the input lists suggestions.
         Rectangle {
-          visible: !window.editing
+          visible: window.inputView && window.todoistSuggestKey !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          width: 1
+          height: window.px(14)
+          color: Util.alpha(window.look.foreground, 0.2)
+        }
+        Text {
+          visible: window.inputView && window.todoistSuggestKey !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          textFormat: Text.PlainText
+          text: window.t("Insert")
+          color: window.look.foreground
+          opacity: 0.7
+          font.family: window.look.fontFamily
+          font.pixelSize: Math.round(window.hostFont.bodySmall * window.zoom)
+        }
+        KeyHint {
+          visible: window.inputView && window.todoistSuggestKey !== ""
+          anchors.verticalCenter: parent.verticalCenter
+          keys: "Tab"
+          color: window.look.foreground
+          zoom: window.zoom
+        }
+        // A divider only after something: no primary hint and no Tab hint
+        // (the empty Todoist input) leaves Actions on its own.
+        Rectangle {
+          visible: !window.editing && (footerActions.primary !== null || (window.inputView && window.todoistSuggestKey !== ""))
           anchors.verticalCenter: parent.verticalCenter
           width: 1
           height: window.px(14)

@@ -48,6 +48,24 @@ test("the SSH and web-search settings reach the built-in scopes; scope files sti
   assert.ok(!disabled.scopes.some((s) => s.id === "google"))
 })
 
+test("the Todoist settings: off, stay open, a note that they need Foamy Todoist; the input only with both", () => {
+  const defaults = Settings.resolve(Prefs, null)
+  assert.equal(defaults.todoistQuickAdd, false)
+  assert.equal(defaults.todoistCloseOnAdd, false)
+  const todoist = (settings, host) => Scopes.merge(Settings.applyToScopes(Scopes.BUILTINS, Settings.resolve(Prefs, settings), host), []).scopes.find((s) => s.id === "todoist")
+  assert.equal(todoist({}, { todoistInstalled: true }), undefined, "off by default")
+  assert.equal(todoist({ todoistQuickAdd: true }, { todoistInstalled: false }), undefined, "hidden without Foamy Todoist (D5)")
+  assert.equal(todoist({ todoistQuickAdd: true }), undefined)
+  assert.equal(todoist({ todoistQuickAdd: true }, { todoistInstalled: true }).keyword, "td")
+  const rows = RS.settingsSections(defaults, "", ctx, deps).find((s) => s.title === "Todoist").rows.map((r) => r.candidate)
+  assert.deepEqual(rows.map((c) => [c.settingKey, c.title, c.subtitle, c.typeLabel]), [
+    ["todoistQuickAdd", "Add Todoist tasks (td)", "Needs Foamy Todoist", "Off"],
+    ["todoistCloseOnAdd", "After adding", "", "Stay open"]
+  ], "the switch is always shown")
+  assert.deepEqual(Settings.display(Settings.field("todoistCloseOnAdd"), true), ["Close", []])
+  assert.deepEqual(Settings.display(Settings.field("sshScope"), true), ["On", []], "other switches read On/Off")
+})
+
 test("every setting is read by the launcher", () => {
   const source = ["Backend.qml", "StockMenu.qml", "ui/LauncherWindow.qml", "core/Settings.js"].map(read).join("\n")
   for (const f of Settings.fields) {
@@ -65,7 +83,7 @@ const ctx = { commands: {}, frecency: {}, nowMs: 0, sensitivity: "medium" }
 test("the settings view: sections in order, values where types go, log level left to shell.json", () => {
   const values = Settings.resolve(Prefs, { popToRootTimeout: 30, webSearchHistory: true })
   const sections = RS.settingsSections(values, "", ctx, deps)
-  assert.deepEqual(sections.map((s) => s.title), ["Window", "Search", "Web Search", "Calculator", "Bar Button"])
+  assert.deepEqual(sections.map((s) => s.title), ["Window", "Search", "Web Search", "Todoist", "Calculator", "Bar Button"])
   const ids = (title) => sections.find((s) => s.title === title).rows.map((r) => r.candidate.id)
   assert.deepEqual(ids("Search"), ["setting:rootSearchSensitivity", "setting:sshScope", "setting:steamGames", "settings-action:open-scopes"])
   assert.deepEqual(ids("Web Search"), ["setting:webSearchHistory", "setting:webSearchSuggestions", "settings-action:clear-searches"], "each command row ends its own section")

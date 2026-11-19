@@ -69,6 +69,9 @@ Right-clicking the bar button opens the default terminal.
   such as `admin@server.example`; Enter connects.
   `g rust async` + Tab searches Google (`ddg` for DuckDuckGo). See
   [Scopes](#scopes) for adding your own.
+- With [Foamy Todoist](https://github.com/foamrider/foamy-todoist) installed
+  and **Add Todoist tasks** on, `td` + Tab adds a Todoist task the way
+  Todoist's Quick Add reads it. See [Todoist](#todoist-built-in-input).
 - Type `2 + 3 * 4`, `20% of 50`, `5 ft to cm`, or `10 usd to eur` to calculate.
   The answer shows large on the right with the expression above it, written as
   Omarchy's language writes numbers and dates (`2 469 135,782`, `mandag 9.
@@ -104,8 +107,9 @@ Open **Foamy Menu Settings** with **Ctrl+,** or by searching "settings":
   Setting Command** (the `omarchy bar set` line, for your dotfiles).
 - Sections: **Window**, **Search** (search strictness, SSH hosts, Steam games
   in search, **Open Scopes Folder**), **Web Search** (save web searches, web
-  search suggestions, **Clear Saved Web Searches**), **Calculator** and
-  **Bar Button**.
+  search suggestions, **Clear Saved Web Searches**), **Todoist** (add
+  Todoist tasks, what Enter does after adding), **Calculator** and **Bar
+  Button**.
 
 Settings are the `foamy.menu` entry in `~/.config/omarchy/shell.json`, as for
 every Omarchy shell plugin: `manifest.json` declares them
@@ -137,6 +141,8 @@ omarchy bar get foamy.menu webSearchHistory
 | `steamGames` | `false` | boolean | Find installed Steam games in the root search, as apps are (the Games grid shows whenever Steam is installed) |
 | `webSearchHistory` | `false` | boolean | Save web searches and list them as Recent Searches |
 | `webSearchSuggestions` | `false` | boolean | Show the search engine's suggestions while typing a web search (sends what you type to the engine) |
+| `todoistQuickAdd` | `false` | boolean | Add Todoist tasks with `td` + Tab (needs Foamy Todoist) |
+| `todoistCloseOnAdd` | `false` | boolean | Close the launcher after adding a Todoist task (Shift+Enter does the other) |
 | `currencyRates` | `true` | boolean | Download exchange rates for currency conversion |
 | `clockFormat` | `"auto"` | `auto` / `12h` / `24h` | Clock in time calculations (auto follows the system) |
 | `remToPxRate` | `16` | 1–1000 | Pixels per rem in unit conversions |
@@ -280,6 +286,82 @@ omarchy bar set foamy.menu webSearchSuggestions true --json
 A scope file can set one engine differently, e.g. `{"id": "google",
 "suggest": false}` in `~/.config/foamy-menu/scopes/google.json`.
 
+### Todoist (built-in input)
+
+**Todoist** is an input: what you type is the task. It uses
+[Foamy Todoist](https://github.com/foamrider/foamy-todoist) (its helper,
+its sign-in and its cache), so it is offered only when that plugin is
+installed in Omarchy's plugin folder (`~/.config/omarchy/plugins/foamy.todoist`)
+and the **Add Todoist tasks** setting is on (off by default):
+
+```sh
+omarchy bar set foamy.menu todoistQuickAdd true --json
+```
+
+`td` + Tab (or the **Todoist** row + Tab or Enter) enters it; text after `td`
+carries in. Write the task the way Todoist's Quick Add reads it: `#Project`,
+`/Section`, `@label`, `+person` (in a shared project), `p1`–`p4`, `!reminder`,
+`{deadline}` and ` // description`; a space in a name is written `\ `
+(`#My\ Project`). The search field colours these, and a card shows the task's
+title without them and one chip per token. A `#project` that names none of
+your projects is a muted chip and stays in the title, as Quick Add keeps it.
+Dates are left to Todoist: it reads them on its server in your account's
+language, so the card shows the date text as you typed it and, after the add,
+the date Todoist set.
+
+- While the cursor is in a `#`, `/`, `@` or `+` word, the list shows matching
+  projects, sections (of the `#project` before it), labels or people, at most
+  six. ↑/↓ pick, Tab inserts, Esc closes the list.
+- Otherwise **Tasks** lists your open tasks that the card's title matches (the
+  typed text without the Quick Add tokens, at least two characters), as
+  Foamy Todoist's search does: every word in the task, its project's name or
+  its labels, ignoring case. At most nine, in Foamy Todoist's order, each with
+  its project and date and the key that opens it: **Ctrl+1**…**Ctrl+9** (or a
+  click) opens that task in Todoist. Enter still adds the typed text. With
+  text in the field the results take the place of **Added from here**.
+- **Enter adds the task** (it never inserts a suggestion) and keeps the
+  launcher open with an empty field for the next one; **Shift+Enter** adds and
+  closes. **After adding** (`todoistCloseOnAdd`) swaps the two.
+- While the task is being added the text is locked; Enter does nothing more
+  and Esc closes the launcher (the add goes on).
+- The card then shows the task as Todoist made it (project, labels, its date)
+  and stays selected: Enter or Ctrl+O (shown in the footer) opens the task in
+  Todoist. **Added from here** lists the last five
+  tasks added this session (kept in memory only); Enter on one opens it.
+- When Todoist refuses the task, the card says why and the text stays; Enter
+  tries again. When no answer came back (Todoist's `UNKNOWN_OUTCOME`, or the
+  menu's 30-second deadline), the task may exist: the text stays, **Open Inbox
+  in Todoist** is offered, and the next Enter only asks again, so a second one
+  is needed to add it. When Todoist asks to wait, Enter waits that long.
+- Signed out, the card says so and offers **Open Foamy Todoist**. A Foamy
+  Todoist without the helper this menu needs says it needs an update; one
+  with no helper for this CPU says it isn't available.
+- Ctrl+K offers **Add Task**, the Shift+Enter variant, **Insert**, **Open in
+  Todoist** (on a search result with its Ctrl+N), **Open Foamy Todoist** and
+  **Copy Text**. Backspace on an empty
+  field, or Esc on one, leaves.
+- When the launcher is closed as the answer arrives (closed by the add, or Esc
+  during it), Foamy Todoist's helper shows a notification for it: added,
+  failed, or maybe added. Never while the launcher is open.
+
+Nothing is sent while you type: the projects, sections, labels, people and
+open tasks (at most 1 000) come from Foamy Todoist's cache (its helper's
+`names`, a read of that cache with no network, when you enter the input or
+the launcher opens in it; a task added from here joins the list from the
+add's reply), and matching runs in the launcher, at most 8 words per search.
+On Enter the text goes to Todoist through Foamy Todoist's helper (`add`, the text on its
+standard input, never on a command line), which holds the token; the menu
+never reads the keyring or the cache. After an add the menu runs
+`omarchy-shell foamy.todoist refresh` so the bar and panel update, and opens
+tasks with `omarchy-shell foamy.todoist openTask` / `openInbox`, so Foamy
+Todoist's open command is used. Each helper run ends within 30 seconds (its
+process group is stopped), and at most 16 MiB of its output is read (the
+names and tasks; an add reply at most 256 KiB).
+
+A scope file can change the keyword (`{"id": "todoist", "keyword": "t"}`) or
+turn the input off. It cannot turn it on, change what it runs, or make a new
+input: a file with `"source": {"type": "input"}` is refused and logged.
+
 ### Your own scopes
 
 Each scope is one JSON file in `~/.config/foamy-menu/scopes/` (created at
@@ -324,7 +406,7 @@ or a fixed list of bookmarks:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `id` | file name | Lowercase letters, digits and `-`; matches a built-in to override it |
+| `id` | file name | Lowercase letters, digits and `-`, not `constructor`; matches a built-in to override it |
 | `enabled` | `true` | `false` hides the scope |
 | `title` | required | The scope's name: its row, tag and footer |
 | `subtitle` | `""` | Shown beside the row in the root search |

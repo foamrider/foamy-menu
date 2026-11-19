@@ -11,6 +11,8 @@ const { isolatedQs } = require("./qs-sandbox.js")
 
 const sourcePath = path.join(__dirname, "../services/OmarchyMenuSource.qml")
 const text = fs.readFileSync(sourcePath, "utf8")
+// Guard maps have no prototype; compare their entries.
+const guardValues = (g) => ({ when: { ...g.when }, checked: { ...g.checked }, disabled: { ...g.disabled } })
 const methods = ["createGuardCompiler", "guardItems", "compileGuards", "guardKeys", "finishGuards", "bounded", "refresh"]
 
 // QML block sample: "  function refresh() {\n  }".
@@ -178,7 +180,7 @@ test("only successful complete guard responses publish once", () => {
   const h = harness()
   h.start()
   h.exit(0)
-  assert.deepEqual(h.source.guards, { when: { probe: true, other: false }, checked: { probe: false }, disabled: { probe: true } })
+  assert.deepEqual(guardValues(h.source.guards), { when: { probe: true, other: false }, checked: { probe: false }, disabled: { probe: true } })
   assert.equal(h.source.revision, 8)
   assert.deepEqual(h.messages, [])
   h.exit(0)
@@ -307,7 +309,7 @@ test("a response for an old tree is discarded and the current tree is refreshed"
   assert.deepEqual(Array.from(h.guardProc.expectedGuards), ["latest:c"])
   assert.equal(h.guardProc.running, true)
   h.exit(0, 0, "latest:c:1\n")
-  assert.deepEqual(h.source.guards, { when: {}, checked: { latest: true }, disabled: {} })
+  assert.deepEqual(guardValues(h.source.guards), { when: {}, checked: { latest: true }, disabled: {} })
   assert.equal(h.source.revision, 8)
 })
 
