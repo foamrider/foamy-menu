@@ -427,27 +427,33 @@ function scopeSections(itemCandidates, query, ctx, deps, itemsTitle, grid) {
 // Inside a freeText scope: the items and the values typed before (saved:
 // true) ranked together, then the typed text as its own row when it is a
 // valid value no listed row has. With nothing typed, saved values show only
-// among Recent; the item list stays the source's.
+// among Recent; the item list stays the source's. A grid keeps its one
+// untitled section, the typed value last in it.
 function freeTextSections(scope, itemCandidates, saved, query, ctx, deps, itemsTitle) {
   var q = String(query || "").trim()
-  var known = {}
-  itemCandidates.forEach(function(c) { known[c.value.toLowerCase()] = true })
+  var grid = deps.Scopes.isGrid(scope)
+  // Values compare exactly: an ssh user name is case-sensitive. No
+  // prototype, so a host named "constructor" is not already known.
+  var known = Object.create(null)
+  itemCandidates.forEach(function(c) { known[c.value] = true })
   // A saved value that is now an item (a host added to ~/.ssh/config) shows
   // once, as the item.
   var extra = saved.filter(function(c) {
-    var key = c.value.toLowerCase()
-    if (known[key]) return false
-    known[key] = true
+    if (known[c.value]) return false
+    known[c.value] = true
     return true
   })
-  var out = scopeSections(itemCandidates.concat(extra), q, ctx, deps, itemsTitle, false)
+  var out = scopeSections(itemCandidates.concat(extra), q, ctx, deps, itemsTitle, grid)
   if (!q) {
     out = out.map(function(s) {
       return s.id === "items" ? { id: s.id, title: s.title, rows: s.rows.filter(function(r) { return !r.candidate.saved }) } : s
     }).filter(function(s) { return s.rows.length })
   }
-  if (q && !known[q.toLowerCase()] && deps.Scopes.valueAllowed(scope, q))
-    out.push({ id: "typed", title: "", rows: [{ candidate: deps.Scopes.queryCandidate(scope, q, ctx.t, false), record: null }] })
+  if (q && !known[q] && deps.Scopes.typedValueAllowed(scope, q)) {
+    var row = { candidate: deps.Scopes.queryCandidate(scope, q, ctx.t, false), record: null }
+    if (grid && out.length) out[0].rows.push(row)
+    else out.push({ id: grid ? "items" : "typed", title: "", rows: [row] })
+  }
   return out
 }
 

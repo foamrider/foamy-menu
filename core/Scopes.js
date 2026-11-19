@@ -529,6 +529,12 @@ function isGrid(scope) {
   return !!scope && scope.layout !== undefined && scope.layout !== "list"
 }
 
+// A value typed in a freeText scope: bounded as listed items are (MAX_TEXT),
+// since it is saved and sent to the search helper's catalog.
+function typedValueAllowed(scope, value) {
+  return String(value || "").length <= MAX_TEXT && valueAllowed(scope, value)
+}
+
 function valueAllowed(scope, value) {
   var v = String(value || "")
   if (!v || v.indexOf("\n") >= 0 || v.indexOf("\0") >= 0) return false
@@ -633,9 +639,13 @@ function savedCandidate(scope, value, t) {
 function historyCandidates(scope, visits, t) {
   var prefix = historyPrefix(scope)
   var out = []
+  var typed = !isQuery(scope)
   for (var key in visits || {}) {
     if (key.indexOf(prefix) !== 0 || key.length === prefix.length) continue
-    out.push(savedCandidate(scope, key.slice(prefix.length), t))
+    var value = key.slice(prefix.length)
+    // A typed value over the bound (an edited data file) is left out.
+    if (typed && !typedValueAllowed(scope, value)) continue
+    out.push(savedCandidate(scope, value, t))
   }
   return out
 }
@@ -669,6 +679,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     BUILTINS: BUILTINS,
     MAX_ITEMS: MAX_ITEMS,
+    MAX_TEXT: MAX_TEXT,
     MAX_OUTPUT: MAX_OUTPUT,
     MAX_STDERR: MAX_STDERR,
     WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS,
@@ -701,6 +712,7 @@ if (typeof module !== "undefined") {
     itemCandidate: itemCandidate,
     rootItemCandidate: rootItemCandidate,
     valueAllowed: valueAllowed,
+    typedValueAllowed: typedValueAllowed,
     fill: fill,
     fillText: fillText,
     isQuery: isQuery,

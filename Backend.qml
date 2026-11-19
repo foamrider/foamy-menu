@@ -552,6 +552,8 @@ Item {
     if (!scope)
       throw new Error("Scope " + candidate.scopeId + " is not available")
     var searching = Scopes.isQuery(scope)
+    // A value typed in a freeText scope: its typed row or a saved one.
+    var typedValue = !searching && (candidate.kind === "scope-query" || candidate.saved === true)
     if (action === "delete-history" && candidate.saved) {
       frecencyStore.update(function (doc) {
         delete doc.items[candidate.id]
@@ -593,7 +595,7 @@ Item {
           title: backend.tr("Type something to search")
         }
       }
-    if (!Scopes.valueAllowed(scope, value))
+    if (!(typedValue ? Scopes.typedValueAllowed(scope, value) : Scopes.valueAllowed(scope, value)))
       return {
         toast: {
           style: "failure",
@@ -615,7 +617,7 @@ Item {
     }
     // Query scopes save searches and freeText scopes typed values only when
     // asked to; other scopes rank items.
-    if (searching || candidate.kind === "scope-query" || candidate.saved)
+    if (searching || typedValue)
       backend.rememberSearch(scope, value)
     else
       backend.recordVisit(candidate.id, query)

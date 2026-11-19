@@ -213,7 +213,21 @@ test("freeText: the typed destination follows matching hosts, only when valid an
   assert.deepEqual(RS.actionsFor(typed).map((a) => a.title), ["Connect", "Copy SSH Command", "Copy Host Name", "Open in Files (SFTP)"])
   const partial = RS.freeTextSections(ssh, items, [], "we", ctx(), deps, "Hosts")
   assert.deepEqual(rowsOf(partial), [["results", ["scope-item:ssh:web"]], ["typed", ["scope-query:ssh"]]], "a matching host stays first, so Enter opens it")
-  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, [], "WEB", ctx(), deps, "Hosts")), [["results", ["scope-item:ssh:web"]]], "a host's own name is not offered twice")
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, [], "web", ctx(), deps, "Hosts")), [["results", ["scope-item:ssh:web"]]], "a host's own name is not offered twice")
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, items, [], "WEB", ctx(), deps, "Hosts")), [["results", ["scope-item:ssh:web"]], ["typed", ["scope-query:ssh"]]],
+    "values compare exactly: an ssh user name is case-sensitive")
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, [], [], "constructor", ctx(), deps, "Hosts")), [["typed", ["scope-query:ssh"]]], "no inherited names count as known")
+  const long = "a".repeat(Scopes.MAX_TEXT + 1)
+  assert.ok(Scopes.valueAllowed(ssh, long) && !Scopes.typedValueAllowed(ssh, long))
+  assert.deepEqual(rowsOf(RS.freeTextSections(ssh, [], [], long, ctx(), deps, "Hosts")), [], "an over-long value is not offered")
+  assert.deepEqual(Scopes.historyCandidates(ssh, { [Scopes.typedId("ssh", long)]: Frecency.recordVisit(null, NOW, "") }), [], "nor listed when saved")
+  // A grid keeps one untitled section, the typed value last in it.
+  const grid = Scopes.merge(Scopes.BUILTINS, [file("ssh.json", { id: "ssh", layout: "icons" })]).scopes[0]
+  const gridItems = hosts(grid)
+  assert.deepEqual(rowsOf(RS.freeTextSections(grid, gridItems, [], "we", ctx(), deps, "Hosts")), [["items", ["scope-item:ssh:web", "scope-query:ssh"]]])
+  assert.deepEqual(rowsOf(RS.freeTextSections(grid, gridItems, [], "admin@new.example", ctx(), deps, "Hosts")), [["items", ["scope-query:ssh"]]])
+  const gridSaved = [Scopes.savedCandidate(grid, "admin@new.example")]
+  assert.deepEqual(rowsOf(RS.freeTextSections(grid, gridItems, gridSaved, "", ctx(), deps, "Hosts")), [["items", ["scope-item:ssh:db", "scope-item:ssh:web"]]])
   for (const bad of ["-oProxyCommand=x", "web; rm", "user@host -p 22"])
     assert.ok(!RS.freeTextSections(ssh, items, [], bad, ctx(), deps, "Hosts").some((s) => s.id === "typed"), bad)
   assert.deepEqual(rowsOf(RS.freeTextSections(ssh, [], [], "", ctx(), deps, "Hosts")), [], "an empty config and no text: nothing (the scope's empty text shows)")
