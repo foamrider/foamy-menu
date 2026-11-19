@@ -222,3 +222,45 @@ test("rootSection: a scope file turns it on for a built-in, over the steamGames 
   assert.equal(steam([file("steam.json", { id: "steam", rootSection: true })]).rootSectionTitle, "", "no heading unless set")
 })
 
+
+// The Todoist input: a built-in input (D6, D11), off until its setting and
+// Foamy Todoist turn it on (Settings.applyToScopes).
+const todoistOn = Scopes.BUILTINS.map((s) => (s.id === "todoist" ? { ...s, enabled: true } : s))
+
+test("input: the built-in todoist is an input with keyword td, off by default", () => {
+  assert.ok(!Scopes.merge(Scopes.BUILTINS, []).scopes.some((s) => s.id === "todoist"))
+  const { scopes, errors } = Scopes.merge(todoistOn, [])
+  assert.deepEqual(errors, [])
+  const todoist = scopes.find((s) => s.id === "todoist")
+  assert.ok(Scopes.isInput(todoist) && !Scopes.isQuery(todoist))
+  assert.deepEqual([todoist.keyword, todoist.title, todoist.open, todoist.layout], ["td", "Todoist", null, "list"])
+  assert.equal(Scopes.matchKeyword(scopes, "td buy milk #Home").scope.id, "todoist")
+  assert.equal(Scopes.matchKeyword(scopes, "td buy milk #Home").rest, "buy milk #Home", "text after td carries in")
+  const row = Scopes.scopeCandidate(todoist)
+  assert.deepEqual([row.typeLabel, row.input], ["Input", true])
+  assert.equal(RS.actionsFor(Object.assign(RS.decorate(row, ctx(), deps)))[0].title, "Add Task")
+})
+
+test("input: a scope file can change the keyword or turn it off, never make an input or change its source", () => {
+  const renamed = Scopes.merge(todoistOn, [file("todoist.json", { id: "todoist", keyword: "t" })])
+  assert.deepEqual(renamed.errors, [])
+  assert.equal(renamed.scopes.find((s) => s.id === "todoist").keyword, "t")
+  assert.ok(!Scopes.merge(todoistOn, [file("todoist.json", { id: "todoist", enabled: false })]).scopes.some((s) => s.id === "todoist"))
+  const made = Scopes.merge(todoistOn, [file("mine.json", { id: "mine", title: "Mine", source: { type: "input", input: "todoist" } })])
+  assert.ok(!made.scopes.some((s) => s.id === "mine"))
+  assert.match(made.errors[0].errors[0], /only for built-in inputs/)
+  const swapped = Scopes.merge(todoistOn, [file("todoist.json", { id: "todoist", source: { type: "list", items: ["x"] }, open: ["true"] })])
+  assert.ok(Scopes.isInput(swapped.scopes.find((s) => s.id === "todoist")), "the built-in stays as it was")
+  assert.match(swapped.errors[0].errors[0], /source cannot be changed/)
+  const forced = Scopes.merge(Scopes.BUILTINS, [file("todoist.json", { id: "todoist", enabled: true, keyword: "t" })])
+  assert.ok(!forced.scopes.some((s) => s.id === "todoist"), "a file cannot turn the input on")
+  assert.match(forced.errors[0].errors[0], /use its setting/)
+})
+
+test("input: no grid, items or searches; only known inputs", () => {
+  const base = { id: "x", title: "X", source: { type: "input", input: "todoist" } }
+  assert.ok(Scopes.normalize(base).scope)
+  for (const extra of [{ layout: "icons" }, { rootSearch: true }, { rootSection: true }, { requireItems: true }, { history: true }, { suggest: true }])
+    assert.ok(Scopes.normalize({ ...base, ...extra }).errors, JSON.stringify(extra))
+  assert.ok(Scopes.normalize({ ...base, source: { type: "input", input: "other" } }).errors)
+})

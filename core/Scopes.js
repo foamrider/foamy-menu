@@ -6,6 +6,13 @@
 // past searches ("history": true) and the engine's suggestions
 // ("suggest": true) can fill the list; both are off unless turned on.
 //
+// An input ("source": {"type": "input"}) is a built-in that takes what is
+// typed and does something with it in the launcher: the Todoist input adds a
+// task (core/TodoistInput.js, services/TodoistSource.qml). It has no items,
+// no open command and no grid. Only built-ins are inputs for now: a scope
+// file may change an input's keyword, title or switch it off, never make one
+// or change its source.
+//
 // A scope is one JSON object. The built-in SSH, Steam Games and web-search
 // scopes ship here; user scopes
 // live in ~/.config/foamy-menu/scopes/<id>.json. A user file whose id matches
@@ -53,6 +60,8 @@ var MAX_HISTORY = 100
 var SSH_HOST_PATTERN = "^[A-Za-z0-9_.:@%+][A-Za-z0-9_.:@%+-]*$"
 // A Steam app id.
 var STEAM_APPID_PATTERN = "^[0-9]{1,10}$"
+// The inputs built into the launcher, by source.input.
+var INPUTS = ["todoist"]
 
 // How a scope lays its items out: a list, or a grid like Apps with each
 // item's icon ("icons") or portrait cover art ("covers").
@@ -130,6 +139,21 @@ var BUILTINS = [
       { title: "Open Store Page", open: ["uwsm-app", "--", "xdg-open", "steam://store/{value}"] },
       { title: "Copy App ID", copy: "{value}" }
     ],
+    builtin: true
+  },
+  {
+    id: "todoist",
+    // On with the todoistQuickAdd setting, and only while Foamy Todoist is
+    // installed (Settings.applyToScopes).
+    enabled: false,
+    title: "Todoist",
+    subtitle: "Add a task with Quick Add",
+    keyword: "td",
+    // Nerd Font md-checkbox-marked-circle-outline.
+    icon: "\u{f0134}",
+    placeholder: "Add a task…",
+    source: { type: "input", input: "todoist" },
+    openTitle: "Add Task",
     builtin: true
   }
 ]
@@ -216,7 +240,11 @@ function source(value, errors) {
     return { type: "list", items: items }
   }
   if (value.type === "query") return { type: "query" }
-  errors.push("source.type must be \"command\", \"list\" or \"query\"")
+  if (value.type === "input") {
+    if (INPUTS.indexOf(value.input) < 0) { errors.push("source.input must be one of " + INPUTS.join(", ")); return null }
+    return { type: "input", input: value.input }
+  }
+  errors.push("source.type must be \"command\", \"list\", \"query\" or \"input\"")
   return null
 }
 
@@ -257,6 +285,7 @@ function normalize(raw) {
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") errors.push("enabled must be true or false")
   var keyword = raw.keyword === undefined ? id : raw.keyword
   var isQuery = isPlainObject(raw.source) && raw.source.type === "query"
+  var isInputSource = isPlainObject(raw.source) && raw.source.type === "input"
   for (var f = 0; f < 5; f++) {
     var flag = ["history", "suggest", "rootSearch", "requireItems", "rootSection"][f]
     if (raw[flag] !== undefined && typeof raw[flag] !== "boolean") errors.push(flag + " must be true or false")
@@ -266,6 +295,13 @@ function normalize(raw) {
   if (isQuery && layout !== "list") { errors.push("a query scope has no grid layout"); layout = "list" }
   if (isQuery && (raw.rootSearch === true || raw.requireItems === true)) errors.push("a query scope has no items for rootSearch or requireItems")
   if (isQuery && raw.rootSection === true) errors.push("a query scope has no items for rootSection")
+  if (isInputSource) {
+    if (layout !== "list") { errors.push("an input has no grid layout"); layout = "list" }
+    for (var x = 0; x < 5; x++) {
+      var itemFlag = ["rootSearch", "rootSection", "requireItems", "history", "suggest"][x]
+      if (raw[itemFlag] === true) errors.push("an input has no items or searches for " + itemFlag)
+    }
+  }
   // A root section lists the items in the root view, so they load early and
   // are found while typing: rootSection turns rootSearch on.
   var rootSection = !isQuery && raw.rootSection === true
@@ -282,7 +318,7 @@ function normalize(raw) {
     placeholder: text(raw.placeholder, "placeholder", errors, false),
     emptyText: text(raw.emptyText, "emptyText", errors, false),
     source: source(raw.source, errors),
-    open: argv(raw.open, "open", errors, true),
+    open: argv(raw.open, "open", errors, !isInputSource),
     openTitle: text(raw.openTitle, "openTitle", errors, false) || (isQuery ? "Search" : "Open"),
     home: argv(raw.home, "home", errors, false),
     history: isQuery && raw.history === true,
@@ -334,9 +370,20 @@ function merge(builtins, files) {
     var def = file.definition
     if (!def) { problems.push({ id: "", file: file.name, errors: file.errors || ["unreadable"] }); continue }
     var base = byId[def.id]
+    // Inputs are built in (see the top of this file): the file is refused
+    // and the built-in, if any, stays as it was.
+    var makesInput = isPlainObject(def.source) && def.source.type === "input"
+    if (makesInput || (base && isInput(base) && def.source !== undefined)) {
+      problems.push({ id: def.id, file: file.name, errors: [makesInput ? "source type \"input\" is only for built-in inputs" : "an input's source cannot be changed"] })
+      continue
+    }
+    // An input's switch is its setting (and its plugin being installed): a
+    // file can turn it off, not on.
+    var keepSwitch = base && isInput(base) && def.enabled === true && base.enabled === false
+    if (keepSwitch) problems.push({ id: def.id, file: file.name, errors: ["enabled: true cannot turn on an input; use its setting"] })
     var next = {}
     if (base) for (var k in base) next[k] = base[k]
-    for (var key in def) if (key !== "builtin") next[key] = def[key]
+    for (var key in def) if (key !== "builtin" && !(keepSwitch && key === "enabled")) next[key] = def[key]
     if (!base) order.push(def.id)
     byId[def.id] = next
     origin[def.id] = file.name
@@ -422,8 +469,9 @@ function scopeCandidate(scope, t) {
     subtitle: tr(scope.subtitle),
     keywords: keywords,
     // A grid opens like the Apps menu row does.
-    typeLabel: isGrid(scope) ? "Menu" : "Scope",
+    typeLabel: isGrid(scope) ? "Menu" : isInput(scope) ? "Input" : "Scope",
     grid: isGrid(scope),
+    input: isInput(scope),
     scopeId: scope.id,
     scopeKeyword: scope.keyword,
     glyph: scope.icon,
@@ -558,6 +606,10 @@ function isQuery(scope) {
   return !!scope && !!scope.source && scope.source.type === "query"
 }
 
+function isInput(scope) {
+  return !!scope && !!scope.source && scope.source.type === "input"
+}
+
 // The typed text as a row. Inside the scope it leads the list; in the root
 // search it is one of the "Use “…” with…" rows (inRoot).
 function queryCandidate(scope, query, t, inRoot) {
@@ -656,6 +708,8 @@ if (typeof module !== "undefined") {
     fill: fill,
     fillText: fillText,
     isQuery: isQuery,
+    isInput: isInput,
+    INPUTS: INPUTS,
     queryCandidate: queryCandidate,
     historyCandidates: historyCandidates,
     historyOverflow: historyOverflow,
