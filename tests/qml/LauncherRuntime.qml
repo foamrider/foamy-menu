@@ -427,7 +427,7 @@ ShellRoot {
       case 12:
         // backend.loading holds the stage until the host list is read.
         test.check(view.view.kind === "scope" && view.view.scopeId === "ssh" && view.query === "", "Tab on the keyword enters the SSH scope")
-        test.check(view.placeholder === test.said("Search hosts…", "Søk etter verter…"), "scope placeholder")
+        test.check(view.placeholder === test.said("Search hosts or type user@host…", "Søk eller skriv bruker@vert…"), "scope placeholder")
         if (!test.nativeHelper) {
           // The host list comes from the bundled helper too.
           var state = backend.scopeState("ssh")
@@ -462,6 +462,54 @@ ShellRoot {
         key(Qt.Key_Return)
         break
       case 14:
+        // Then a destination that is not in ~/.ssh/config, typed in the
+        // scope: offered as its own row, connected, and saved.
+        if (test.asked === "ssh-typed") {
+          test.asked = ""
+          test.check(view.view.scopeId === "ssh" && view.selectedRow && view.selectedRow.itemId === "scope-query:ssh" && view.selectedRow.title === test.said("Connect “admin@new.example”", "Koble til «admin@new.example»"), "a typed destination is offered when no host matches")
+          test.capture("ssh-typed", function () {
+            key(Qt.Key_Return)
+            test.asked = "ssh-typed-launched"
+            test.stage--
+          })
+          break
+        }
+        if (test.asked === "ssh-typed-launched") {
+          launched.reload()
+          if (test.waitFor(/\nadmin@new\.example\n$/.test(launched.text())))
+            break
+          test.asked = ""
+          var typedArgv = launched.text().trim().split("\n")
+          test.check(/\/bin\/foamy-ssh-connect$/.test(typedArgv[1]) && typedArgv[2] === "admin@new.example", "Enter connects to the typed destination")
+          test.check(!!backend.callSync("frecency.get", {
+            id: "scope-typed:ssh:admin@new.example"
+          }).data, "the typed destination is saved")
+          menu.open('{"menu":"root"}')
+          view.popToRoot()
+          view.setQuery("ssh")
+          key(Qt.Key_Tab)
+          var recent = backend.callSync("rootSearch.search", {
+            query: "",
+            view: view.view
+          }).data
+          test.check(recent[0].title === "Recent" && recent[0].rows.some(function (r) {
+            return r.id === "scope-typed:ssh:admin@new.example"
+          }), "saved destinations list under Recent")
+          var cleared = backend.callSync("rootSearch.performAction", {
+            id: "scope-typed:ssh:admin@new.example",
+            action: "clear-history",
+            confirmed: true,
+            query: ""
+          })
+          test.check(cleared.ok && !backend.callSync("frecency.get", {
+            id: "scope-typed:ssh:admin@new.example"
+          }).data && !!backend.callSync("frecency.get", {
+            id: "scope-item:ssh:web"
+          }).data, "clearing the history keeps the hosts' ranking")
+          view.popToRoot()
+          view.setQuery("bookmarks")
+          break
+        }
         launched.reload()
         if (test.waitFor(/\nweb\n$/.test(launched.text())))
           break
@@ -470,7 +518,10 @@ ShellRoot {
         test.check(!menu.opened, "connecting dismisses the launcher")
         menu.open('{"menu":"root"}')
         view.popToRoot()
-        view.setQuery("bookmarks")
+        view.setQuery("ssh admin@new.example")
+        key(Qt.Key_Tab)
+        test.asked = "ssh-typed"
+        test.stage--
         break
       case 15:
         test.check(view.selectedRow && view.selectedRow.itemId === "scope:bookmarks", "a user scope is a row in the root search")

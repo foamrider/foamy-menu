@@ -38,7 +38,6 @@ Backend.qml: block-scope-var-declaration: var declaration in block scope is hois
 Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var next = Settings.stepped(f, value, action === "setting-next" ? 1 : -1)
 Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var orders = RootSearch.reorderFavorites(settingsStore.doc.commands, id, action)
 Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var parsed = Settings.parse(f, data && data.value)
-Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var prefix = Scopes.itemId(scope.id, "")
 Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var prefixes = scopeSource.queryScopeIds.map(function (id) {
 Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var queryScope = scopeSource.scope(String(id).slice("scope-query:".length))
 Backend.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var range = Settings.hint(f)

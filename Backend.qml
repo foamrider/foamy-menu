@@ -119,7 +119,7 @@ Item {
       const scope = scopeSource.scope(view.scopeId)
       if (!scope || Scopes.isQuery(scope))
         return ""
-      backend.setViewCatalog(backend.scopeItems(scope.id))
+      backend.setViewCatalog(scope.freeText ? backend.freeTextCandidates(scope).all : backend.scopeItems(scope.id))
       return "view"
     }
     if (kind === "settings") {
@@ -441,7 +441,14 @@ Item {
   function scopeItem(id) {
     if (String(id).indexOf("scope-query:") === 0) {
       var queryScope = scopeSource.scope(String(id).slice("scope-query:".length))
-      return queryScope && Scopes.isQuery(queryScope) ? Scopes.queryCandidate(queryScope, "", backend.tr, false) : null
+      return queryScope && Scopes.acceptsTypedText(queryScope) ? Scopes.queryCandidate(queryScope, "", backend.tr, false) : null
+    }
+    // A saved typed value: "scope-typed:<scope>:<value>", the value may hold ":".
+    if (String(id).indexOf("scope-typed:") === 0) {
+      const rest = String(id).slice("scope-typed:".length)
+      const cut = rest.indexOf(":")
+      const typedScope = cut > 0 ? scopeSource.scope(rest.slice(0, cut)) : null
+      return typedScope && typedScope.freeText && cut < rest.length - 1 ? Scopes.savedCandidate(typedScope, rest.slice(cut + 1), backend.tr) : null
     }
     if (String(id).indexOf("scope-item:") !== 0)
       return null
@@ -464,6 +471,35 @@ Item {
         glyph: scope.icon
       }
     }
+  }
+
+  // A freeText scope's items and its saved typed values (when it keeps
+  // history), and both in one list for the view catalog. The list stays the
+  // same array while neither changes, so the catalog is not sent again.
+  readonly property var freeTextCache: ({})
+  function freeTextCandidates(scope) {
+    var items = backend.scopeItems(scope.id)
+    var saved = scope.history && frecencyStore.loaded ? Scopes.historyCandidates(scope, frecencyStore.doc.items, backend.tr) : []
+    var key = saved.map(function (c) {
+      return c.id
+    }).join("\n")
+    var cached = backend.freeTextCache[scope.id]
+    if (cached && cached.items === items && cached.key === key)
+      return cached
+    // Filled in place, as scopeItems does.
+    var next = {
+      items: items,
+      saved: saved,
+      key: key,
+      all: items.concat(saved)
+    }
+    backend.freeTextCache[scope.id] = next
+    return next
+  }
+
+  function freeTextSearch(scope, query, ctx) {
+    var lists = backend.freeTextCandidates(scope)
+    return RootSearch.freeTextSections(scope, lists.items, lists.saved, query, ctx, backend.deps, backend.tr(scope.itemsTitle))
   }
 
   // A query scope's sections: the typed text, saved searches, suggestions.
@@ -494,12 +530,13 @@ Item {
     return sections
   }
 
-  // A search run in a query scope, saved when the scope keeps history.
+  // A search run in a query scope, or a value typed in a freeText scope,
+  // saved when the scope keeps history.
   function rememberSearch(scope, value) {
     if (!scope.history || !frecencyStore.loaded)
       return
-    backend.recordVisit(Scopes.itemId(scope.id, value), "")
-    var overflow = Scopes.historyOverflow(scope.id, frecencyStore.doc.items)
+    backend.recordVisit(Scopes.historyPrefix(scope) + value, "")
+    var overflow = Scopes.historyOverflow(scope, frecencyStore.doc.items)
     if (overflow.length)
       frecencyStore.update(function (doc) {
         for (var i = 0; i < overflow.length; i++)
@@ -527,7 +564,9 @@ Item {
       }
     }
     if (action === "clear-history") {
-      var prefix = Scopes.itemId(scope.id, "")
+      // A freeText scope's prefix holds only typed values: the items keep
+      // their ranking.
+      const prefix = Scopes.historyPrefix(scope)
       frecencyStore.update(function (doc) {
         for (var key in doc.items)
           if (key.indexOf(prefix) === 0)
@@ -536,7 +575,7 @@ Item {
       return {
         toast: {
           style: "success",
-          title: backend.tr("Search history cleared")
+          title: backend.tr(searching ? "Search history cleared" : "History cleared")
         }
       }
     }
@@ -574,8 +613,9 @@ Item {
         }
       }
     }
-    // Query scopes save searches only when asked to; other scopes rank items.
-    if (searching)
+    // Query scopes save searches and freeText scopes typed values only when
+    // asked to; other scopes rank items.
+    if (searching || candidate.kind === "scope-query" || candidate.saved)
       backend.rememberSearch(scope, value)
     else
       backend.recordVisit(candidate.id, query)
@@ -1111,6 +1151,8 @@ Item {
           var scope = scopeSource.scope(view.scopeId)
           if (scope && Scopes.isQuery(scope))
             sections = backend.querySearch(scope, query, ctx)
+          else if (scope && scope.freeText)
+            sections = backend.freeTextSearch(scope, query, ctx)
           else
             sections = scope ? RootSearch.scopeSections(backend.scopeItems(scope.id), query, ctx, backend.deps, backend.tr(scope.itemsTitle), Scopes.isGrid(scope)) : []
         } else if (view && view.kind === "settings")
