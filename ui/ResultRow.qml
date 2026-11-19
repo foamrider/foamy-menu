@@ -394,7 +394,9 @@ Item {
 
   MouseArea {
     anchors.fill: parent
-    enabled: !row.isSection
+    // A static Todoist card (help, an empty field after an add) is not a
+    // row: no hover selection, no click, as the keys skip it too.
+    enabled: !row.isSection && row.rowKind !== "todoist-static"
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onPositionChanged: function (mouse) {

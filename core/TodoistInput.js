@@ -540,7 +540,7 @@ function readTasks(list, projects) {
     if (!isObject(raw) || !validId(raw.id) || seen[raw.id] || typeof raw.content !== "string" || charCount(raw.content) > MAX_TASK_CONTENT)
       return
     if (raw.labels !== undefined && raw.labels !== null && (!Array.isArray(raw.labels) || raw.labels.length > MAX_TASK_LABELS || raw.labels.some(function (label) {
-      return typeof label !== "string" || label.length > MAX_TASK_LABEL
+      return typeof label !== "string" || charCount(label) > MAX_TASK_LABEL
     })))
       return
     seen[raw.id] = true
@@ -556,7 +556,7 @@ function readTasks(list, projects) {
       due: isObject(raw.due) && typeof raw.due.string === "string" ? firstChars(oneLine(raw.due.string), 200) : "",
       // The day it is due (YYYY-MM-DD), shown from today's point of view;
       // a recurring task shows Todoist's text ("every Monday") instead.
-      dueDay: isObject(raw.due) && raw.due.is_recurring !== true && typeof raw.due.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw.due.date) ? raw.due.date.slice(0, 10) : "",
+      dueDay: dueDayOf(raw.due),
       haystack: [content, project].concat(labels).join("\n").toLowerCase()
     })
   })
@@ -630,7 +630,7 @@ function readTask(reply) {
   return {
     id: reply.added,
     // As readTasks reads it, so the task can join the search list.
-    dueDay: task && isObject(task.due) && task.due.is_recurring !== true && typeof task.due.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(task.due.date) ? task.due.date.slice(0, 10) : "",
+    dueDay: task ? dueDayOf(task.due) : "",
     content: task && typeof task.content === "string" ? firstChars(oneLine(task.content), MAX_TEXT) : "",
     project: project ? firstChars(oneLine(name(project.name)), 200) : "",
     projectInbox: !!project && project.inbox === true,
@@ -888,7 +888,7 @@ function canAdd(text, s, nowMs) {
 
 // A task added from here, for "Added from here".
 function recentEntry(task, text, nowMs) {
-  return { id: task.id, content: task.content || String(text || "").trim(), project: task.project, due: task.due, addedAt: nowMs }
+  return { id: task.id, content: task.content || String(text || "").trim(), project: task.project, due: task.due, dueDay: task.dueDay || "", addedAt: nowMs }
 }
 
 function pushRecent(list, entry) {
@@ -941,6 +941,22 @@ function shownTasks(text, cursor, env) {
   if (env.state.adding || s.trim() === "" || shownSuggestions(env.model, s, cursor, env.state, env.hiddenKey))
     return []
   return matchTasks(env.model, preview(s, env.model, cursor).title)
+}
+
+// The local day (YYYY-MM-DD) a one-off task is due, or "" (none, or a
+// recurring task). Todoist's `due.date` is a day, a floating date-time (the
+// user's clock: its day as written) or a UTC date-time ending in "Z", which
+// is moved to the local day here (23:30Z is tomorrow in Oslo).
+function dueDayOf(due) {
+  if (!isObject(due) || due.is_recurring === true || typeof due.date !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(due.date))
+    return ""
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?Z$/.test(due.date)) {
+    var at = new Date(due.date)
+    if (isNaN(at.getTime()))
+      return ""
+    return at.getFullYear() + "-" + String(at.getMonth() + 1).padStart(2, "0") + "-" + String(at.getDate()).padStart(2, "0")
+  }
+  return due.date.slice(0, 10)
 }
 
 // When a searched task is due, as of now: Today, Tomorrow, Yesterday or a
@@ -1033,7 +1049,7 @@ function sections(text, cursor, env) {
   if (recent.length)
     out.push({ id: "todoist-recent", title: "Added from here", rows: recent.map(function (e) {
       var when = env.relative(e.addedAt, env.nowMs)
-      return { candidate: row("todoist:recent:" + e.id, "todoist-recent", e.content, { subtitle: whereLine(e.project, e.due), glyph: TASK_GLYPH, typeLabel: when[0], typeLabelValues: when[1] }), record: null }
+      return { candidate: row("todoist:recent:" + e.id, "todoist-recent", e.content, { subtitle: whereLine(e.project, dueLabel(e, env)), glyph: TASK_GLYPH, typeLabel: when[0], typeLabelValues: when[1] }), record: null }
     }) })
   return out
 }
@@ -1120,7 +1136,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     CONTRACT: CONTRACT, MAX_TEXT: MAX_TEXT, MAX_SUGGESTIONS: MAX_SUGGESTIONS, MAX_RECENT: MAX_RECENT,
     MAX_TASKS: MAX_TASKS, MAX_TASK_RESULTS: MAX_TASK_RESULTS, MIN_TASK_QUERY: MIN_TASK_QUERY,
-    plainText: plainText, readTasks: readTasks, dueLabel: dueLabel, withAddedTask: withAddedTask, MAX_SEARCH_WORDS: MAX_SEARCH_WORDS, MAX_TASK_CONTENT: MAX_TASK_CONTENT, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
+    plainText: plainText, readTasks: readTasks, dueLabel: dueLabel, dueDayOf: dueDayOf, withAddedTask: withAddedTask, MAX_SEARCH_WORDS: MAX_SEARCH_WORDS, MAX_TASK_CONTENT: MAX_TASK_CONTENT, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
     shownTasks: shownTasks, taskNumber: taskNumber,
     MAX_NAMES_OUTPUT: MAX_NAMES_OUTPUT, MAX_REPLY_OUTPUT: MAX_REPLY_OUTPUT, MAX_NOTIFY_BYTES: MAX_NOTIFY_BYTES,
     DEADLINE_MS: DEADLINE_MS, WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS, CAPPED_SCRIPT: CAPPED_SCRIPT, CAPPED_EXIT: CAPPED_EXIT,

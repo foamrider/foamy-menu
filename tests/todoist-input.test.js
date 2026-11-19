@@ -485,3 +485,28 @@ test("a search matches on at most 8 distinct words, and none for text over 500 c
   assert.deepEqual(TI.matchTasks(model, "one one one one one one one one one two").map((t) => t.id), ["a1"], "repeated words count once")
   assert.deepEqual(TI.matchTasks(model, "z ".repeat(8190) + "one"), [], "a pasted wall of text searches nothing")
 })
+
+test("a due day: UTC times move to the local day, floating ones keep theirs; labels counted as the helper counts", () => {
+  // In Oslo (UTC+1 in November) 23:30Z is the next day; in New York the same day.
+  const dayIn = (tz) => require("node:child_process").execFileSync(process.execPath,
+    ["-e", "process.stdout.write(require(process.argv[1]).dueDayOf({ date: '2026-11-19T23:30:00Z', is_recurring: false }))", require.resolve("../core/TodoistInput.js")],
+    { env: { ...process.env, TZ: tz } }).toString()
+  assert.equal(dayIn("Europe/Oslo"), "2026-11-20", "the local day of a UTC time")
+  assert.equal(dayIn("America/New_York"), "2026-11-19")
+  assert.equal(TI.dueDayOf({ date: "2026-11-19T23:30:00", is_recurring: false }), "2026-11-19", "a floating time keeps its day")
+  assert.equal(TI.dueDayOf({ date: "2026-11-19", is_recurring: false }), "2026-11-19")
+  assert.equal(TI.dueDayOf({ date: "2026-11-19", is_recurring: true }), "", "recurring: Todoist's text")
+  assert.equal(TI.dueDayOf({ date: "2026-13-99T99:99Z" }), "", "not a time")
+  assert.equal(TI.dueDayOf(null), "")
+  const emoji = "a".repeat(99) + "😀"
+  const model = TI.readNames({ ok: true, contract: 1, state: "signed_in", inbox_project_id: null, projects: [], sections: [], labels: [], collaborators: [], project_collaborators: {}, truncated: false,
+    tasks: [{ id: "e1", content: "x", labels: [emoji] }] })
+  assert.deepEqual(model.tasks.map((t) => t.id), ["e1"], "99 letters and an emoji are 100 characters for the helper")
+})
+
+test("Added from here reads its date from today too, not Todoist's text from the day it was added", () => {
+  const nowMs = new Date(2026, 10, 21, 10, 0).getTime()
+  const entry = TI.recentEntry({ id: "t1", content: "Buy milk", project: "Home", due: "tomorrow", dueDay: "2026-11-21" }, "", nowMs - 86400000)
+  const out = TI.sections("", 0, { model: null, state: { availability: "ready", adding: false, addingText: "", result: null, retryUntil: 0, confirming: false }, recent: [entry], nowMs, hiddenKey: "", lastTaskId: "", t: (s) => s, relative: () => ["Yesterday", []], formatDay: (k) => k })
+  assert.equal(out[1].rows[0].candidate.subtitle, "Home · Today")
+})
