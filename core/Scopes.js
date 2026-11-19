@@ -6,6 +6,12 @@
 // past searches ("history": true) and the engine's suggestions
 // ("suggest": true) can fill the list; both are off unless turned on.
 //
+// A list or command scope with "freeText": true also takes the typed text as
+// an item when it matches the scope's valuePattern (SSH: any destination, not
+// only the hosts in ~/.ssh/config). With "history": true the values opened
+// that way are saved under their own ids (typedId()), apart from the items'
+// ranking, and listed with the items.
+//
 // A scope is one JSON object. The built-in SSH, Steam Games and web-search
 // scopes ship here; user scopes
 // live in ~/.config/foamy-menu/scopes/<id>.json. A user file whose id matches
@@ -78,17 +84,20 @@ var BUILTINS = [
     id: "ssh",
     enabled: true,
     title: "SSH",
-    subtitle: "Connect to a host in ~/.ssh/config",
+    subtitle: "Connect to a host",
     keyword: "ssh",
     icon: "\u{f048d}",
     itemsTitle: "Hosts",
-    placeholder: "Search hosts…",
+    placeholder: "Search hosts or type user@host…",
     emptyText: "No hosts in ~/.ssh/config",
     // Every concrete Host in ~/.ssh/config and its Includes (search/src/ssh_hosts.rs).
     source: { type: "command", command: nativeCommand("foamy-menu-search", ["ssh-hosts"]) },
     open: ["omarchy-launch-tui", "--app-id=TUI.tile", "{plugin}/bin/foamy-ssh-connect", "{value}"],
     openTitle: "Connect",
     valuePattern: SSH_HOST_PATTERN,
+    // Any destination typed in the scope, saved for next time.
+    freeText: true,
+    history: true,
     actions: [
       { title: "Copy SSH Command", copy: "ssh {value}" },
       { title: "Copy Host Name", copy: "{value}" },
@@ -257,8 +266,9 @@ function normalize(raw) {
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") errors.push("enabled must be true or false")
   var keyword = raw.keyword === undefined ? id : raw.keyword
   var isQuery = isPlainObject(raw.source) && raw.source.type === "query"
-  for (var f = 0; f < 5; f++) {
-    var flag = ["history", "suggest", "rootSearch", "requireItems", "rootSection"][f]
+  var flags = ["history", "suggest", "rootSearch", "requireItems", "rootSection", "freeText"]
+  for (var f = 0; f < flags.length; f++) {
+    var flag = flags[f]
     if (raw[flag] !== undefined && typeof raw[flag] !== "boolean") errors.push(flag + " must be true or false")
   }
   var layout = raw.layout === undefined ? "list" : raw.layout
@@ -266,6 +276,8 @@ function normalize(raw) {
   if (isQuery && layout !== "list") { errors.push("a query scope has no grid layout"); layout = "list" }
   if (isQuery && (raw.rootSearch === true || raw.requireItems === true)) errors.push("a query scope has no items for rootSearch or requireItems")
   if (isQuery && raw.rootSection === true) errors.push("a query scope has no items for rootSection")
+  if (isQuery && raw.freeText === true) errors.push("a query scope takes the typed text already; freeText is for list and command scopes")
+  var freeText = !isQuery && raw.freeText === true
   // A root section lists the items in the root view, so they load early and
   // are found while typing: rootSection turns rootSearch on.
   var rootSection = !isQuery && raw.rootSection === true
@@ -285,7 +297,7 @@ function normalize(raw) {
     open: argv(raw.open, "open", errors, true),
     openTitle: text(raw.openTitle, "openTitle", errors, false) || (isQuery ? "Search" : "Open"),
     home: argv(raw.home, "home", errors, false),
-    history: isQuery && raw.history === true,
+    history: (isQuery || freeText) && raw.history === true,
     suggest: isQuery && raw.suggest === true,
     suggestUrl: text(raw.suggestUrl, "suggestUrl", errors, false),
     valuePattern: text(raw.valuePattern, "valuePattern", errors, false),
@@ -296,10 +308,14 @@ function normalize(raw) {
     rootSectionTitle: text(raw.rootSectionTitle, "rootSectionTitle", errors, false),
     requireItems: !isQuery && raw.requireItems === true,
     itemLabel: text(raw.itemLabel, "itemLabel", errors, false),
+    freeText: freeText,
     actions: actions(raw.actions, errors),
     builtin: raw.builtin === true
   }
   if (scope.suggest && !/^https:\/\/[^\s]*\{query\}/.test(scope.suggestUrl)) errors.push("suggest needs a suggestUrl: an https URL with {query}")
+  // Typed text reaches the scope's commands as is: freeText needs a pattern
+  // that keeps out what the command would misread (an option, for ssh).
+  if (scope.freeText && !scope.valuePattern) errors.push("freeText needs a valuePattern")
   if (scope.valuePattern) {
     try { new RegExp(scope.valuePattern) } catch (e) { errors.push("valuePattern is not a valid regular expression") }
   }
@@ -408,6 +424,22 @@ function itemId(scopeId, value) {
   return "scope-item:" + scopeId + ":" + value
 }
 
+// A value typed in a freeText scope, as its saved entry.
+function typedId(scopeId, value) {
+  return "scope-typed:" + scopeId + ":" + value
+}
+
+// The id prefix of a scope's saved values: searches in a query scope, typed
+// values in a freeText scope.
+function historyPrefix(scope) {
+  return isQuery(scope) ? itemId(scope.id, "") : typedId(scope.id, "")
+}
+
+// Whether the typed text can be a scope's item: query and freeText scopes.
+function acceptsTypedText(scope) {
+  return isQuery(scope) || (!!scope && scope.freeText === true)
+}
+
 // The row for entering a scope from the root search.
 function scopeCandidate(scope, t) {
   var tr = typeof t === "function" ? t : function(s) { return s }
@@ -497,6 +529,12 @@ function isGrid(scope) {
   return !!scope && scope.layout !== undefined && scope.layout !== "list"
 }
 
+// A value typed in a freeText scope: bounded as listed items are (MAX_TEXT),
+// since it is saved and sent to the search helper's catalog.
+function typedValueAllowed(scope, value) {
+  return String(value || "").length <= MAX_TEXT && valueAllowed(scope, value)
+}
+
 function valueAllowed(scope, value) {
   var v = String(value || "")
   if (!v || v.indexOf("\n") >= 0 || v.indexOf("\0") >= 0) return false
@@ -558,20 +596,25 @@ function isQuery(scope) {
   return !!scope && !!scope.source && scope.source.type === "query"
 }
 
-// The typed text as a row. Inside the scope it leads the list; in the root
-// search it is one of the "Use “…” with…" rows (inRoot).
+// The typed text as a row. Inside a query scope it leads the list; in the
+// root search it is one of the "Use “…” with…" rows (inRoot). In a freeText
+// scope it follows the matching items: "Connect “user@host”".
 function queryCandidate(scope, query, t, inRoot) {
   var tr = typeof t === "function" ? t : function(s, v) { return v ? s.replace("%1", v[0]).replace("%2", v[1]) : s }
   var q = String(query || "").trim()
   var name = tr(scope.title)
+  var typed = !isQuery(scope)
+  var title = typed ? tr("%1 “%2”", [tr(scope.openTitle), q])
+    : inRoot ? tr("Search %1", [name]) : (q ? tr("Search %1 for “%2”", [name, q]) : tr("Open %1", [name]))
   return {
     id: "scope-query:" + scope.id,
     type: "scope-item",
     kind: "scope-query",
-    title: inRoot ? tr("Search %1", [name]) : (q ? tr("Search %1 for “%2”", [name, q]) : tr("Open %1", [name])),
+    typed: typed,
+    title: title,
     subtitle: inRoot ? q : "",
     keywords: [],
-    typeLabel: inRoot ? "Search" : scope.title,
+    typeLabel: inRoot ? "Search" : (typed ? scope.itemLabel || scope.title : scope.title),
     scopeId: scope.id,
     value: q,
     openTitle: scope.openTitle,
@@ -582,23 +625,34 @@ function queryCandidate(scope, query, t, inRoot) {
   }
 }
 
-// A query scope's saved searches, from the visits the launcher records.
+// One saved value: a search in a query scope, a typed value in a freeText
+// scope.
+function savedCandidate(scope, value, t) {
+  var c = itemCandidate(scope, { title: value, value: value, subtitle: "" }, t)
+  c.id = historyPrefix(scope) + value
+  c.saved = true
+  c.typed = !isQuery(scope)
+  return c
+}
+
+// A scope's saved values, from the visits the launcher records.
 function historyCandidates(scope, visits, t) {
-  var prefix = itemId(scope.id, "")
+  var prefix = historyPrefix(scope)
   var out = []
+  var typed = !isQuery(scope)
   for (var key in visits || {}) {
     if (key.indexOf(prefix) !== 0 || key.length === prefix.length) continue
     var value = key.slice(prefix.length)
-    var c = itemCandidate(scope, { title: value, value: value, subtitle: "" }, t)
-    c.saved = true
-    out.push(c)
+    // A typed value over the bound (an edited data file) is left out.
+    if (typed && !typedValueAllowed(scope, value)) continue
+    out.push(savedCandidate(scope, value, t))
   }
   return out
 }
 
-// Ids of a scope's saved searches beyond MAX_HISTORY, least recent first.
-function historyOverflow(scopeId, visits, max) {
-  var prefix = itemId(scopeId, "")
+// Ids of a scope's saved values beyond MAX_HISTORY, least recent first.
+function historyOverflow(scope, visits, max) {
+  var prefix = historyPrefix(scope)
   var keys = Object.keys(visits || {}).filter(function(k) { return k.indexOf(prefix) === 0 })
   var limit = max === undefined ? MAX_HISTORY : max
   if (keys.length <= limit) return []
@@ -625,6 +679,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     BUILTINS: BUILTINS,
     MAX_ITEMS: MAX_ITEMS,
+    MAX_TEXT: MAX_TEXT,
     MAX_OUTPUT: MAX_OUTPUT,
     MAX_STDERR: MAX_STDERR,
     WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS,
@@ -649,10 +704,15 @@ if (typeof module !== "undefined") {
     matchKeyword: matchKeyword,
     parseOutput: parseOutput,
     itemId: itemId,
+    typedId: typedId,
+    historyPrefix: historyPrefix,
+    acceptsTypedText: acceptsTypedText,
+    savedCandidate: savedCandidate,
     scopeCandidate: scopeCandidate,
     itemCandidate: itemCandidate,
     rootItemCandidate: rootItemCandidate,
     valueAllowed: valueAllowed,
+    typedValueAllowed: typedValueAllowed,
     fill: fill,
     fillText: fillText,
     isQuery: isQuery,

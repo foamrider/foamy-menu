@@ -65,7 +65,8 @@ Right-clicking the bar button opens the default terminal.
 - **Games** (shown when Steam is installed) opens a grid of your installed
   Steam games' cover art, like Apps; Enter plays. `steam` + Tab too. Turn on
   **Steam games in search** to find games by name next to your apps.
-- Type `ssh` and press Tab to search your SSH hosts; Enter connects.
+- Type `ssh` and press Tab to search your SSH hosts, or type any destination
+  such as `admin@server.example`; Enter connects.
   `g rust async` + Tab searches Google (`ddg` for DuckDuckGo). See
   [Scopes](#scopes) for adding your own.
 - Type `2 + 3 * 4`, `20% of 50`, `5 ft to cm`, or `10 usd to eur` to calculate.
@@ -194,8 +195,22 @@ the default terminal through `omarchy-launch-tui --app-id=TUI.tile` and runs
 `ssh <host>`; if ssh fails, the window stays open until a key is pressed.
 Ctrl+K offers **Copy SSH Command**, **Copy Host Name** and **Open in Files
 (SFTP)**. Host names must be plain ssh destinations (letters, digits and
-`_.:@%+-`, not starting with `-`). Turn the scope off with
-`omarchy bar set foamy.menu sshScope false --json`.
+`_.:@%+-`, not starting with `-`).
+
+You can also connect to a host that is not in `~/.ssh/config`: type a
+destination such as `admin@server.example`. When it is a valid destination
+and no host has that name, a **Connect “admin@server.example”** row follows
+the matching hosts, so Enter still opens a host that matches what you typed.
+Destinations you connect to this way are saved and listed with your hosts:
+under **Recent** with nothing typed, and among the results while you type.
+They stay in Foamy's own data (`~/.local/share/foamy-menu/db/frecency.json`),
+at most 100. Ctrl+D deletes one; Ctrl+Shift+D clears them all and keeps the
+hosts' ranking. A port goes in `~/.ssh/config` (`Port`); `host:port` is not
+read as one. Turn typed destinations off with a scope file
+`{"id": "ssh", "freeText": false}`, or keep them but save none with
+`{"id": "ssh", "history": false}`.
+
+Turn the scope off with `omarchy bar set foamy.menu sshScope false --json`.
 
 ### Games (Steam, built in)
 
@@ -322,10 +337,11 @@ or a fixed list of bookmarks:
 | `open` | required | argv run on Enter |
 | `openTitle` | `"Open"` (`"Search"` for query) | Enter's name in the footer and action panel |
 | `home` | none | Query scopes: argv run on Enter with nothing typed |
-| `history` | `false` | Query scopes: save searches, list them as Recent Searches |
+| `history` | `false` | Query scopes: save searches, list them as Recent Searches. `freeText` scopes: save the typed values that were opened, list them with the items |
 | `suggest` | `false` | Query scopes: list the engine's suggestions while typing |
 | `suggestUrl` | none | Required for `suggest`: an https URL with `{query}` that returns OpenSearch suggestions (`["q", ["one", "two"]]`) |
 | `valuePattern` | none | Regular expression a value must match before it is used |
+| `freeText` | `false` | List and command scopes: the typed text is also an item when it matches `valuePattern` and no item has it (SSH: any destination); needs `valuePattern` |
 | `rootSearch` | `false` | `true` lists the items in the root search while typing, ranked as applications (read at start and each time the launcher opens); not for query scopes |
 | `rootSection` | `false` | `true` lists the items in the root search when nothing is typed: among Applications, or under their own heading with `rootSectionTitle` (while typing, matches stay in Results); turns on `rootSearch`; not for query scopes |
 | `rootSectionTitle` | none | A heading of their own for the `rootSection` items, after Applications, shown as written; scopes with the same title share the section |
