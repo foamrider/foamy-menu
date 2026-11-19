@@ -64,6 +64,16 @@ const names = {
   labels: ["phone", "phone-calls", "Errands", "errands", 7],
   collaborators: [{ id: "u1", full_name: "Kari Nordmann", email: "kari@example.org" }, { id: "u2", full_name: "Ola", email: "ola@example.org" }],
   project_collaborators: { team1: ["u2", "u1", "nobody"] },
+  // In names' order (dated first); Ctrl+1…9 follow it.
+  tasks: [
+    { id: "k1", content: "Call the **dentist** about [the bill](https://example.org/b)", project_id: "home1", section_id: null, priority: 1, labels: ["phone"], due: { date: "2026-11-20", is_recurring: false, string: "tomorrow" } },
+    { id: "k2", content: "Plan the garden", project_id: "home1", section_id: "s1", priority: 1, labels: [], due: { date: "2026-11-22", is_recurring: false, string: "22 Nov" } },
+    { id: "k3", content: "Phone Kari", project_id: "team1", section_id: null, priority: 2, labels: ["Errands"], due: null },
+    { id: "k4", content: "Buy paint", project_id: "gone", section_id: null, priority: 1, labels: [], due: null },
+    { id: "bad id", content: "Broken" },
+    { id: "k5", content: 7 },
+    { id: "k1", content: "A second k1" }
+  ],
   truncated: false
 }
 
@@ -177,7 +187,7 @@ test("addOutcome: each helper reply and exit, as the error table reads them", ()
 
 test("namesOutcome: ready, signed out, a helper to update, a failure that only hides suggestions", () => {
   assert.equal(TI.namesOutcome(run(names)).kind, "ready")
-  const out = TI.namesOutcome(run({ ...names, state: "signed_out", projects: [], sections: [], labels: [], collaborators: [], project_collaborators: {}, inbox_project_id: null }))
+  const out = TI.namesOutcome(run({ ...names, state: "signed_out", projects: [], sections: [], labels: [], collaborators: [], project_collaborators: {}, tasks: [], inbox_project_id: null }))
   assert.equal(out.kind, "signedOut")
   assert.equal(out.model.inboxProjectId, "")
   assert.equal(TI.namesOutcome(run({ ok: false, code: "INVALID_ARGUMENT", error: "The Todoist helper was called with the wrong arguments." })).kind, "needsUpdate", "a helper from before names")
@@ -240,7 +250,7 @@ test("text over 500 characters has no tokens: one plain run, no chips, the card 
 
 test("a cut names list is shown as partial: no project called unknown, and the card says so", () => {
   const idleState = { availability: "ready", adding: false, addingText: "", result: null, retryUntil: 0, confirming: false }
-  const reply = { ok: true, contract: 1, state: "signed_in", inbox_project_id: null, projects: [{ id: "p1", name: "Home", inbox: false, shared: false }], sections: [], labels: [], collaborators: [], project_collaborators: {}, truncated: true }
+  const reply = { ok: true, contract: 1, state: "signed_in", inbox_project_id: null, projects: [{ id: "p1", name: "Home", inbox: false, shared: false }], sections: [], labels: [], collaborators: [], project_collaborators: {}, tasks: [], truncated: true }
   const partial = TI.readNames(reply)
   const card = TI.card("Buy milk #Garden", partial, idleState, 0, 0)
   assert.equal(card.chips[0].unknown, false)
@@ -248,7 +258,9 @@ test("a cut names list is shown as partial: no project called unknown, and the c
   const whole = TI.readNames({ ...reply, truncated: false })
   const complete = TI.card("Buy milk #Garden", whole, idleState, 0, 0)
   assert.equal(complete.chips[0].unknown, true)
-  assert.equal(complete.status.text, "Todoist reads the date when the task is added")
+  assert.equal(complete.status, null, "no status line when there is nothing to say")
+  const cutTasks = TI.readNames({ ...reply, tasks: [{ id: "k1", content: "Buy milk", project_id: "p1", labels: [], due: null }] })
+  assert.equal(TI.card("milk", cutTasks, idleState, 0, 4).status.text, "Suggestions show part of your Todoist: it has more than Foamy Todoist keeps.", "a cut task list too")
 })
 
 test("an add reply that is neither a success nor a well-formed refusal is an unknown outcome", () => {
@@ -282,7 +294,7 @@ test("card: every state of the States table", () => {
   assert.equal(at("").state, "empty")
   assert.equal(at("").chips.length, TI.SYNTAX.length)
   const typing = at("Call the dentist tomorrow #Home")
-  assert.deepEqual([typing.state, typing.title, typing.status.text], ["typing", "Call the dentist tomorrow", "Todoist reads the date when the task is added"])
+  assert.deepEqual([typing.state, typing.title, typing.status], ["typing", "Call the dentist tomorrow", null], "no help line while typing")
   const adding = at("", { adding: true, addingText: "Call #Home" })
   assert.deepEqual([adding.state, adding.title, adding.status.spinner], ["adding", "Call", true])
   const task = TI.addOutcome(run(added)).task
@@ -340,14 +352,14 @@ test("sections: the card, the offered row, then suggestions or the tasks added f
   assert.deepEqual(ids(typing), ["todoist:card", "todoist:suggest:0", "todoist:suggest:1"])
   assert.equal(typing[1].id, "todoist-suggestions:4:project")
   assert.equal(typing[1].title, "Projects")
-  assert.deepEqual(ids(TI.sections("Buy #ho", 7, env({ recent, hiddenKey: "4:project" }))), ["todoist:card", "todoist:recent:t1"], "Esc closed the list")
+  assert.deepEqual(ids(TI.sections("Buy #ho", 7, env({ recent, hiddenKey: "4:project" }))), ["todoist:card", "todoist:task:k4"], "Esc closed the list: the tasks the title matches, not Added from here")
   assert.deepEqual(ids(TI.sections("Buy #ho", 7, env({ state: { ...idle, adding: true, addingText: "Buy #ho" } }))), ["todoist:card"], "no list while adding")
   const task = TI.addOutcome(run(added)).task
   const afterAdd = TI.sections("", 0, env({ state: { ...idle, result: { kind: "added", text: "x", task } } }))
   assert.deepEqual(ids(afterAdd), ["todoist:card"], "no separate Open in Todoist row: the card is the task")
   assert.equal(afterAdd[0].rows[0].candidate.selectable, true)
   assert.deepEqual(TI.actions("todoist:card", "", 0, env({ lastTaskId: "t1" }), false).map((a) => [a.id, a.shortcut]), [["todoist-open-last", "Ctrl O"], ["todoist-open-app", ""]], "Enter or Ctrl+O opens it")
-  assert.deepEqual(ids(TI.sections("Buy", 3, env({ state: { ...idle, result: { kind: "unknown", text: "Buy", message: { key: "k", values: [] } } } }))), ["todoist:card", "todoist:open-inbox"])
+  assert.deepEqual(ids(TI.sections("Buy", 3, env({ state: { ...idle, result: { kind: "unknown", text: "Buy", message: { key: "k", values: [] } } } }))), ["todoist:card", "todoist:open-inbox", "todoist:task:k4"], "the kept text still searches")
   assert.deepEqual(ids(TI.sections("", 0, env({ state: { ...idle, availability: "signedOut" } }))), ["todoist:card", "todoist:open-app"])
   const literal = JSON.parse(TI.sections("Today", 5, env({ t: () => "TRANSLATED" }))[0].rows[0].candidate.card)
   assert.equal(literal.title, "Today", "typed text is never translated")
@@ -374,4 +386,72 @@ test("actions: with text Enter adds whatever row is selected; with none it runs 
   assert.equal(TI.insertFor("todoist:card", "Buy milk", 8, e), null)
   assert.equal(TI.rowTask("todoist:recent:t1"), "t1")
   assert.equal(TI.rowTask("todoist:recent:bad id"), "")
+})
+
+test("readNames reads the open tasks: bounded, plain text, haystacks lowercased once; a bad list needs an update", () => {
+  assert.deepEqual(model.tasks.map((t) => t.id), ["k1", "k2", "k3", "k4"], "in names' order; bad ids, non-text content and repeats skipped")
+  assert.deepEqual(model.tasks[0], { id: "k1", content: "Call the dentist about the bill", project: "Home", due: "tomorrow", haystack: "call the dentist about the bill\nhome\nphone" })
+  assert.deepEqual([model.tasks[3].project, model.tasks[3].due], ["", ""], "a project not in the list, no date")
+  assert.equal(TI.readNames({ ...names, tasks: undefined }), null, "no task list: a helper from before the search")
+  assert.equal(TI.readNames({ ...names, tasks: {} }), null, "not a list")
+  const many = Array.from({ length: TI.MAX_TASKS }, (_, i) => ({ id: "x" + i, content: "Task " + i, project_id: "home1", labels: [], due: null }))
+  assert.equal(TI.readNames({ ...names, tasks: many }).tasks.length, 5000, "at the cap")
+  assert.equal(TI.readNames({ ...names, tasks: many.concat([{ id: "y", content: "one more" }]) }), null, "over the helper's cap")
+  const odd = TI.readNames({ ...names, tasks: [{ id: "z1", content: "Line\none " + "x".repeat(600), project_id: "__proto__", labels: [7, "", "ok"], due: { string: 5 } }] }).tasks[0]
+  assert.equal(odd.content.length, TI.MAX_TEXT, "content cut at Todoist's limit, on one line")
+  assert.ok(!odd.content.includes("\n"))
+  assert.deepEqual([odd.project, odd.due, odd.haystack.endsWith("\n\nok")], ["", "", true], "only text labels, no project from a prototype key")
+  assert.equal(TI.plainText("**bold** and `code` and snake_case"), "bold and code and snake_case")
+})
+
+test("matchTasks: every word in content, project or labels, at least two characters, at most nine in names' order", () => {
+  const found = (query) => TI.matchTasks(model, query).map((t) => t.id)
+  assert.deepEqual(found("dentist"), ["k1"])
+  assert.deepEqual(found("DENTIST bill"), ["k1"], "ignoring case, every word")
+  assert.deepEqual(found("dentist garden"), [], "every word must match")
+  assert.deepEqual(found("home"), ["k1", "k2"], "the project name")
+  assert.deepEqual(found("errands"), ["k3"], "a label")
+  assert.deepEqual(found("@phone"), ["k1", "k3"], "@word matches the label (and the text, as searchRows does)")
+  assert.deepEqual(found("p"), [], "one character is too short")
+  assert.deepEqual(found("pl"), ["k2", "k3"], "Plan, and Team Plans")
+  assert.deepEqual(found("  "), [])
+  assert.deepEqual(TI.matchTasks(null, "dentist"), [])
+  const many = TI.readNames({ ...names, tasks: Array.from({ length: 20 }, (_, i) => ({ id: "m" + i, content: "Match " + i, labels: [] })) })
+  assert.deepEqual(TI.matchTasks(many, "match").map((t) => t.id), ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"])
+})
+
+test("the Tasks section: under the card while typing, on the title, Ctrl 1–9; not with suggestions, while adding or with an empty field", () => {
+  const recent = [TI.recentEntry({ id: "t1", content: "Call", project: "Home", due: "tomorrow" }, "", 1000)]
+  const typing = TI.sections("dentist tomorrow p1 #Home", 8, env({ recent }))
+  assert.deepEqual(ids(typing), ["todoist:card"], "\"tomorrow\" is a title word: no task has both")
+  const search = TI.sections("dentist #Home @phone p2", 7, env({ recent }))
+  assert.deepEqual(search.map((s) => s.id), ["todoist-card", "todoist-tasks"], "Added from here gives way to the results")
+  assert.equal(search[1].title, "Tasks")
+  assert.deepEqual(search[1].rows.map((r) => [r.candidate.id, r.candidate.kind, r.candidate.title, r.candidate.subtitle, r.candidate.typeLabel, r.candidate.typeLabelValues]),
+    [["todoist:task:k1", "todoist-task", "Call the dentist about the bill", "Home · tomorrow", "Ctrl %1", [1]]], "tokens are not search words")
+  assert.deepEqual(ids(TI.sections("plan", 4, env())).slice(1), ["todoist:task:k2", "todoist:task:k3"], "Plan the garden, and k3 in Team Plans")
+  assert.deepEqual(TI.sections("garden", 6, env())[1].rows[0].candidate.subtitle, "Home · 22 Nov")
+  assert.deepEqual(TI.sections("phone", 5, env())[1].rows.map((r) => [r.candidate.subtitle, r.candidate.typeLabelValues[0]]), [["Home · tomorrow", 1], ["Team Plans", 2]])
+  assert.deepEqual(ids(TI.sections("Call #ho", 8, env())), ["todoist:card", "todoist:suggest:0", "todoist:suggest:1"], "suggestions showing: no tasks")
+  assert.deepEqual(ids(TI.sections("dentist", 7, env({ state: { ...idle, adding: true, addingText: "dentist" } }))), ["todoist:card"], "none while adding")
+  assert.deepEqual(ids(TI.sections("d", 1, env({ recent }))), ["todoist:card"], "too short: neither results nor Added from here")
+  assert.deepEqual(ids(TI.sections("", 0, env({ recent }))), ["todoist:card", "todoist:recent:t1"], "an empty field shows Added from here as before")
+  const many = TI.readNames({ ...names, tasks: Array.from({ length: 12 }, (_, i) => ({ id: "m" + i, content: "Match " + i, labels: [] })) })
+  const nine = TI.sections("match", 5, env({ model: many }))[1].rows
+  assert.deepEqual(nine.map((r) => r.candidate.typeLabelValues[0]), [1, 2, 3, 4, 5, 6, 7, 8, 9])
+  const literal = TI.sections("dentist", 7, env({ t: () => "TRANSLATED" }))[1].rows[0].candidate
+  assert.equal(literal.title, "Call the dentist about the bill", "a task's text is never translated")
+})
+
+test("actions on a task the search found: Enter still adds, Ctrl+K offers Open in Todoist with its Ctrl+N, and the row opens it", () => {
+  const e = env({ lastTaskId: "t1" })
+  assert.deepEqual(TI.actions("todoist:task:k3", "phone", 5, e, false).map((a) => [a.id, a.title, a.shortcut]),
+    [["todoist-add", "Add Task", "↵"], ["todoist-add-alt", "Add and Close", "Shift ↵"], ["open", "Open in Todoist", "Ctrl 2"], ["todoist-open-last", "Open in Todoist", "Ctrl O"], ["todoist-open-app", "Open Foamy Todoist", ""], ["todoist-copy-text", "Copy Text", "Ctrl Shift C"]])
+  assert.equal(TI.actions("todoist:card", "phone", 5, e, false).some((a) => a.id === "open"), false, "the card has no task to open")
+  assert.equal(TI.actions("todoist:task:k3", "dentist", 7, e, false).some((a) => a.id === "open"), false, "a row no longer shown has no Ctrl+N")
+  assert.equal(TI.taskNumber("todoist:task:k1", "phone", 5, e), 1)
+  assert.equal(TI.taskNumber("todoist:recent:k1", "phone", 5, e), 0)
+  assert.equal(TI.rowTask("todoist:task:k3"), "k3", "a click (open) opens the task")
+  assert.equal(TI.rowTask("todoist:task:bad id"), "")
+  assert.ok(TI.isTaskRow("todoist:task:k3") && !TI.isTaskRow("todoist:card") && !TI.isTaskRow("todoist:recent:t1"))
 })

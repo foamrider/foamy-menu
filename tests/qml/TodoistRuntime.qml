@@ -5,7 +5,8 @@ import "plugin" as Foamy
 
 // The Todoist input end to end (tests/todoist.py): td + Tab, suggestions,
 // Tab inserts, Enter adds once (Enter and typing during the add do nothing),
-// the result card, Ctrl+O, an unknown outcome's second Enter, signed out, a
+// the result card, Ctrl+O, the task search and Ctrl+2 opening its second
+// result, an unknown outcome's second Enter, signed out, a
 // names reply for an earlier visit dropped, close-on-add and Esc during an
 // add, with notify run only while the launcher is closed. The fake helper
 // and omarchy-shell record what they were asked.
@@ -258,10 +259,50 @@ ShellRoot {
         break
       case 8:
         test.check(view.inputView, "reopened, the launcher is still in the input")
+        view.setQuery("plant")
+        break
+      case 9:
+        if (test.waitFor(view.nthTask(3) >= 0))
+          break
+        var found = test.sections().filter(function (section) {
+          return section.id === "todoist-tasks"
+        })[0]
+        test.check(!!found && found.title === "Tasks" && view.t(found.title) === test.said("Tasks", "Oppgaver"), "typing shows the Tasks section")
+        test.check(found.rows.map(function (r) {
+          return r.id + "|" + r.typeLabelValues[0]
+        }).join() === "todoist:task:k1|1,todoist:task:k2|2,todoist:task:k3|3", "the matching tasks in names' order, Ctrl 1–3: " + JSON.stringify(found.rows))
+        test.check(found.rows[0].title === "Water the plants" && found.rows[0].subtitle === "Home · 21 Nov" && view.t(found.rows[0].typeLabel, found.rows[0].typeLabelValues) === "Ctrl 1", "a row: the text, project and date, its key")
+        test.check(test.rowIds().indexOf("todoist:recent:t1") < 0, "with text, the results take the place of Added from here")
+        test.check(view.nthTask(4) < 0, "Renew passport does not match")
+        test.check(view.selectedRow && view.selectedRow.itemId === "todoist:card" && view.actionsForSelected()[0].id === "todoist-add", "the card stays selected: Enter adds")
+        var offered = backend.callSync("rootSearch.getActions", {
+          id: "todoist:task:k2",
+          query: view.query,
+          cursor: view.cursorPos,
+          hideSuggestions: ""
+        }).data
+        test.check(offered[0].id === "todoist-add" && offered.some(function (a) {
+          return a.id === "open" && a.shortcut === "Ctrl 2"
+        }), "Ctrl+K on a result: Enter adds, Open in Todoist is Ctrl 2")
+        test.capture("search", function () {
+          key(Qt.Key_2, Qt.ControlModifier)
+          test.check(view.selectedRow && view.selectedRow.itemId === "todoist:task:k2", "Ctrl+2 picks the second task, not the card")
+        })
+        break
+      case 10:
+        if (test.waitFor(test.shellCalls().indexOf("foamy.todoist openTask k2") >= 0))
+          break
+        test.check(test.calls("add").length === 1, "opening a task adds nothing")
+        if (test.waitFor(!menu.opened))
+          break
+        menu.open('{"menu":"root"}')
+        break
+      case 11:
+        test.check(view.inputView, "reopened, the launcher is still in the input")
         view.setQuery("buy unknown milk")
         key(Qt.Key_Return)
         break
-      case 9:
+      case 12:
         if (test.waitFor(!backend.todoistAdding && !!test.todoist.result))
           break
         test.check(test.todoist.result.kind === "unknown" && view.query === "buy unknown milk", "an unknown outcome keeps the text")
@@ -270,21 +311,21 @@ ShellRoot {
           key(Qt.Key_Return)
         })
         break
-      case 10:
+      case 13:
         if (test.waitFor(test.calls("add").length >= 2))
           break
         test.check(test.todoist.confirming && test.calls("add").length === 2 && !backend.todoistAdding, "the next Enter only asks again")
         key(Qt.Key_Return)
         test.check(backend.todoistAdding, "a second Enter adds")
         break
-      case 11:
+      case 14:
         if (test.waitFor(!backend.todoistAdding && test.calls("add").length >= 3))
           break
         test.check(test.calls("add").length === 3, "the confirmed add ran")
         view.setQuery("call signedout")
         key(Qt.Key_Return)
         break
-      case 12:
+      case 15:
         if (test.waitFor(!backend.todoistAdding && !!test.todoist.result && test.todoist.result.kind === "signedOut"))
           break
         test.check(test.todoist.availability === "signedOut" && test.card().state === "signedOut" && view.query === "call signedout", "signed out keeps the text")
@@ -294,7 +335,7 @@ ShellRoot {
           test.slowNames(true)
         })
         break
-      case 13:
+      case 16:
         if (test.waitFor(flag.done))
           break
         // Leave, enter again (names takes 1.5 s now), leave at once.
@@ -308,7 +349,7 @@ ShellRoot {
         test.check(view.atRoot, "Backspace on an empty field leaves")
         test.since = Date.now()
         break
-      case 14:
+      case 17:
         if (test.waitFor(Date.now() - test.since > 2500 && test.calls("names").length >= 3))
           break
         test.check(test.calls("names").length >= 3 && test.todoist.availability === "signedOut", "a names reply for a visit that ended is dropped")
@@ -318,20 +359,20 @@ ShellRoot {
           action: "open"
         })
         break
-      case 15:
+      case 18:
         if (test.waitFor(flag.done && backend.settingsEntry.todoistCloseOnAdd === true))
           break
         view.setQuery("td")
         key(Qt.Key_Tab)
         break
-      case 16:
+      case 19:
         if (test.waitFor(test.todoist.availability === "ready"))
           break
         view.setQuery("close slow test")
         key(Qt.Key_Return)
         test.check(!menu.opened && backend.todoistAdding, "with todoistCloseOnAdd, Enter adds and closes")
         break
-      case 17:
+      case 20:
         if (test.waitFor(!backend.todoistAdding && test.calls("notify").length === 1))
           break
         var notified = test.calls("notify")[0].request
@@ -345,7 +386,7 @@ ShellRoot {
         key(Qt.Key_Escape)
         test.check(!menu.opened && backend.todoistAdding, "Esc during an add closes the launcher; the add goes on")
         break
-      case 18:
+      case 21:
         if (test.waitFor(!backend.todoistAdding && test.calls("notify").length === 2 && test.calls("add").length >= 6))
           break
         test.check(test.calls("notify")[1].request.kind === "added" && test.calls("notify")[1].request.task.content === "esc slow", "Esc during an add: notified once it answers")

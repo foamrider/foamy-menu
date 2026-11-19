@@ -1,7 +1,8 @@
 // The Todoist input (td + Tab): Todoist's Quick Add syntax read from the
 // typed text, the preview card, suggestions for projects, sections, labels
-// and people, and the Foamy Todoist helper's replies. Pure: no QML, no
-// processes (services/TodoistSource.qml runs the helper).
+// and people, the search of the open tasks, and the Foamy Todoist helper's
+// replies. Pure: no QML, no processes (services/TodoistSource.qml runs the
+// helper).
 //
 // The tokenizer's word rule and the suggestion matching are copied and
 // adapted from Foamy Todoist's Model.js (suggestions, projectBefore,
@@ -10,6 +11,8 @@
 // copied until a third copy calls for a shared module). The adaptations: the
 // lists come from the helper's `names` reply, which has no user record, and
 // the tokenizer also finds p1–p4, !reminder, {deadline} and " // description".
+// The task search's plainText and word rule are copied from the same file
+// at the same commit (plainText, searchRows); see matchTasks.
 //
 // Dates are not read here (D14): Todoist parses them on its server, in the
 // account's language, so a date stays in the title as typed and the card
@@ -20,15 +23,19 @@ var CONTRACT = 1
 // Todoist's own limit; the helper checks it too.
 var MAX_TEXT = 500
 var MAX_SUGGESTIONS = 6
+// The task search: results while typing (Ctrl+1…9 open them), and the
+// shortest title it searches for.
+var MAX_TASK_RESULTS = 9
+var MIN_TASK_QUERY = 2
 // Tasks listed under "Added from here", newest first, kept for the shell
 // session only.
 var MAX_RECENT = 5
 // Bytes of stdout read from one helper run (cappedCommand()). At the
 // helper's own caps (2 000 projects, 5 000 sections, 2 000 labels and
-// collaborators, 20 000 memberships) with every name at its longest in
-// 3-byte UTF-8, `names` is about 11.2 MB, so this leaves room; a larger
-// reply is refused, not cut.
-var MAX_NAMES_OUTPUT = 16 * 1024 * 1024
+// collaborators, 20 000 memberships, 5 000 tasks of 500 characters) with
+// every text at its longest, `names` is about 20 MB (the contract's worst
+// case), so this leaves room; a larger reply is refused, not cut.
+var MAX_NAMES_OUTPUT = 24 * 1024 * 1024
 var MAX_REPLY_OUTPUT = 256 * 1024
 // The helper's own caps on what `names` lists; a reply with more is not one
 // this menu reads.
@@ -37,6 +44,7 @@ var MAX_SECTIONS = 5000
 var MAX_LABELS = 2000
 var MAX_PEOPLE = 2000
 var MAX_MEMBERSHIPS = 20000
+var MAX_TASKS = 5000
 var MAX_NAME = 1000
 // The notify request's limits (contract: stdin at most 16 KiB, and the
 // request goes with a newline after it, so one byte less).
@@ -142,6 +150,21 @@ function firstChars(text, max) {
 
 function unescapeSpaces(text) {
   return text.replace(/\\ /g, " ")
+}
+
+// Task content as plain text: [text](url) links show their text; bold,
+// italic, strikethrough and code markers are dropped. Markers inside words
+// (snake_case, 2*3*4) stay. Copied from foamy-todoist's Model.js
+// (plainText), commit 1d4fb0b.
+function plainText(text) {
+  if (typeof text !== "string")
+    return ""
+  return text
+    .replace(/!?\[([^\]\n]*)\]\((?:[^()\s]|\([^()\s]*\))*\)/g, "$1")
+    .replace(/(^|[^\w*])(\*\*|__)(?=\S)([^\n]*?\S)\2(?![\w*])/g, "$1$3")
+    .replace(/(^|[^\w*])([*_])(?=\S)([^\n*_]*?\S)\2(?![\w*])/g, "$1$3")
+    .replace(/~~(?=\S)([^\n]*?\S)~~/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
 }
 
 // ---- tokens -------------------------------------------------------------------
@@ -417,17 +440,17 @@ function retrySeconds(reply) {
   return Math.min(seconds, MAX_RETRY_SECONDS)
 }
 
-// The `names` reply as the suggestions read it: {state, inboxProjectId,
-// projects (id -> project), projectList, sectionList, labels (names),
-// members (project id -> people), truncated}, or null when the reply is not
-// one this contract describes. Records that don't fit are skipped; lists
-// longer than the helper's caps refuse the reply.
+// The `names` reply as the suggestions and the task search read it: {state,
+// inboxProjectId, projects (id -> project), projectList, sectionList, labels
+// (names), members (project id -> people), tasks (readTasks), truncated}, or
+// null when the reply is not one this contract describes. Records that don't
+// fit are skipped; lists longer than the helper's caps refuse the reply.
 function readNames(reply) {
   if (!isObject(reply) || reply.ok !== true || reply.contract !== CONTRACT)
     return null
   if (reply.state !== "signed_in" && reply.state !== "signed_out")
     return null
-  var lists = { projects: MAX_PROJECTS, sections: MAX_SECTIONS, labels: MAX_LABELS, collaborators: MAX_PEOPLE }
+  var lists = { projects: MAX_PROJECTS, sections: MAX_SECTIONS, labels: MAX_LABELS, collaborators: MAX_PEOPLE, tasks: MAX_TASKS }
   for (var key in lists)
     if (!Array.isArray(reply[key]) || reply[key].length > lists[key])
       return null
@@ -441,6 +464,7 @@ function readNames(reply) {
     sectionList: [],
     labels: [],
     members: dict(),
+    tasks: [],
     truncated: reply.truncated === true
   }
   reply.projects.forEach(function (raw) {
@@ -489,7 +513,63 @@ function readNames(reply) {
       return compare(a.name.toLowerCase(), b.name.toLowerCase())
     })
   })
+  model.tasks = readTasks(reply.tasks, model.projects)
   return model
+}
+
+// The open tasks the search matches, in the order `names` gives: {id,
+// content (plain text, one line), project (its name or ""), due (Todoist's
+// text for the date or ""), haystack}. The haystack is what searchRows
+// matches (the content, the project name, the labels), lowercased here once
+// so a keystroke only compares.
+function readTasks(list, projects) {
+  var seen = dict()
+  var out = []
+  list.forEach(function (raw) {
+    if (!isObject(raw) || !validId(raw.id) || seen[raw.id] || typeof raw.content !== "string")
+      return
+    seen[raw.id] = true
+    var project = typeof raw.project_id === "string" && has(projects, raw.project_id) ? projects[raw.project_id].name : ""
+    var labels = Array.isArray(raw.labels) ? raw.labels.filter(function (label) {
+      return name(label) !== ""
+    }) : []
+    var content = firstChars(oneLine(plainText(raw.content)), MAX_TEXT)
+    out.push({
+      id: raw.id,
+      content: content,
+      project: project,
+      due: isObject(raw.due) && typeof raw.due.string === "string" ? firstChars(oneLine(raw.due.string), 200) : "",
+      haystack: [content, project].concat(labels).join("\n").toLowerCase()
+    })
+  })
+  return out
+}
+
+// The tasks whose content, project name or labels hold every word of the
+// query (ignoring case; `@word` matches the label), the first
+// MAX_TASK_RESULTS in the order `names` gives; none for a query shorter than
+// MIN_TASK_QUERY characters. The word rule and the match are copied from
+// foamy-todoist's Model.js (searchRows), commit 1d4fb0b; adapted: the
+// haystacks come from readTasks, and the results are not grouped.
+function matchTasks(model, query) {
+  if (!model || !model.tasks || charCount(String(query || "").trim()) < MIN_TASK_QUERY)
+    return []
+  var words = String(query || "").toLowerCase().split(/\s+/).filter(function (word) {
+    return word !== ""
+  }).map(function (word) {
+    return word.charAt(0) === "@" && word.length > 1 ? word.slice(1) : word
+  })
+  if (!words.length)
+    return []
+  var out = []
+  for (var i = 0; i < model.tasks.length && out.length < MAX_TASK_RESULTS; i++) {
+    var haystack = model.tasks[i].haystack
+    if (words.every(function (word) {
+      return haystack.indexOf(word) >= 0
+    }))
+      out.push(model.tasks[i])
+  }
+  return out
 }
 
 // An added task from the short `add` reply, checked: {id, content, project,
@@ -695,9 +775,9 @@ function taskChips(task) {
 
 // The card for the field's text: {state, title, chips, status}. state is
 // empty, typing, adding, added, refused, unknown, rateLimited, signedOut,
-// needsUpdate or unavailable; status is {tone, text, values, spinner} with an
-// English template the UI translates (tone: muted, accent, success, warning,
-// error). `s` is TodoistSource's state: {availability, adding, addingText,
+// needsUpdate or unavailable; status is null or {tone, text, values,
+// spinner} with an English template the UI translates (tone: muted, accent,
+// success, warning, error). `s` is TodoistSource's state: {availability, adding, addingText,
 // result, retryUntil, confirming}; `nowMs` the clock; `caret` where the
 // cursor is (or undefined). `literal`: the title is what was typed or what
 // Todoist made of it, never a text to translate.
@@ -746,12 +826,13 @@ function card(text, model, s, nowMs, caret) {
     state = "signedOut"
   else if (result && result.text === t.trim() && (result.kind === "unknown" || result.kind === "refused"))
     state = result.kind
-  // No date is read here (D14), so the hint says who reads it.
   if (charCount(t.trim()) > MAX_TEXT && !status)
     status = line("error", "A task can have at most 500 characters.")
+  // A names reply cut at one of the helper's caps (projects, tasks, …).
   if (!status && model && model.truncated)
     status = line("muted", "Suggestions show part of your Todoist: it has more than Foamy Todoist keeps.")
-  return { state: state, literal: true, title: p.title, chips: p.chips, status: status || line("muted", "Todoist reads the date when the task is added") }
+  // A status line only when there is something to say.
+  return { state: state, literal: true, title: p.title, chips: p.chips, status: status }
 }
 
 // Whether Enter adds now: not during an add, nor while Todoist asks to wait,
@@ -800,13 +881,38 @@ function shownSuggestions(model, text, cursor, s, hiddenKey) {
   return found && found.items.length && found.key !== hiddenKey ? found : null
 }
 
+// Where a task row's id starts: todoist:task:<id>, a task the search found.
+var TASK_ROW = "todoist:task:"
+
+function isTaskRow(rowId) {
+  return String(rowId || "").indexOf(TASK_ROW) === 0
+}
+
+// The tasks the search shows for the typed text: matches of the card's
+// title, only while the field has text, no suggestion list is showing and
+// no add is running.
+function shownTasks(text, cursor, env) {
+  var s = String(text || "")
+  if (env.state.adding || s.trim() === "" || shownSuggestions(env.model, s, cursor, env.state, env.hiddenKey))
+    return []
+  return matchTasks(env.model, preview(s, env.model, cursor).title)
+}
+
+// A task row's subtitle: its project, then its date (Todoist's text).
+function whereLine(project, due) {
+  return [project, due].filter(function (part) {
+    return part
+  }).join(" · ")
+}
+
 // The Todoist input's list: the card first, then the row the card's state
 // offers (Open Inbox after an unknown outcome,
 // Open Foamy Todoist when signed out), then the suggestions for the word at
-// the caret, or else the tasks added from here. `env`: {model, state (see
-// card()), recent, nowMs, hiddenKey, t (translate), relative (RootSearch's
-// relativeParts)}. Every text the UI shows is translated here; what the
-// user typed never goes through t().
+// the caret, or else, with text in the field, the tasks it matches
+// (Ctrl+1…9 open them), or, with the field empty, the tasks added from here.
+// `env`: {model, state (see card()), recent, nowMs, hiddenKey, t
+// (translate), relative (RootSearch's relativeParts)}. Every text the UI
+// shows is translated here; what the user typed never goes through t().
 function sections(text, cursor, env) {
   var t = env.t
   var s = env.state
@@ -846,22 +952,43 @@ function sections(text, cursor, env) {
     }) })
     return out
   }
+  // With text in the field the tasks it matches take the place of Added
+  // from here, which only an empty field shows.
+  if (hasText) {
+    var tasks = shownTasks(text, cursor, env)
+    if (tasks.length)
+      out.push({ id: "todoist-tasks", title: "Tasks", rows: tasks.map(function (task, i) {
+        return { candidate: row(TASK_ROW + task.id, "todoist-task", task.content, { subtitle: whereLine(task.project, task.due), glyph: TASK_GLYPH, typeLabel: "Ctrl %1", typeLabelValues: [i + 1] }), record: null }
+      }) })
+    return out
+  }
   var recent = env.recent || []
   if (recent.length)
     out.push({ id: "todoist-recent", title: "Added from here", rows: recent.map(function (e) {
       var when = env.relative(e.addedAt, env.nowMs)
-      var where = [e.project, e.due].filter(function (part) {
-        return part
-      }).join(" · ")
-      return { candidate: row("todoist:recent:" + e.id, "todoist-recent", e.content, { subtitle: where, glyph: TASK_GLYPH, typeLabel: when[0], typeLabelValues: when[1] }), record: null }
+      return { candidate: row("todoist:recent:" + e.id, "todoist-recent", e.content, { subtitle: whereLine(e.project, e.due), glyph: TASK_GLYPH, typeLabel: when[0], typeLabelValues: when[1] }), record: null }
     }) })
   return out
 }
 
-// The task a row opens (Open in Todoist, a task added from here), or "".
+// The task a row opens (Open in Todoist, a task added from here, a task the
+// search found), or "".
 function rowTask(rowId) {
-  var match = /^todoist:(?:open-task|recent):(.+)$/.exec(String(rowId || ""))
+  var match = /^todoist:(?:open-task|recent|task):(.+)$/.exec(String(rowId || ""))
   return match && validId(match[1]) ? match[1] : ""
+}
+
+// Which Ctrl+1…9 opens a task row: its place among the tasks shown for the
+// text, or 0 when it is not one of them.
+function taskNumber(rowId, text, cursor, env) {
+  if (!isTaskRow(rowId))
+    return 0
+  var id = rowTask(rowId)
+  var tasks = shownTasks(text, cursor, env)
+  for (var i = 0; i < tasks.length; i++)
+    if (tasks[i].id === id)
+      return i + 1
+  return 0
 }
 
 // The suggestion Tab inserts for a row: the row's own, or the first one when
@@ -893,6 +1020,10 @@ function actions(rowId, text, cursor, env, closeOnAdd) {
     add("todoist-add-alt", closeOnAdd ? "Add and Keep Open" : "Add and Close", "Shift ↵")
     if (insertFor(rowId, text, cursor, env))
       add("todoist-insert", "Insert", "Tab")
+    // A task the search found: Enter still adds, its Ctrl+N or a click opens it.
+    var number = taskNumber(rowId, text, cursor, env)
+    if (number)
+      add("open", "Open in Todoist", "Ctrl " + number)
   } else if (task)
     add("open", "Open in Todoist", "↵")
   // The card after an add is the task: Enter or Ctrl+O opens it.
@@ -921,6 +1052,9 @@ function actions(rowId, text, cursor, env, closeOnAdd) {
 if (typeof module !== "undefined") {
   module.exports = {
     CONTRACT: CONTRACT, MAX_TEXT: MAX_TEXT, MAX_SUGGESTIONS: MAX_SUGGESTIONS, MAX_RECENT: MAX_RECENT,
+    MAX_TASKS: MAX_TASKS, MAX_TASK_RESULTS: MAX_TASK_RESULTS, MIN_TASK_QUERY: MIN_TASK_QUERY,
+    plainText: plainText, readTasks: readTasks, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
+    shownTasks: shownTasks, taskNumber: taskNumber,
     MAX_NAMES_OUTPUT: MAX_NAMES_OUTPUT, MAX_REPLY_OUTPUT: MAX_REPLY_OUTPUT, MAX_NOTIFY_BYTES: MAX_NOTIFY_BYTES,
     DEADLINE_MS: DEADLINE_MS, WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS, CAPPED_SCRIPT: CAPPED_SCRIPT, CAPPED_EXIT: CAPPED_EXIT,
     HELPER_MESSAGES: HELPER_MESSAGES, SYNTAX: SYNTAX,

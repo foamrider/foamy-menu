@@ -9,8 +9,9 @@ import "../kit"
 // (never its keyring or cache) and `omarchy-shell foamy.todoist …`.
 //
 // - `names` (the projects, sections, labels and people the suggestions
-//   match) runs when the input is entered, when the launcher opens on it and
-//   after each add; nothing per keystroke.
+//   match, and the open tasks the search matches) runs when the input is
+//   entered, when the launcher opens on it and after each add; nothing per
+//   keystroke.
 // - `add` runs on Enter, one at a time, and `notify` once after an add whose
 //   reply arrives while the launcher is closed (D12).
 // - Helper runs go one at a time, each under `timeout` (the whole process

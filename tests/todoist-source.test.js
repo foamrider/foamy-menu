@@ -113,7 +113,7 @@ function harness() {
   }
 }
 
-const names = { ok: true, contract: 1, state: "signed_in", inbox_project_id: "inbox1", projects: [{ id: "inbox1", name: "Inbox", inbox: true, shared: false }, { id: "home1", name: "Home", inbox: false, shared: false }], sections: [], labels: ["phone"], collaborators: [], project_collaborators: {}, truncated: false }
+const names = { ok: true, contract: 1, state: "signed_in", inbox_project_id: "inbox1", projects: [{ id: "inbox1", name: "Inbox", inbox: true, shared: false }, { id: "home1", name: "Home", inbox: false, shared: false }], sections: [], labels: ["phone"], collaborators: [], project_collaborators: {}, tasks: [], truncated: false }
 const added = (id = "t1", extra) => ({ ok: true, contract: 1, added: id, task: { id, content: "Buy milk", project_id: "home1", section_id: null, priority: 1, labels: [], due: null }, project: { id: "home1", name: "Home", inbox: false }, ...extra })
 const command = (proc) => Array.from(proc.command)
 

@@ -40,7 +40,8 @@ def load(name, file):
 stock_runtime = load("stock_runtime", "runtime.py")
 launcher = load("launcher_runtime", "launcher.py")
 
-# Contract 1's names reply: a few projects, a section and labels.
+# Contract 1's names reply: a few projects, a section, labels and the open
+# tasks the search matches (in names' order).
 NAMES = {
     "ok": True,
     "contract": 1,
@@ -55,6 +56,44 @@ NAMES = {
     "labels": ["phone", "errands"],
     "collaborators": [],
     "project_collaborators": {},
+    "tasks": [
+        {
+            "id": "k1",
+            "content": "Water the **plants**",
+            "project_id": "home1",
+            "section_id": "s1",
+            "priority": 1,
+            "labels": ["errands"],
+            "due": {"date": "2026-11-21", "is_recurring": False, "string": "21 Nov"},
+        },
+        {
+            "id": "k2",
+            "content": "Buy plant food",
+            "project_id": "inbox1",
+            "section_id": None,
+            "priority": 1,
+            "labels": [],
+            "due": {"date": "2026-11-23", "is_recurring": True, "string": "every Monday"},
+        },
+        {
+            "id": "k3",
+            "content": "Repot the plants in the lab and order new pots before the weekend sale ends",
+            "project_id": "lab1",
+            "section_id": None,
+            "priority": 4,
+            "labels": [],
+            "due": None,
+        },
+        {
+            "id": "k4",
+            "content": "Renew passport",
+            "project_id": "inbox1",
+            "section_id": None,
+            "priority": 1,
+            "labels": [],
+            "due": None,
+        },
+    ],
     "truncated": False,
 }
 

@@ -312,6 +312,13 @@ the date Todoist set.
 - While the cursor is in a `#`, `/`, `@` or `+` word, the list shows matching
   projects, sections (of the `#project` before it), labels or people, at most
   six. ↑/↓ pick, Tab inserts, Esc closes the list.
+- Otherwise **Tasks** lists your open tasks that the card's title matches (the
+  typed text without the Quick Add tokens, at least two characters), as
+  Foamy Todoist's search does: every word in the task, its project's name or
+  its labels, ignoring case. At most nine, in Foamy Todoist's order, each with
+  its project and date and the key that opens it: **Ctrl+1**…**Ctrl+9** (or a
+  click) opens that task in Todoist. Enter still adds the typed text. With
+  text in the field the results take the place of **Added from here**.
 - **Enter adds the task** (it never inserts a suggestion) and keeps the
   launcher open with an empty field for the next one; **Shift+Enter** adds and
   closes. **After adding** (`todoistCloseOnAdd`) swaps the two.
@@ -330,23 +337,25 @@ the date Todoist set.
   Todoist without the helper this menu needs says it needs an update; one
   with no helper for this CPU says it isn't available.
 - Ctrl+K offers **Add Task**, the Shift+Enter variant, **Insert**, **Open in
-  Todoist**, **Open Foamy Todoist** and **Copy Text**. Backspace on an empty
+  Todoist** (on a search result with its Ctrl+N), **Open Foamy Todoist** and
+  **Copy Text**. Backspace on an empty
   field, or Esc on one, leaves.
 - When the launcher is closed as the answer arrives (closed by the add, or Esc
   during it), Foamy Todoist's helper shows a notification for it: added,
   failed, or maybe added. Never while the launcher is open.
 
-Nothing is sent while you type: the projects, sections, labels and people
-come from Foamy Todoist's cache (its helper's `names`, read when you enter the
-input and after each add), and matching runs in the launcher. On Enter the
+Nothing is sent while you type: the projects, sections, labels, people and
+open tasks (at most 5 000) come from Foamy Todoist's cache (its helper's
+`names`, read when you enter the input and after each add), and matching runs
+in the launcher. On Enter the
 text goes to Todoist through Foamy Todoist's helper (`add`, the text on its
 standard input, never on a command line), which holds the token; the menu
 never reads the keyring or the cache. After an add the menu runs
 `omarchy-shell foamy.todoist refresh` so the bar and panel update, and opens
 tasks with `omarchy-shell foamy.todoist openTask` / `openInbox`, so Foamy
 Todoist's open command is used. Each helper run ends within 30 seconds (its
-process group is stopped), and at most 16 MiB of its output is read (the
-list of names; an add reply at most 256 KiB).
+process group is stopped), and at most 24 MiB of its output is read (the
+names and tasks; an add reply at most 256 KiB).
 
 A scope file can change the keyword (`{"id": "todoist", "keyword": "t"}`) or
 turn the input off. It cannot turn it on, change what it runs, or make a new

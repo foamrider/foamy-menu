@@ -102,7 +102,8 @@ Item {
 
   // The Todoist input's card, like the calculator's: the task as Todoist
   // will read it (title large), one chip per Quick Add token, and a status
-  // line (the date hint, Adding…, Added, why it failed). Plain text only.
+  // line when there is something to say (Adding…, Added, why it failed).
+  // Plain text only.
   // Drawn in this item, not a Loader's component, and the chips get all
   // they show from their model, so every name here resolves where it is.
   readonly property var todoistInfo: {

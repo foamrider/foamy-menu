@@ -499,6 +499,27 @@ OverlayWindow {
     return -1
   }
 
+  // The Todoist input's Ctrl+N: the nth task the search found; the card and
+  // the other rows are not counted.
+  function nthTask(n) {
+    let seen = 0
+    for (let i = 0; i < rows.count; i++) {
+      if (!TodoistInput.isTaskRow(rows.get(i).itemId))
+        continue
+      if (++seen === n)
+        return i
+    }
+    return -1
+  }
+
+  // Ctrl+1…9 opens the nth row Enter could run, or in the Todoist input the
+  // nth task the search found.
+  function openNth(n) {
+    const target = window.inputView ? window.nthTask(n) : window.nthItem(n)
+    if (target >= 0)
+      window.perform("open", target)
+  }
+
   function actionsForSelected() {
     if (window.searchPending || !window.selectedRow)
       return []
@@ -1261,9 +1282,7 @@ OverlayWindow {
         return true
       }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
-        var target = window.nthItem(key - Qt.Key_0)
-        if (target >= 0)
-          window.perform("open", target)
+        window.openNth(key - Qt.Key_0)
         return true
       }
     }

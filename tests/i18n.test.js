@@ -44,7 +44,7 @@ function usedKeys() {
   // The Todoist input: the card's lines and titles, its rows, sections and
   // actions, and the helper's messages it shows (copied from Foamy Todoist).
   const todoist = read("core/TodoistInput.js")
-  for (const pattern of [/line\("\w+", "([^"]+)"/g, /\? "([A-Z][^"]+)" :/g, /title: "([^"]+)"/g, /key: "([^"]+)"/g, /\bt\("([^"]+)"/g, /: "([A-Z][a-z]+)"/g])
+  for (const pattern of [/line\("\w+", "([^"]+)"/g, /\? "([A-Z][^"]+)" :/g, /title: "([^"]+)"/g, /typeLabel: "([^"]+)"/g, /key: "([^"]+)"/g, /\bt\("([^"]+)"/g, /: "([A-Z][a-z]+)"/g])
     for (const [, key] of todoist.matchAll(pattern)) keys.add(key)
   for (const [, a, b] of todoist.matchAll(/add\("[\w-]+", (?:closeOnAdd \? )?"([^"]+)"(?: : "([^"]+)")?/g)) { keys.add(a); if (b) keys.add(b) }
   const TodoistInput = require("../core/TodoistInput.js")
