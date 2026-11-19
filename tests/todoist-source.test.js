@@ -40,7 +40,7 @@ function line(signature, anchor) {
 }
 
 const FUNCTIONS = ["enter", "leave", "refreshNames", "launcherShown", "add", "addDone", "resultText", "notify", "openTask", "openInbox", "openApp",
-  "shell", "nextShell", "shellDone", "enqueue", "next", "finish", "namesDone", "killGroup"]
+  "shell", "nextShell", "shellDone", "enqueue", "next", "finish", "namesDone", "killGroup", "setUnresolved"]
 
 function harness() {
   const later = []
@@ -49,7 +49,7 @@ function harness() {
   const proc = { job: null, input: "", startedAt: 0, processId: 4242, stdinEnabled: false, command: [], starts: 0, write(t) { log.writes.push(t) }, signal(n) { log.signals.push(n) } }
   log.reaped = []
   const reaper = { command: [], startDetached() { log.reaped.push(Array.from(this.command)) } }
-  const shellProc = { args: null, explicit: false, generation: 0, command: [], starts: 0 }
+  const shellProc = { args: null, explicit: false, generation: 0, processId: 5151, command: [], starts: 0 }
   log.opened = []
   for (const p of [proc, shellProc])
     Object.defineProperty(p, "running", {
@@ -60,7 +60,7 @@ function harness() {
   const source = {
     pluginDir: "/plugins/foamy.todoist", launcherOpen: true,
     availability: "checking", model: null, adding: false, addingText: "", result: null, confirming: false,
-    retryUntil: 0, waiting: false, recent: [], lastTaskId: "", visit: 0, entered: false, revision: 0, queue: [], shellQueue: [], groupKill: [], openGeneration: 0,
+    retryUntil: 0, waiting: false, recent: [], lastTaskId: "", visit: 0, entered: false, revision: 0, queue: [], shellQueue: [], groupKill: [], openGeneration: 0, unresolved: [], maxUnresolved: 20, shellGroupKill: [],
     message: (level, message) => log.messages.push(level + ": " + message),
     textAdded: () => log.added++,
     openFinished: (ok) => log.opened.push(ok),
@@ -105,6 +105,7 @@ function harness() {
     failStart() { proc._running = false; run("with (proc) (function() { " + stopped + " })()") },
     fire() { run("(function() " + triggered.slice(triggered.indexOf("{")) + ")()") },
     destroy() { run("(function() " + destroyed.slice(destroyed.indexOf("{")) + ")()") },
+    shellStart() { run("(function() { " + text.split("\n").find((l) => l.includes("onStarted: source.shellGroupKill")).split("onStarted:")[1] + " })()") },
     shellExit(code) {
       shellProc._running = false
       run("(" + shellExited.slice(shellExited.indexOf("function")) + ")(" + code + ")")
@@ -184,12 +185,14 @@ test("Enter adds once: the request on stdin, the field cleared, the task under A
   assert.deepEqual(h.source.recent.map((e) => [e.id, e.content, e.project]), [["t1", "Buy milk", "Home"]])
   assert.equal(h.source.lastTaskId, "t1")
   h.flush()
-  assert.equal(h.proc.job.command, "names", "names again after an add")
+  assert.equal(h.proc.job, null, "no names run after an add: the reply's task joins the search list")
+  assert.deepEqual(h.source.model.tasks.map((t) => t.id)[0], "t1")
+  assert.deepEqual(TodoistInput.matchTasks(h.source.model, "milk").map((t) => t.id), ["t1"], "found at once")
   assert.deepEqual(command(h.shellProc), ["timeout", "--kill-after=1s", "10s", "omarchy-shell", "foamy.todoist", "refresh"])
   h.shellExit(1)
   assert.ok(h.log.messages.some((m) => /foamy.todoist refresh failed \(exit 1\)/.test(m)), "a refresh failure is logged only")
   assert.equal(h.shellProc.args, null)
-  assert.equal(h.proc.starts, 3)
+  assert.equal(h.proc.starts, 2, "names on entering, then the add; nothing more")
   assert.equal(h.log.writes.filter((w) => w.includes('"kind"')).length, 0, "no notification while the launcher is open")
 })
 
@@ -494,4 +497,56 @@ test("the real wrapper cuts a flood at the cap (exit 141) and reports a missing 
   assert.equal(Buffer.byteLength(r.stdout), 4096)
   const missing = runReal(path.join(dir, "nowhere"), ["names"], "")
   assert.ok(FoamyNative.unavailable(missing.status), String(missing.status))
+})
+
+test("an add that may have reached Todoist keeps needing a second Enter after leaving the input or when its answer came late", () => {
+  const h = harness()
+  ready(h)
+  h.source.add("Buy milk")
+  h.flush()
+  h.start()
+  h.reply({ ok: false, code: "UNKNOWN_OUTCOME", error: "x", contract: 1 })
+  h.flush()
+  h.source.leave()
+  h.source.enter()
+  h.flush()
+  h.start()
+  h.reply(names)
+  h.flush()
+  assert.equal(h.source.add("Buy milk"), false, "after leaving, one Enter doesn't send it again")
+  assert.equal(h.source.result.kind, "unknown")
+  assert.equal(h.source.confirming, true)
+  assert.equal(h.source.add("Buy milk"), true, "a second Enter does")
+  h.flush()
+  h.start()
+  h.reply(added("t9"))
+  h.flush()
+  assert.deepEqual(Array.from(h.source.unresolved), [], "an add that worked clears it")
+  // An unknown answer that arrives after the visit ended still counts.
+  h.source.add("Buy bread")
+  h.flush()
+  h.start()
+  h.source.leave()
+  h.reply("", 124)
+  h.source.enter()
+  h.flush()
+  h.start()
+  h.reply(names)
+  h.flush()
+  assert.equal(h.source.add("Buy bread"), false, "the late unknown answer guards it too")
+})
+
+test("teardown: a running notify is left to the helper (it ends its sender's group itself); an IPC call's group is killed", () => {
+  const h = harness()
+  ready(h)
+  h.source.launcherOpen = false
+  h.source.enqueue({ command: "notify", input: "{}\n", visit: h.source.visit })
+  h.flush()
+  h.start()
+  assert.equal(h.proc.job.command, "notify")
+  h.source.shell(["openInbox"], true)
+  h.flush()
+  h.shellStart()
+  h.destroy()
+  assert.deepEqual(h.log.reaped, [Array.from(FoamyPrefs.killGroupCommand(5151))], "only the IPC call's group, not the notify")
 })

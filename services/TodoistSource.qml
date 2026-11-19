@@ -125,11 +125,34 @@ Item {
 
   // Enter: adds the text, or says why not (false). An unknown outcome for
   // the same text needs a second Enter first.
+  // Texts whose add may have reached Todoist (an unknown outcome), for the
+  // whole shell session: leaving the input, or an answer that came after
+  // the visit ended, must not let the same text go again on one Enter.
+  // Newest last, at most MAX_UNRESOLVED; an add of the text that worked
+  // takes it off.
+  property var unresolved: []
+  readonly property int maxUnresolved: 20
+  function setUnresolved(text, pending) {
+    var rest = source.unresolved.filter(function (other) {
+      return other !== text
+    })
+    source.unresolved = (pending ? rest.concat([text]) : rest).slice(-source.maxUnresolved)
+  }
+
   function add(text) {
     var request = TodoistInput.addRequest(text)
     if (!TodoistInput.canAdd(text, source.inputState, Date.now()) || !request)
       return false
-    if (source.result && source.result.kind === "unknown" && source.result.text === request.text && !source.confirming) {
+    var confirmed = source.confirming && source.result && source.result.text === request.text
+    if (source.unresolved.indexOf(request.text) >= 0 && !confirmed) {
+      source.result = {
+        kind: "unknown",
+        text: request.text,
+        message: {
+          key: "Todoist may have added it. Check Todoist before you add it again.",
+          values: []
+        }
+      }
       source.confirming = true
       source.revision++
       return false
@@ -158,6 +181,10 @@ Item {
     }
     if (outcome.kind === "signedOut" || outcome.kind === "needsUpdate" || outcome.kind === "unavailable")
       source.availability = outcome.kind
+    if (outcome.kind === "unknown")
+      source.setUnresolved(job.text, true)
+    else if (outcome.kind === "added")
+      source.setUnresolved(job.text, false)
     if (outcome.kind === "added") {
       if (source.availability === "signedOut" || source.availability === "checking")
         source.availability = "ready"
@@ -177,7 +204,10 @@ Item {
     if (outcome.kind === "added") {
       if (current)
         source.textAdded()
-      source.refreshNames()
+      // The reply has the task: it joins the search list here, so `names`
+      // (a read of the whole cache) doesn't run again. A label or project
+      // the add created shows up at the next names run (the next visit).
+      source.model = TodoistInput.withAddedTask(source.model, outcome.task)
       source.shell(["refresh"])
     }
     source.revision++
@@ -251,6 +281,9 @@ Item {
   // (`explicit`) reports through openFinished, so the launcher closes only
   // once it worked and says why when it didn't.
   property var shellQueue: []
+  // Kills the running IPC call's process group (`timeout` leads it); [] when
+  // none runs. For Component.onDestruction.
+  property var shellGroupKill: []
   // Bumped when the input is entered or left and when the launcher shows or
   // hides: an open's answer for an earlier one must not close or toast the
   // launcher the user is in now.
@@ -291,6 +324,7 @@ Item {
     if (!args)
       return
     shellProc.args = null
+    source.shellGroupKill = []
     if (code !== 0)
       source.message("warning", "todoist: omarchy-shell foamy.todoist " + args[0] + " failed (exit " + code + ")", null)
     if (shellProc.explicit && shellProc.generation === source.openGeneration && source.launcherOpen)
@@ -304,6 +338,7 @@ Item {
     property var args: null
     property bool explicit: false
     property int generation: 0
+    onStarted: source.shellGroupKill = FoamyPrefs.killGroupCommand(shellProc.processId)
     onExited: function (exitCode) {
       source.shellDone(exitCode)
     }
@@ -445,11 +480,21 @@ Item {
   // Destroyed mid-run (a shell or plugin reload): Quickshell kills only the
   // group leader, so the helper could still add the task with nobody to
   // read the reply. Kill the whole group.
+  // A running notify is left to finish: the helper bounds it (2 s) and
+  // kills the sender's whole group itself, which a kill from here can't
+  // reach (the sender leads a group of its own). names and add are killed,
+  // so an add can't happen with nobody to read the reply. An IPC call's
+  // group (omarchy-shell and what it started) is killed too.
   Component.onDestruction: {
     watchdog.stop()
-    if (proc.job)
+    if (proc.job && proc.job.command !== "notify")
       source.killGroup()
     source.groupKill = []
+    if (shellProc.args && source.shellGroupKill.length) {
+      reaper.command = source.shellGroupKill
+      reaper.startDetached()
+    }
+    source.shellGroupKill = []
   }
 
   Process {

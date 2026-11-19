@@ -346,9 +346,10 @@ the date Todoist set.
 
 Nothing is sent while you type: the projects, sections, labels, people and
 open tasks (at most 1 000) come from Foamy Todoist's cache (its helper's
-`names`, read when you enter the input and after each add), and matching runs
-in the launcher. On Enter the
-text goes to Todoist through Foamy Todoist's helper (`add`, the text on its
+`names`, a read of that cache with no network, when you enter the input or
+the launcher opens in it; a task added from here joins the list from the
+add's reply), and matching runs in the launcher, at most 8 words per search.
+On Enter the text goes to Todoist through Foamy Todoist's helper (`add`, the text on its
 standard input, never on a command line), which holds the token; the menu
 never reads the keyring or the cache. After an add the menu runs
 `omarchy-shell foamy.todoist refresh` so the bar and panel update, and opens

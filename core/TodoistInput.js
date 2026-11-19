@@ -27,6 +27,16 @@ var MAX_SUGGESTIONS = 6
 // shortest title it searches for.
 var MAX_TASK_RESULTS = 9
 var MIN_TASK_QUERY = 2
+// A searched task as the helper sends it (contract: text cut to 200
+// characters, at most 10 labels of at most 100). Anything longer is not a
+// reply this menu reads: checked before any regular expression runs on it,
+// so a hostile reply can't make plainText or the search slow.
+var MAX_TASK_CONTENT = 200
+var MAX_TASK_LABELS = 10
+var MAX_TASK_LABEL = 100
+// Distinct words a search matches on: each one is compared with every
+// task's text, so a pasted wall of words can't multiply the work.
+var MAX_SEARCH_WORDS = 8
 // Tasks listed under "Added from here", newest first, kept for the shell
 // session only.
 var MAX_RECENT = 5
@@ -527,7 +537,11 @@ function readTasks(list, projects) {
   var seen = dict()
   var out = []
   list.forEach(function (raw) {
-    if (!isObject(raw) || !validId(raw.id) || seen[raw.id] || typeof raw.content !== "string")
+    if (!isObject(raw) || !validId(raw.id) || seen[raw.id] || typeof raw.content !== "string" || charCount(raw.content) > MAX_TASK_CONTENT)
+      return
+    if (raw.labels !== undefined && raw.labels !== null && (!Array.isArray(raw.labels) || raw.labels.length > MAX_TASK_LABELS || raw.labels.some(function (label) {
+      return typeof label !== "string" || label.length > MAX_TASK_LABEL
+    })))
       return
     seen[raw.id] = true
     var project = typeof raw.project_id === "string" && has(projects, raw.project_id) ? projects[raw.project_id].name : ""
@@ -549,6 +563,29 @@ function readTasks(list, projects) {
   return out
 }
 
+// The search list with a task just added from here first (replacing an
+// entry with its id), so it is found at once without reading `names` again.
+// `task` is readTask's. The model is copied, not changed.
+function withAddedTask(model, task) {
+  if (!model || !model.tasks || !task || !validId(task.id))
+    return model
+  var content = firstChars(task.content, MAX_TASK_CONTENT)
+  var labels = (task.labels || []).slice(0, MAX_TASK_LABELS)
+  var entry = {
+    id: task.id,
+    content: content,
+    project: task.project,
+    due: task.due,
+    dueDay: task.dueDay || "",
+    haystack: [content, task.project].concat(labels).join("\n").toLowerCase()
+  }
+  var out = Object.assign({}, model)
+  out.tasks = [entry].concat(model.tasks.filter(function (other) {
+    return other.id !== task.id
+  })).slice(0, MAX_TASKS)
+  return out
+}
+
 // The tasks whose content, project name or labels hold every word of the
 // query (ignoring case; `@word` matches the label), the first
 // MAX_TASK_RESULTS in the order `names` gives; none for a query shorter than
@@ -556,12 +593,14 @@ function readTasks(list, projects) {
 // foamy-todoist's Model.js (searchRows), commit 1d4fb0b; adapted: the
 // haystacks come from readTasks, and the results are not grouped.
 function matchTasks(model, query) {
-  if (!model || !model.tasks || charCount(String(query || "").trim()) < MIN_TASK_QUERY)
+  var q = String(query || "").trim()
+  if (!model || !model.tasks || charCount(q) < MIN_TASK_QUERY || charCount(q) > MAX_TEXT)
     return []
-  var words = String(query || "").toLowerCase().split(/\s+/).filter(function (word) {
-    return word !== ""
-  }).map(function (word) {
-    return word.charAt(0) === "@" && word.length > 1 ? word.slice(1) : word
+  var words = []
+  q.toLowerCase().split(/\s+/).forEach(function (word) {
+    word = word.charAt(0) === "@" && word.length > 1 ? word.slice(1) : word
+    if (word !== "" && words.length < MAX_SEARCH_WORDS && words.indexOf(word) < 0)
+      words.push(word)
   })
   if (!words.length)
     return []
@@ -590,6 +629,8 @@ function readTask(reply) {
   var due = task && isObject(task.due) && typeof task.due.string === "string" ? firstChars(oneLine(task.due.string), 200) : ""
   return {
     id: reply.added,
+    // As readTasks reads it, so the task can join the search list.
+    dueDay: task && isObject(task.due) && task.due.is_recurring !== true && typeof task.due.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(task.due.date) ? task.due.date.slice(0, 10) : "",
     content: task && typeof task.content === "string" ? firstChars(oneLine(task.content), MAX_TEXT) : "",
     project: project ? firstChars(oneLine(name(project.name)), 200) : "",
     projectInbox: !!project && project.inbox === true,
@@ -1079,7 +1120,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     CONTRACT: CONTRACT, MAX_TEXT: MAX_TEXT, MAX_SUGGESTIONS: MAX_SUGGESTIONS, MAX_RECENT: MAX_RECENT,
     MAX_TASKS: MAX_TASKS, MAX_TASK_RESULTS: MAX_TASK_RESULTS, MIN_TASK_QUERY: MIN_TASK_QUERY,
-    plainText: plainText, readTasks: readTasks, dueLabel: dueLabel, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
+    plainText: plainText, readTasks: readTasks, dueLabel: dueLabel, withAddedTask: withAddedTask, MAX_SEARCH_WORDS: MAX_SEARCH_WORDS, MAX_TASK_CONTENT: MAX_TASK_CONTENT, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
     shownTasks: shownTasks, taskNumber: taskNumber,
     MAX_NAMES_OUTPUT: MAX_NAMES_OUTPUT, MAX_REPLY_OUTPUT: MAX_REPLY_OUTPUT, MAX_NOTIFY_BYTES: MAX_NOTIFY_BYTES,
     DEADLINE_MS: DEADLINE_MS, WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS, CAPPED_SCRIPT: CAPPED_SCRIPT, CAPPED_EXIT: CAPPED_EXIT,

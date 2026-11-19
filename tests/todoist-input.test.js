@@ -157,7 +157,7 @@ const added = {
 test("addOutcome: each helper reply and exit, as the error table reads them", () => {
   const ok = TI.addOutcome(run(added))
   assert.equal(ok.kind, "added")
-  assert.deepEqual(ok.task, { id: "t1", content: "Call the dentist", project: "Home", projectInbox: false, sectionId: "", priority: 3, labels: ["phone"], due: "tomorrow 9am" })
+  assert.deepEqual(ok.task, { id: "t1", content: "Call the dentist", project: "Home", projectInbox: false, sectionId: "", priority: 3, labels: ["phone"], due: "tomorrow 9am", dueDay: "2026-11-20" })
   const warned = TI.addOutcome(run({ ...added, warning: "Can't save the Todoist cache (%1).\u001fdisk full", warning_code: "RATE_LIMITED", retry_after: 12, stale: true }))
   assert.deepEqual([warned.kind, warned.warning, warned.retryAfter], ["added", { key: "Can't save the Todoist cache (%1).", values: ["disk full"] }, 12])
   const cases = [
@@ -397,10 +397,18 @@ test("readNames reads the open tasks: bounded, plain text, haystacks lowercased 
   const many = Array.from({ length: TI.MAX_TASKS }, (_, i) => ({ id: "x" + i, content: "Task " + i, project_id: "home1", labels: [], due: null }))
   assert.equal(TI.readNames({ ...names, tasks: many }).tasks.length, TI.MAX_TASKS, "at the cap")
   assert.equal(TI.readNames({ ...names, tasks: many.concat([{ id: "y", content: "one more" }]) }), null, "over the helper's cap")
-  const odd = TI.readNames({ ...names, tasks: [{ id: "z1", content: "Line\none " + "x".repeat(600), project_id: "__proto__", labels: [7, "", "ok"], due: { string: 5 } }] }).tasks[0]
-  assert.equal(odd.content.length, TI.MAX_TEXT, "content cut at Todoist's limit, on one line")
-  assert.ok(!odd.content.includes("\n"))
-  assert.deepEqual([odd.project, odd.due, odd.haystack.endsWith("\n\nok")], ["", "", true], "only text labels, no project from a prototype key")
+  const odd = TI.readNames({ ...names, tasks: [{ id: "z1", content: "Line\none " + "x".repeat(150), project_id: "__proto__", labels: ["", "ok"], due: { string: 5 } }] }).tasks[0]
+  assert.ok(!odd.content.includes("\n"), "content on one line")
+  assert.deepEqual([odd.project, odd.due, odd.haystack.endsWith("\n\nok")], ["", "", true], "only named labels, no project from a prototype key")
+  // Over the helper's bounds the task is skipped before any regular expression runs on it.
+  const hostile = (task) => TI.readNames({ ...names, tasks: [task, { id: "fine", content: "ok", labels: [] }] }).tasks.map((t) => t.id)
+  assert.deepEqual(hostile({ id: "h1", content: "[".repeat(65536), labels: [] }), ["fine"], "content over 200 characters")
+  assert.deepEqual(hostile({ id: "h2", content: "x", labels: Array.from({ length: 11 }, () => "l") }), ["fine"], "more than 10 labels")
+  assert.deepEqual(hostile({ id: "h3", content: "x", labels: ["l".repeat(101)] }), ["fine"], "a label over 100 characters")
+  assert.deepEqual(hostile({ id: "h4", content: "x", labels: [7] }), ["fine"], "a label that isn't text")
+  let started = process.hrtime.bigint()
+  TI.readNames({ ...names, tasks: [{ id: "h5", content: "[".repeat(1 << 20), labels: [] }] })
+  assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 200, "a huge content costs no regex time")
   assert.equal(TI.plainText("**bold** and `code` and snake_case"), "bold and code and snake_case")
 })
 
@@ -468,4 +476,12 @@ test("a searched task's date is read from today: Today, Tomorrow, Yesterday or a
   assert.equal(at("2026-11-23", true, "every Monday"), "every Monday")
   assert.equal(at("not a date", false, "someday"), "someday")
   assert.equal(TI.dueLabel(TI.readTasks([{ id: "a1", content: "x", labels: [], due: null }], {})[0], env), "")
+})
+
+test("a search matches on at most 8 distinct words, and none for text over 500 characters", () => {
+  const model = TI.readNames({ ok: true, contract: 1, state: "signed_in", inbox_project_id: null, projects: [], sections: [], labels: [], collaborators: [], project_collaborators: {}, truncated: false,
+    tasks: [{ id: "a1", content: "one two three four five six seven eight", labels: [] }] })
+  assert.deepEqual(TI.matchTasks(model, "one two three four five six seven eight nine").map((t) => t.id), ["a1"], "the ninth word isn't compared")
+  assert.deepEqual(TI.matchTasks(model, "one one one one one one one one one two").map((t) => t.id), ["a1"], "repeated words count once")
+  assert.deepEqual(TI.matchTasks(model, "z ".repeat(8190) + "one"), [], "a pasted wall of text searches nothing")
 })
