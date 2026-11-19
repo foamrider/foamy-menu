@@ -1158,7 +1158,7 @@ OverlayWindow {
         return true
       }
       if (ctrl && key >= Qt.Key_1 && key <= Qt.Key_9) {
-        var target = window.nthItem(key - Qt.Key_0)
+        const target = window.nthItem(key - Qt.Key_0)
         if (target >= 0)
           window.perform("open", target)
         return true

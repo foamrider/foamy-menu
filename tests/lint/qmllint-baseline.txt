@@ -238,7 +238,6 @@ ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block sco
 ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var previous = list.itemAtIndex(window.selectedIndex)
 ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var section = result.data[s]
 ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var spec = Object.assign({}, outcome.confirm, {
-ui/LauncherWindow.qml: block-scope-var-declaration: var declaration in block scope is hoisted to function scope | var target = window.nthItem(key - Qt.Key_0)
 ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.candidatesRevision
 ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.settings
 ui/LauncherWindow.qml: confusing-expression-statement: Expression statement has no obvious effect. | window.backend.storeRevision
