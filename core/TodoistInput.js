@@ -801,7 +801,7 @@ function shownSuggestions(model, text, cursor, s, hiddenKey) {
 }
 
 // The Todoist input's list: the card first, then the row the card's state
-// offers (Open in Todoist after an add, Open Inbox after an unknown outcome,
+// offers (Open Inbox after an unknown outcome,
 // Open Foamy Todoist when signed out), then the suggestions for the word at
 // the caret, or else the tasks added from here. `env`: {model, state (see
 // card()), recent, nowMs, hiddenKey, t (translate), relative (RootSearch's
@@ -829,11 +829,8 @@ function sections(text, cursor, env) {
   // caretKey: the word at the caret that could list suggestions, hidden or
   // not, so the launcher can forget an Esc once that word is gone.
   var atCaret = s.adding ? null : suggestions(env.model, String(text || ""), cursor)
-  var out = [{ id: "todoist-card", title: "", caretKey: atCaret ? atCaret.key : "", rows: [{ candidate: row(CARD_ID, "todoist-card", shown.title, { card: JSON.stringify(shown), selectable: hasText }), record: null }] }]
+  var out = [{ id: "todoist-card", title: "", caretKey: atCaret ? atCaret.key : "", rows: [{ candidate: row(CARD_ID, "todoist-card", shown.title, { card: JSON.stringify(shown), selectable: hasText || c.state === "added" }), record: null }] }]
   var offered = []
-  var result = s.result
-  if (c.state === "added")
-    offered.push(row("todoist:open-task:" + result.task.id, "todoist-action", t("Open in Todoist"), { glyph: OPEN_GLYPH, typeLabel: "Ctrl O" }))
   if (c.state === "unknown")
     offered.push(row("todoist:open-inbox", "todoist-action", t("Open Inbox in Todoist"), { glyph: INBOX_GLYPH }))
   if (c.state === "signedOut")
@@ -898,6 +895,9 @@ function actions(rowId, text, cursor, env, closeOnAdd) {
       add("todoist-insert", "Insert", "Tab")
   } else if (task)
     add("open", "Open in Todoist", "↵")
+  // The card after an add is the task: Enter or Ctrl+O opens it.
+  else if (rowId === CARD_ID && env.lastTaskId)
+    add("todoist-open-last", "Open in Todoist", "Ctrl O")
   else if (rowId === "todoist:open-inbox")
     add("open", "Open Inbox in Todoist", "↵")
   else if (rowId === "todoist:open-app")
@@ -908,7 +908,7 @@ function actions(rowId, text, cursor, env, closeOnAdd) {
   if (result && result.kind === "unknown" && !(rowId === "todoist:open-inbox" && String(text || "").trim() === ""))
     add("todoist-open-inbox", "Open Inbox in Todoist", "")
   var last = env.lastTaskId
-  if (last && last !== task)
+  if (last && last !== task && !(list.length && list[0].id === "todoist-open-last"))
     add("todoist-open-last", "Open in Todoist", "Ctrl O")
   // Not twice: on its own row with the field empty it is already Enter's.
   if (!(rowId === "todoist:open-app" && String(text || "").trim() === ""))

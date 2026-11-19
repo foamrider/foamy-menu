@@ -673,8 +673,10 @@ Item {
     var env = backend.todoistEnv(data.hideSuggestions)
     var edit = null
     var task = ""
+    // The card adds the typed text; with the field empty after an add it is
+    // that task, and opens it.
     if (action === "open" && id === TodoistInput.CARD_ID)
-      action = "todoist-add"
+      action = text.trim() === "" ? "todoist-open-last" : "todoist-add"
     if (action === "open" && id.indexOf("todoist:suggest:") === 0)
       action = "todoist-insert"
     switch (action) {

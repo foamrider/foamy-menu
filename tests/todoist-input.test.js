@@ -343,7 +343,10 @@ test("sections: the card, the offered row, then suggestions or the tasks added f
   assert.deepEqual(ids(TI.sections("Buy #ho", 7, env({ recent, hiddenKey: "4:project" }))), ["todoist:card", "todoist:recent:t1"], "Esc closed the list")
   assert.deepEqual(ids(TI.sections("Buy #ho", 7, env({ state: { ...idle, adding: true, addingText: "Buy #ho" } }))), ["todoist:card"], "no list while adding")
   const task = TI.addOutcome(run(added)).task
-  assert.deepEqual(ids(TI.sections("", 0, env({ state: { ...idle, result: { kind: "added", text: "x", task } } }))), ["todoist:card", "todoist:open-task:t1"])
+  const afterAdd = TI.sections("", 0, env({ state: { ...idle, result: { kind: "added", text: "x", task } } }))
+  assert.deepEqual(ids(afterAdd), ["todoist:card"], "no separate Open in Todoist row: the card is the task")
+  assert.equal(afterAdd[0].rows[0].candidate.selectable, true)
+  assert.deepEqual(TI.actions("todoist:card", "", 0, env({ lastTaskId: "t1" }), false).map((a) => [a.id, a.shortcut]), [["todoist-open-last", "Ctrl O"], ["todoist-open-app", ""]], "Enter or Ctrl+O opens it")
   assert.deepEqual(ids(TI.sections("Buy", 3, env({ state: { ...idle, result: { kind: "unknown", text: "Buy", message: { key: "k", values: [] } } } }))), ["todoist:card", "todoist:open-inbox"])
   assert.deepEqual(ids(TI.sections("", 0, env({ state: { ...idle, availability: "signedOut" } }))), ["todoist:card", "todoist:open-app"])
   const literal = JSON.parse(TI.sections("Today", 5, env({ t: () => "TRANSLATED" }))[0].rows[0].candidate.card)

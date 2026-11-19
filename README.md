@@ -318,7 +318,8 @@ the date Todoist set.
 - While the task is being added the text is locked; Enter does nothing more
   and Esc closes the launcher (the add goes on).
 - The card then shows the task as Todoist made it (project, labels, its date)
-  with **Open in Todoist** (Ctrl+O). **Added from here** lists the last five
+  and stays selected: Enter or Ctrl+O (shown in the footer) opens the task in
+  Todoist. **Added from here** lists the last five
   tasks added this session (kept in memory only); Enter on one opens it.
 - When Todoist refuses the task, the card says why and the text stays; Enter
   tries again. When no answer came back (Todoist's `UNKNOWN_OUTCOME`, or the

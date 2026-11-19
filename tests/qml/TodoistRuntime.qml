@@ -240,7 +240,8 @@ ShellRoot {
         }), "the request is the text as typed, with the short reply")
         test.check(view.query === "" && view.placeholder === test.said("Add another task…", "Legg til en oppgave til…"), "the field empties for the next task")
         test.check(test.card().state === "added" && test.card().title === "call the dentist slow p2", "the card shows Todoist's task: " + JSON.stringify(test.card()))
-        test.check(view.selectedRow && view.selectedRow.itemId === "todoist:open-task:t1", "Open in Todoist is offered")
+        test.check(view.selectedRow && view.selectedRow.itemId === "todoist:card" && view.actionsForSelected()[0].id === "todoist-open-last", "the card is the task: Enter or Ctrl+O opens it")
+        test.check(test.rowIds().indexOf("todoist:open-task:t1") < 0, "no separate Open in Todoist row")
         test.check(test.rowIds().indexOf("todoist:recent:t1") >= 0, "the task is under Added from here")
         if (test.waitFor(test.shellCalls().indexOf("foamy.todoist refresh") >= 0))
           break

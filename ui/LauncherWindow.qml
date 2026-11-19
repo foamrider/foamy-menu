@@ -1824,7 +1824,8 @@ OverlayWindow {
         KeyHint {
           visible: footerActions.primary !== null
           anchors.verticalCenter: parent.verticalCenter
-          keys: "↵"
+          // Enter runs it; the Todoist card after an add shows its own key.
+          keys: footerActions.primary && footerActions.primary.id === "todoist-open-last" ? footerActions.primary.shortcut : "↵"
           color: window.look.foreground
           zoom: window.zoom
         }
