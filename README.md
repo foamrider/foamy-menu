@@ -309,7 +309,7 @@ or a fixed list of bookmarks:
 
 | Field | Default | Meaning |
 |---|---|---|
-| `id` | file name | Lowercase letters, digits and `-`; matches a built-in to override it |
+| `id` | file name | Lowercase letters, digits and `-`, not `constructor`; matches a built-in to override it |
 | `enabled` | `true` | `false` hides the scope |
 | `title` | required | The scope's name: its row, tag and footer |
 | `subtitle` | `""` | Shown beside the row in the root search |

@@ -272,3 +272,9 @@ test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes
   const calcHistory = RS.rootSections(RS.BUILTINS.map(RS.builtinCandidate), "calc hist", { commands: {}, frecency: {}, nowMs: NOW }, deps)
   assert.equal(calcHistory[0].rows[0].candidate.title, "Calculator History")
 })
+
+test("Object.prototype names are not units, words or functions", () => {
+  for (const q of ["5 km to toString", "3 valueOf in m", "2 constructor", "constructor(2)", "hasOwnProperty(1)", "0x10 in constructor"])
+    assert.equal(result(q), null, q)
+  assert.equal(result("2 + 3"), "5")
+})

@@ -27,8 +27,16 @@
 // (bits), angle, money, CSS pixels.
 var DIM_KEYS = ["L", "M", "T", "K", "I", "D", "A", "C", "P"]
 
-var UNITS = {}        // exact symbol -> unit (case-sensitive)
-var UNIT_NAMES = {}   // lowercased long name or plural -> unit
+// Lookup tables keyed by typed words have no prototype, so "constructor" or
+// "toString" is not found in them.
+function table(entries) {
+  var out = Object.create(null)
+  for (var k in entries) out[k] = entries[k]
+  return out
+}
+
+var UNITS = Object.create(null)        // exact symbol -> unit (case-sensitive)
+var UNIT_NAMES = Object.create(null)   // lowercased long name or plural -> unit
 
 function dims(spec) {
   var out = {}
@@ -297,13 +305,13 @@ for (var _code in CURRENCIES) {
 }
 
 // Words that read as units only right after a number ("5 in", "3 d").
-var NUMBER_ONLY_UNITS = { "in": true, "d": true, "t": true, "y": true, "s": true, "h": true, "m": true, "g": true, "b": true, "B": true, "C": true, "F": true, "K": true, "A": true, "V": true, "N": true, "J": true, "W": true, "L": true, "l": true, "cup": true, "st": true, "ct": true, "pt": true, "em": true, "mo": true, "kn": true, "kt": true, "ac": true, "ha": true, "bar": true }
+var NUMBER_ONLY_UNITS = table({ "in": true, "d": true, "t": true, "y": true, "s": true, "h": true, "m": true, "g": true, "b": true, "B": true, "C": true, "F": true, "K": true, "A": true, "V": true, "N": true, "J": true, "W": true, "L": true, "l": true, "cup": true, "st": true, "ct": true, "pt": true, "em": true, "mo": true, "kn": true, "kt": true, "ac": true, "ha": true, "bar": true })
 
 // ------------------------------------------------------------- vocabulary
 
-var CONSTANTS = { pi: Math.PI, "π": Math.PI, tau: 2 * Math.PI, "τ": 2 * Math.PI, e: Math.E, phi: (1 + Math.sqrt(5)) / 2, "φ": (1 + Math.sqrt(5)) / 2 }
+var CONSTANTS = table({ pi: Math.PI, "π": Math.PI, tau: 2 * Math.PI, "τ": 2 * Math.PI, e: Math.E, phi: (1 + Math.sqrt(5)) / 2, "φ": (1 + Math.sqrt(5)) / 2 })
 
-var FUNCTIONS = {
+var FUNCTIONS = table({
   sqrt: Math.sqrt, cbrt: Math.cbrt, abs: Math.abs, exp: Math.exp, ln: Math.log,
   log: function(x, b) { return b === undefined ? Math.log10(x) : Math.log(x) / Math.log(b) },
   log10: Math.log10, log2: Math.log2,
@@ -313,18 +321,18 @@ var FUNCTIONS = {
   sinh: Math.sinh, cosh: Math.cosh, tanh: Math.tanh,
   min: Math.min, max: Math.max, pow: Math.pow,
   hypot: Math.hypot
-}
-var TRIG = { sin: true, cos: true, tan: true }
-var INVERSE_TRIG = { asin: true, acos: true, atan: true }
-var UNIT_PRESERVING = { abs: true, floor: true, ceil: true, round: true, trunc: true, min: true, max: true }
+})
+var TRIG = table({ sin: true, cos: true, tan: true })
+var INVERSE_TRIG = table({ asin: true, acos: true, atan: true })
+var UNIT_PRESERVING = table({ abs: true, floor: true, ceil: true, round: true, trunc: true, min: true, max: true })
 FUNCTIONS.arcsin = FUNCTIONS.asin; FUNCTIONS.arccos = FUNCTIONS.acos; FUNCTIONS.arctan = FUNCTIONS.atan
 INVERSE_TRIG.arcsin = INVERSE_TRIG.arccos = INVERSE_TRIG.arctan = true
 
-var CONVERT_WORDS = { to: true, "in": true, as: true, into: true }
-var BASES = {
+var CONVERT_WORDS = table({ to: true, "in": true, as: true, into: true })
+var BASES = table({
   hex: 16, hexadecimal: 16, bin: 2, binary: 2, oct: 8, octal: 8, dec: 10, decimal: 10,
   sci: "sci", scientific: "sci"
-}
+})
 
 var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -345,7 +353,7 @@ function weekdayIndex(word) {
 }
 
 // Fixed-date holidays, as the next occurrence. [D]
-var HOLIDAYS = {
+var HOLIDAYS = table({
   "christmas": [11, 25], "xmas": [11, 25], "christmas eve": [11, 24], "christmas day": [11, 25],
   "new year": [0, 1], "new years": [0, 1], "new year's": [0, 1], "new years day": [0, 1], "new year's day": [0, 1],
   "new years eve": [11, 31], "new year's eve": [11, 31],
@@ -354,10 +362,10 @@ var HOLIDAYS = {
   "julaften": [11, 24], "juledag": [11, 25], "første juledag": [11, 25], "andre juledag": [11, 26],
   "nyttår": [0, 1], "nyttårsdag": [0, 1], "nyttårsaften": [11, 31],
   "grunnlovsdagen": [4, 17], "nasjonaldagen": [4, 17], "sankthans": [5, 23], "sankthansaften": [5, 23], "valentinsdagen": [1, 14]
-}
+})
 
 // Places for time zones: lowercased name -> [IANA zone, label]. [D]
-var PLACES = {
+var PLACES = table({
   "utc": ["UTC", "UTC"], "gmt": ["UTC", "GMT"], "z": ["UTC", "UTC"],
   "est": ["America/New_York", "Eastern Time"], "edt": ["America/New_York", "Eastern Time"], "et": ["America/New_York", "Eastern Time"], "eastern": ["America/New_York", "Eastern Time"],
   "cst": ["America/Chicago", "Central Time"], "cdt": ["America/Chicago", "Central Time"], "central": ["America/Chicago", "Central Time"],
@@ -401,7 +409,7 @@ var PLACES = {
   "perth": ["Australia/Perth", "Perth"], "adelaide": ["Australia/Adelaide", "Adelaide"], "brisbane": ["Australia/Brisbane", "Brisbane"],
   "sydney": ["Australia/Sydney", "Sydney"], "melbourne": ["Australia/Melbourne", "Melbourne"], "auckland": ["Pacific/Auckland", "Auckland"],
   "new zealand": ["Pacific/Auckland", "New Zealand"], "reykjavik": ["Atlantic/Reykjavik", "Reykjavík"]
-}
+})
 
 // Every IANA zone above: the host resolves their current UTC offsets.
 function zoneList() {
@@ -1380,7 +1388,7 @@ var NORWEGIAN = [
   [/(^|[^\wæøå])(?:tid|klokka|klokken) i(?![\wæøå])/gi, "$1time in"],
   [/(\d\s*)time(?![\wæøå])/gi, "$1hour"]
 ]
-var NORWEGIAN_WORDS = {
+var NORWEGIAN_WORDS = table({
   til: "to", som: "as", i: "in", av: "of", "nå": "now", siden: "ago", prosent: "percent",
   neste: "next", forrige: "last", denne: "this",
   sekund: "second", sekunder: "seconds", minutt: "minute", minutter: "minutes", timer: "hours",
@@ -1390,7 +1398,7 @@ var NORWEGIAN_WORDS = {
   mandag: "monday", tirsdag: "tuesday", onsdag: "wednesday", torsdag: "thursday", fredag: "friday", "lørdag": "saturday", "søndag": "sunday",
   januar: "january", februar: "february", mars: "march", mai: "may", juni: "june", juli: "july", oktober: "october", desember: "december",
   okt: "oct", des: "dec", og: "and"
-}
+})
 
 var MONTH_WORDS = "jan|januar|january|feb|februar|february|mar|mars|march|apr|april|mai|may|jun|juni|june|jul|juli|july|aug|august|sep|sept|september|okt|oct|oktober|october|nov|november|des|dec|desember|december"
 

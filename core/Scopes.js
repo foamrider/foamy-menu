@@ -254,6 +254,9 @@ function normalize(raw) {
   if (!isPlainObject(raw)) return { errors: ["a scope must be a JSON object"] }
   var id = typeof raw.id === "string" ? raw.id : ""
   if (!ID_PATTERN.test(id)) return { errors: ["id must be lowercase letters, digits and dashes"] }
+  // The launcher keeps per-scope state in plain objects keyed by id, where
+  // "constructor" (the only Object.prototype name ID_PATTERN allows) is taken.
+  if (id === "constructor") return { errors: ["id \"constructor\" is reserved"] }
   if (raw.enabled !== undefined && typeof raw.enabled !== "boolean") errors.push("enabled must be true or false")
   var keyword = raw.keyword === undefined ? id : raw.keyword
   var isQuery = isPlainObject(raw.source) && raw.source.type === "query"
@@ -321,8 +324,10 @@ function parseFile(fileName, raw) {
 // out, and two enabled scopes cannot share a keyword (the first one keeps it).
 function merge(builtins, files) {
   var order = []
-  var byId = {}
-  var origin = {}
+  // Keyed by scope ids and keywords, so no prototype: "constructor" is a
+  // valid keyword.
+  var byId = Object.create(null)
+  var origin = Object.create(null)
   for (var b = 0; b < builtins.length; b++) {
     order.push(builtins[b].id)
     byId[builtins[b].id] = builtins[b]
@@ -342,7 +347,7 @@ function merge(builtins, files) {
     origin[def.id] = file.name
   }
   var scopes = []
-  var keywords = {}
+  var keywords = Object.create(null)
   // Every valid query scope, disabled ones too: their saved searches stay
   // stored, so clearing them must find them.
   var queryIds = []
@@ -384,7 +389,7 @@ function matchKeyword(scopes, query) {
 function parseOutput(output) {
   var lines = String(output || "").split("\n")
   var items = []
-  var seen = {}
+  var seen = Object.create(null)
   for (var i = 0; i < lines.length && items.length < MAX_ITEMS; i++) {
     var line = lines[i].replace(/\r$/, "")
     if (!line.trim() || line.length > MAX_TEXT * 5) continue
