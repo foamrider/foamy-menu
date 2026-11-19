@@ -271,7 +271,7 @@ ShellRoot {
         test.check(found.rows.map(function (r) {
           return r.id + "|" + r.typeLabelValues[0]
         }).join() === "todoist:task:k1|1,todoist:task:k2|2,todoist:task:k3|3", "the matching tasks in names' order, Ctrl 1–3: " + JSON.stringify(found.rows))
-        test.check(found.rows[0].title === "Water the plants" && found.rows[0].subtitle === "Home · 21 Nov" && view.t(found.rows[0].typeLabel, found.rows[0].typeLabelValues) === "Ctrl 1", "a row: the text, project and date, its key")
+        test.check(found.rows[0].title === "Water the plants" && found.rows[0].subtitle.indexOf("Home · ") === 0 && found.rows[0].subtitle !== "Home · 21 Nov" && found.rows[0].subtitle !== "Home · 2026-11-21" && view.t(found.rows[0].typeLabel, found.rows[0].typeLabelValues) === "Ctrl 1", "a row: the text, project and date (from due.date, as the language writes it), its key: " + found.rows[0].subtitle)
         test.check(test.rowIds().indexOf("todoist:recent:t1") < 0, "with text, the results take the place of Added from here")
         test.check(view.nthTask(4) < 0, "Renew passport does not match")
         test.check(view.selectedRow && view.selectedRow.itemId === "todoist:card" && view.actionsForSelected()[0].id === "todoist-add", "the card stays selected: Enter adds")

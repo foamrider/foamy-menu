@@ -18,6 +18,7 @@ Item {
   // A scope item's own icon (a file or an icon name) shows instead of the glyph.
   required property string image
   required property string typeLabel
+  required property bool typeIsKeys
   // A setting's value sits where other rows show their type, and reads as one.
   required property bool isSetting
   required property string alias
@@ -336,7 +337,16 @@ Item {
         font.pixelSize: Math.round(Style.font.body * row.zoom)
       }
 
+      KeyHint {
+        visible: row.typeIsKeys && row.typeLabel !== ""
+        anchors.verticalCenter: parent.verticalCenter
+        keys: row.typeLabel
+        color: row.look.foreground
+        zoom: row.zoom
+      }
+
       Text {
+        visible: !row.typeIsKeys
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: row.typeLabel

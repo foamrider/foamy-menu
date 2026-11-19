@@ -404,6 +404,8 @@ OverlayWindow {
       cover: String(c.cover || ""),
       fallbackIcon: String(c.fallbackIcon || ""),
       typeLabel: c.typeLabel ? window.t(c.typeLabel, c.typeLabelValues || undefined) : "",
+      // The type label is a shortcut ("Ctrl 1"): drawn as keys, like the footer's.
+      typeIsKeys: !!c.typeIsKeys,
       isSetting: c.kind === "setting",
       alias: String(c.alias || ""),
       checked: !!c.checked,

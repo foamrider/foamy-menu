@@ -649,7 +649,12 @@ Item {
       nowMs: Date.now(),
       hiddenKey: String(hiddenKey || ""),
       t: backend.tr,
-      relative: RootSearch.relativeParts
+      relative: RootSearch.relativeParts,
+      // A due day (YYYY-MM-DD) as the language writes a short date.
+      formatDay: function (key) {
+        const parts = String(key).split("-")
+        return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).toLocaleDateString(backend.numberLocale, "ddd d MMM")
+      }
     }
   }
 

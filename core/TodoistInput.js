@@ -32,10 +32,10 @@ var MIN_TASK_QUERY = 2
 var MAX_RECENT = 5
 // Bytes of stdout read from one helper run (cappedCommand()). At the
 // helper's own caps (2 000 projects, 5 000 sections, 2 000 labels and
-// collaborators, 20 000 memberships, 5 000 tasks of 500 characters) with
-// every text at its longest, `names` is about 20 MB (the contract's worst
-// case), so this leaves room; a larger reply is refused, not cut.
-var MAX_NAMES_OUTPUT = 24 * 1024 * 1024
+// collaborators, 20 000 memberships, 1 000 tasks of 200 characters) with
+// every text at its longest, `names` is about 12 MB, so this leaves room; a
+// larger reply is refused, not cut. A real account is a few KB.
+var MAX_NAMES_OUTPUT = 16 * 1024 * 1024
 var MAX_REPLY_OUTPUT = 256 * 1024
 // The helper's own caps on what `names` lists; a reply with more is not one
 // this menu reads.
@@ -44,7 +44,8 @@ var MAX_SECTIONS = 5000
 var MAX_LABELS = 2000
 var MAX_PEOPLE = 2000
 var MAX_MEMBERSHIPS = 20000
-var MAX_TASKS = 5000
+// Kept in the shell's memory and searched on every keystroke: small.
+var MAX_TASKS = 1000
 var MAX_NAME = 1000
 // The notify request's limits (contract: stdin at most 16 KiB, and the
 // request goes with a newline after it, so one byte less).
@@ -539,6 +540,9 @@ function readTasks(list, projects) {
       content: content,
       project: project,
       due: isObject(raw.due) && typeof raw.due.string === "string" ? firstChars(oneLine(raw.due.string), 200) : "",
+      // The day it is due (YYYY-MM-DD), shown from today's point of view;
+      // a recurring task shows Todoist's text ("every Monday") instead.
+      dueDay: isObject(raw.due) && raw.due.is_recurring !== true && typeof raw.due.date === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw.due.date) ? raw.due.date.slice(0, 10) : "",
       haystack: [content, project].concat(labels).join("\n").toLowerCase()
     })
   })
@@ -898,7 +902,29 @@ function shownTasks(text, cursor, env) {
   return matchTasks(env.model, preview(s, env.model, cursor).title)
 }
 
-// A task row's subtitle: its project, then its date (Todoist's text).
+// When a searched task is due, as of now: Today, Tomorrow, Yesterday or a
+// short date (env.formatDay, the language's "ddd d MMM"); Todoist's own
+// text for a recurring task, since its next date moves. Todoist's text for
+// a one-off date ("tomorrow") would go stale once the day passes.
+function dueLabel(task, env) {
+  if (!task.dueDay)
+    return task.due
+  var parts = task.dueDay.split("-")
+  var due = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+  var now = new Date(env.nowMs || Date.now())
+  var today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  var days = Math.round((due - today) / 86400000)
+  var t = typeof env.t === "function" ? env.t : function (s) { return s }
+  if (days === 0)
+    return t("Today")
+  if (days === 1)
+    return t("Tomorrow")
+  if (days === -1)
+    return t("Yesterday")
+  return typeof env.formatDay === "function" ? env.formatDay(task.dueDay) : task.dueDay
+}
+
+// A task row's subtitle: its project, then its date.
 function whereLine(project, due) {
   return [project, due].filter(function (part) {
     return part
@@ -958,7 +984,7 @@ function sections(text, cursor, env) {
     var tasks = shownTasks(text, cursor, env)
     if (tasks.length)
       out.push({ id: "todoist-tasks", title: "Tasks", rows: tasks.map(function (task, i) {
-        return { candidate: row(TASK_ROW + task.id, "todoist-task", task.content, { subtitle: whereLine(task.project, task.due), glyph: TASK_GLYPH, typeLabel: "Ctrl %1", typeLabelValues: [i + 1] }), record: null }
+        return { candidate: row(TASK_ROW + task.id, "todoist-task", task.content, { subtitle: whereLine(task.project, dueLabel(task, env)), glyph: TASK_GLYPH, typeLabel: "Ctrl %1", typeLabelValues: [i + 1], typeIsKeys: true }), record: null }
       }) })
     return out
   }
@@ -1053,7 +1079,7 @@ if (typeof module !== "undefined") {
   module.exports = {
     CONTRACT: CONTRACT, MAX_TEXT: MAX_TEXT, MAX_SUGGESTIONS: MAX_SUGGESTIONS, MAX_RECENT: MAX_RECENT,
     MAX_TASKS: MAX_TASKS, MAX_TASK_RESULTS: MAX_TASK_RESULTS, MIN_TASK_QUERY: MIN_TASK_QUERY,
-    plainText: plainText, readTasks: readTasks, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
+    plainText: plainText, readTasks: readTasks, dueLabel: dueLabel, matchTasks: matchTasks, TASK_ROW: TASK_ROW, isTaskRow: isTaskRow,
     shownTasks: shownTasks, taskNumber: taskNumber,
     MAX_NAMES_OUTPUT: MAX_NAMES_OUTPUT, MAX_REPLY_OUTPUT: MAX_REPLY_OUTPUT, MAX_NOTIFY_BYTES: MAX_NOTIFY_BYTES,
     DEADLINE_MS: DEADLINE_MS, WATCHDOG_GRACE_MS: WATCHDOG_GRACE_MS, CAPPED_SCRIPT: CAPPED_SCRIPT, CAPPED_EXIT: CAPPED_EXIT,

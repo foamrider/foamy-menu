@@ -390,12 +390,12 @@ test("actions: with text Enter adds whatever row is selected; with none it runs 
 
 test("readNames reads the open tasks: bounded, plain text, haystacks lowercased once; a bad list needs an update", () => {
   assert.deepEqual(model.tasks.map((t) => t.id), ["k1", "k2", "k3", "k4"], "in names' order; bad ids, non-text content and repeats skipped")
-  assert.deepEqual(model.tasks[0], { id: "k1", content: "Call the dentist about the bill", project: "Home", due: "tomorrow", haystack: "call the dentist about the bill\nhome\nphone" })
+  assert.deepEqual(model.tasks[0], { id: "k1", content: "Call the dentist about the bill", project: "Home", due: "tomorrow", dueDay: "2026-11-20", haystack: "call the dentist about the bill\nhome\nphone" })
   assert.deepEqual([model.tasks[3].project, model.tasks[3].due], ["", ""], "a project not in the list, no date")
   assert.equal(TI.readNames({ ...names, tasks: undefined }), null, "no task list: a helper from before the search")
   assert.equal(TI.readNames({ ...names, tasks: {} }), null, "not a list")
   const many = Array.from({ length: TI.MAX_TASKS }, (_, i) => ({ id: "x" + i, content: "Task " + i, project_id: "home1", labels: [], due: null }))
-  assert.equal(TI.readNames({ ...names, tasks: many }).tasks.length, 5000, "at the cap")
+  assert.equal(TI.readNames({ ...names, tasks: many }).tasks.length, TI.MAX_TASKS, "at the cap")
   assert.equal(TI.readNames({ ...names, tasks: many.concat([{ id: "y", content: "one more" }]) }), null, "over the helper's cap")
   const odd = TI.readNames({ ...names, tasks: [{ id: "z1", content: "Line\none " + "x".repeat(600), project_id: "__proto__", labels: [7, "", "ok"], due: { string: 5 } }] }).tasks[0]
   assert.equal(odd.content.length, TI.MAX_TEXT, "content cut at Todoist's limit, on one line")
@@ -428,10 +428,10 @@ test("the Tasks section: under the card while typing, on the title, Ctrl 1–9; 
   assert.deepEqual(search.map((s) => s.id), ["todoist-card", "todoist-tasks"], "Added from here gives way to the results")
   assert.equal(search[1].title, "Tasks")
   assert.deepEqual(search[1].rows.map((r) => [r.candidate.id, r.candidate.kind, r.candidate.title, r.candidate.subtitle, r.candidate.typeLabel, r.candidate.typeLabelValues]),
-    [["todoist:task:k1", "todoist-task", "Call the dentist about the bill", "Home · tomorrow", "Ctrl %1", [1]]], "tokens are not search words")
+    [["todoist:task:k1", "todoist-task", "Call the dentist about the bill", "Home · 2026-11-20", "Ctrl %1", [1]]], "tokens are not search words; the date from due.date, not Todoist's stale text")
   assert.deepEqual(ids(TI.sections("plan", 4, env())).slice(1), ["todoist:task:k2", "todoist:task:k3"], "Plan the garden, and k3 in Team Plans")
-  assert.deepEqual(TI.sections("garden", 6, env())[1].rows[0].candidate.subtitle, "Home · 22 Nov")
-  assert.deepEqual(TI.sections("phone", 5, env())[1].rows.map((r) => [r.candidate.subtitle, r.candidate.typeLabelValues[0]]), [["Home · tomorrow", 1], ["Team Plans", 2]])
+  assert.deepEqual(TI.sections("garden", 6, env())[1].rows[0].candidate.subtitle, "Home · 2026-11-22")
+  assert.deepEqual(TI.sections("phone", 5, env())[1].rows.map((r) => [r.candidate.subtitle, r.candidate.typeLabelValues[0]]), [["Home · 2026-11-20", 1], ["Team Plans", 2]])
   assert.deepEqual(ids(TI.sections("Call #ho", 8, env())), ["todoist:card", "todoist:suggest:0", "todoist:suggest:1"], "suggestions showing: no tasks")
   assert.deepEqual(ids(TI.sections("dentist", 7, env({ state: { ...idle, adding: true, addingText: "dentist" } }))), ["todoist:card"], "none while adding")
   assert.deepEqual(ids(TI.sections("d", 1, env({ recent }))), ["todoist:card"], "too short: neither results nor Added from here")
@@ -454,4 +454,18 @@ test("actions on a task the search found: Enter still adds, Ctrl+K offers Open i
   assert.equal(TI.rowTask("todoist:task:k3"), "k3", "a click (open) opens the task")
   assert.equal(TI.rowTask("todoist:task:bad id"), "")
   assert.ok(TI.isTaskRow("todoist:task:k3") && !TI.isTaskRow("todoist:card") && !TI.isTaskRow("todoist:recent:t1"))
+})
+
+test("a searched task's date is read from today: Today, Tomorrow, Yesterday or a short date; recurring keeps Todoist's text", () => {
+  const nowMs = new Date(2026, 10, 19, 15, 0).getTime()
+  const env = { nowMs, t: (s) => "t:" + s, formatDay: (key) => "day:" + key }
+  const [task] = TI.readTasks([{ id: "a1", content: "x", project_id: null, labels: [], due: { date: "2026-11-20", is_recurring: false, string: "tomorrow" } }], {})
+  assert.equal(TI.dueLabel(task, env), "t:Tomorrow", "not Todoist's stale \"tomorrow\"")
+  const at = (date, recurring, string) => TI.dueLabel(TI.readTasks([{ id: "a1", content: "x", labels: [], due: { date, is_recurring: recurring, string } }], {})[0], env)
+  assert.equal(at("2026-11-19T09:00:00", false, "today 9am"), "t:Today")
+  assert.equal(at("2026-11-18", false, "yesterday"), "t:Yesterday")
+  assert.equal(at("2026-12-24", false, "dec 24"), "day:2026-12-24")
+  assert.equal(at("2026-11-23", true, "every Monday"), "every Monday")
+  assert.equal(at("not a date", false, "someday"), "someday")
+  assert.equal(TI.dueLabel(TI.readTasks([{ id: "a1", content: "x", labels: [], due: null }], {})[0], env), "")
 })

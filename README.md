@@ -345,7 +345,7 @@ the date Todoist set.
   failed, or maybe added. Never while the launcher is open.
 
 Nothing is sent while you type: the projects, sections, labels, people and
-open tasks (at most 5 000) come from Foamy Todoist's cache (its helper's
+open tasks (at most 1 000) come from Foamy Todoist's cache (its helper's
 `names`, read when you enter the input and after each add), and matching runs
 in the launcher. On Enter the
 text goes to Todoist through Foamy Todoist's helper (`add`, the text on its
@@ -354,7 +354,7 @@ never reads the keyring or the cache. After an add the menu runs
 `omarchy-shell foamy.todoist refresh` so the bar and panel update, and opens
 tasks with `omarchy-shell foamy.todoist openTask` / `openInbox`, so Foamy
 Todoist's open command is used. Each helper run ends within 30 seconds (its
-process group is stopped), and at most 24 MiB of its output is read (the
+process group is stopped), and at most 16 MiB of its output is read (the
 names and tasks; an add reply at most 256 KiB).
 
 A scope file can change the keyword (`{"id": "todoist", "keyword": "t"}`) or
