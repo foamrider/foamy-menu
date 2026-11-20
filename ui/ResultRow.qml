@@ -2,7 +2,6 @@ import QtQuick
 import Quickshell
 import qs.Commons
 import "../core/Scopes.js" as Scopes
-import "../kit"
 
 Item {
   id: row
@@ -18,7 +17,6 @@ Item {
   // A scope item's own icon (a file or an icon name) shows instead of the glyph.
   required property string image
   required property string typeLabel
-  required property bool typeIsKeys
   // A setting's value sits where other rows show their type, and reads as one.
   required property bool isSetting
   required property string alias
@@ -27,8 +25,6 @@ Item {
   required property bool favorite
   required property string calcResult
   required property string calcContext
-  // The Todoist card (TodoistInput.sections), as JSON.
-  required property string card
 
   property bool selected: false
   property bool imageFailed: false
@@ -42,13 +38,12 @@ Item {
 
   readonly property bool isSection: row.rowKind === "section"
   readonly property bool isCalculator: row.rowKind === "calculator"
-  readonly property bool isTodoist: row.rowKind === "todoist" || row.rowKind === "todoist-static"
   function px(v) {
     return Math.round(Style.space(v) * row.zoom)
   }
 
   width: ListView.view ? ListView.view.width : 0
-  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(64) : row.isTodoist ? Math.max(px(100), todoistCard.implicitHeight + px(28)) : px(42))
+  height: row.isSection ? (row.title ? px(30) : px(6)) : (row.isCalculator ? px(64) : px(42))
 
   // The inline calculator, one line: the expression (or rate, zone, "in 3
   // days") on the left, aligned to the top of the line; the answer large on
@@ -101,137 +96,6 @@ Item {
     }
   }
 
-  // The Todoist input's card, like the calculator's: the task as Todoist
-  // will read it (title large), one chip per Quick Add token, and a status
-  // line when there is something to say (Adding…, Added, why it failed).
-  // Plain text only.
-  // Drawn in this item, not a Loader's component, and the chips get all
-  // they show from their model, so every name here resolves where it is.
-  readonly property var todoistInfo: {
-    if (!row.isTodoist)
-      return ({})
-    try {
-      return JSON.parse(row.card || "{}")
-    } catch (e) {
-      return ({})
-    }
-  }
-  // The host's type scale is an untyped QtObject (Style.font): read once.
-  readonly property var hostFont: Style.font
-  // A title that is help or a problem, not a task: smaller, and red for a problem.
-  readonly property bool todoistHelp: row.isTodoist && row.todoistInfo.literal !== true
-  readonly property var todoistStatus: row.todoistInfo.status || null
-  readonly property var todoistChips: (row.todoistInfo.chips || []).map(function (chip) {
-    return {
-      label: String(chip.label || ""),
-      color: chip.unknown ? row.look.tones.muted : (row.look.tokens[chip.kind] || row.look.foreground),
-      family: row.look.fontFamily,
-      size: Math.round(row.hostFont.bodySmall * row.zoom),
-      fill: Util.alpha(row.look.foreground, 0.05),
-      edge: Util.alpha(row.look.foreground, 0.12),
-      radius: Math.max(Style.cornerRadius, row.px(4)),
-      padX: row.px(14),
-      padY: row.px(5)
-    }
-  })
-
-  Rectangle {
-    visible: row.isTodoist
-    anchors.fill: parent
-    radius: Math.max(Style.cornerRadius, row.px(6))
-    color: row.selected ? row.look.selectedBackground : Util.alpha(row.look.foreground, 0.04)
-    border.width: 1
-    border.color: Util.alpha(row.look.foreground, row.selected ? 0 : 0.08)
-
-    Column {
-      id: todoistCard
-      anchors.left: parent.left
-      anchors.right: parent.right
-      anchors.leftMargin: row.px(16)
-      anchors.rightMargin: row.px(16)
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: row.px(7)
-
-      Text {
-        width: parent.width
-        textFormat: Text.PlainText
-        text: row.todoistInfo.title || ""
-        color: row.todoistHelp && row.todoistInfo.state !== "empty" ? row.look.tones.error : row.look.foreground
-        opacity: row.todoistInfo.state === "empty" ? 0.6 : 1
-        font.family: row.look.fontFamily
-        font.pixelSize: Math.round((row.todoistHelp ? row.hostFont.title : row.hostFont.heading * 1.3) * row.zoom)
-        font.weight: row.todoistHelp ? Font.Normal : Font.DemiBold
-        elide: Text.ElideRight
-      }
-
-      // The chips wrap onto more lines in a narrow window; the card grows.
-      // A chip wider than the card (a long project name) is cut with "…".
-      Flow {
-        visible: row.todoistChips.length > 0
-        width: parent.width
-        spacing: row.px(6)
-        Repeater {
-          model: row.todoistChips
-          Rectangle {
-            id: chip
-            required property var modelData
-            height: chipText.implicitHeight + chip.modelData.padY
-            width: Math.min(chipText.implicitWidth + chip.modelData.padX, chip.parent ? chip.parent.width : 0)
-            radius: chip.modelData.radius
-            color: chip.modelData.fill
-            border.width: 1
-            border.color: chip.modelData.edge
-            Text {
-              id: chipText
-              anchors.centerIn: parent
-              width: Math.min(implicitWidth, chip.width - chip.modelData.padX)
-              elide: Text.ElideRight
-              textFormat: Text.PlainText
-              text: chip.modelData.label
-              color: chip.modelData.color
-              font.family: chip.modelData.family
-              font.pixelSize: chip.modelData.size
-            }
-          }
-        }
-      }
-
-      Row {
-        visible: row.todoistStatus !== null
-        width: parent.width
-        spacing: row.px(6)
-        // Spins while adding, unless motion is reduced.
-        Text {
-          id: spinner
-          visible: row.todoistStatus !== null && row.todoistStatus.spinner === true
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-          text: "\uf110"
-          color: row.look.tones.accent
-          font.family: row.look.fontFamily
-          font.pixelSize: Math.round(row.hostFont.bodySmall * row.zoom)
-          NumberAnimation on rotation {
-            running: spinner.visible && !FoamyMotion.reduceMotion
-            from: 0
-            to: 360
-            loops: Animation.Infinite
-            duration: FoamyMotion.duration(900)
-          }
-        }
-        Text {
-          width: parent.width - (spinner.visible ? spinner.width + parent.spacing : 0)
-          anchors.verticalCenter: parent.verticalCenter
-          textFormat: Text.PlainText
-          text: row.todoistStatus ? row.todoistStatus.text : ""
-          color: row.todoistStatus ? (row.look.tones[row.todoistStatus.tone] || row.look.foreground) : row.look.foreground
-          font.family: row.look.fontFamily
-          font.pixelSize: Math.round(row.hostFont.bodySmall * row.zoom)
-          elide: Text.ElideRight
-        }
-      }
-    }
-  }
-
   Text {
     visible: row.isSection && row.title.length > 0
     textFormat: Text.PlainText
@@ -248,7 +112,7 @@ Item {
   }
 
   Rectangle {
-    visible: !row.isSection && !row.isCalculator && !row.isTodoist
+    visible: !row.isSection && !row.isCalculator
     anchors.fill: parent
     radius: Math.max(Style.cornerRadius, row.px(6))
     color: row.selected ? row.look.selectedBackground : "transparent"
@@ -337,16 +201,7 @@ Item {
         font.pixelSize: Math.round(Style.font.body * row.zoom)
       }
 
-      KeyHint {
-        visible: row.typeIsKeys && row.typeLabel !== ""
-        anchors.verticalCenter: parent.verticalCenter
-        keys: row.typeLabel
-        color: row.look.foreground
-        zoom: row.zoom
-      }
-
       Text {
-        visible: !row.typeIsKeys
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: row.typeLabel
@@ -394,9 +249,7 @@ Item {
 
   MouseArea {
     anchors.fill: parent
-    // A static Todoist card (help, an empty field after an add) is not a
-    // row: no hover selection, no click, as the keys skip it too.
-    enabled: !row.isSection && row.rowKind !== "todoist-static"
+    enabled: !row.isSection
     hoverEnabled: true
     cursorShape: Qt.PointingHandCursor
     onPositionChanged: function (mouse) {

@@ -24,14 +24,7 @@ function resolve(env) {
     scopes: config + "/scopes",
     data: data,
     db: data + "/db",
-    cache: cache,
-    // Foamy Todoist, whose helper the Todoist input runs: where Omarchy
-    // installs plugins (the host's PluginRegistry: $HOME/.config/omarchy/
-    // plugins, not XDG_CONFIG_HOME), by its id. Not this plugin's own
-    // directory's sibling: a development install links that directory to a
-    // checkout, which has no foamy.todoist beside it. Read, never created.
-    // FOAMY_TODOIST_PLUGIN_DIR (absolute) names another one, for tests.
-    todoistPlugin: xdg(env, "FOAMY_TODOIST_PLUGIN_DIR", home + "/.config/omarchy/plugins/foamy.todoist")
+    cache: cache
   }
 }
 

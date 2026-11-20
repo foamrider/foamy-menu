@@ -1,7 +1,6 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
-const os = require("node:os")
 const path = require("node:path")
 
 const root = path.join(__dirname, "..")
@@ -26,7 +25,7 @@ test("English is keyed by itself; Norwegian has every key with the same holes", 
 // translates when it shows it (section, action, type and About labels).
 function usedKeys() {
   const keys = new Set()
-  const qml = ["Backend.qml", "ui/LauncherWindow.qml", "ui/ActionPanel.qml", "ui/Alert.qml", "services/TodoistSource.qml"].map(read).join("\n")
+  const qml = ["Backend.qml", "ui/LauncherWindow.qml", "ui/ActionPanel.qml", "ui/Alert.qml"].map(read).join("\n")
   for (const [, key] of qml.matchAll(/(?:FoamyI18n\.t|window\.t|backend\.tr)\("((?:[^"\\]|\\.)*)"/g)) keys.add(key)
   for (const [, key] of qml.matchAll(/showToast\("\w+", (?:saved \? )?"([^"]+)"(?: : "([^"]+)")?/g)) keys.add(key)
   for (const [, a, b] of qml.matchAll(/saved \? "([^"]+)" : "([^"]+)"/g)) { keys.add(a); keys.add(b) }
@@ -40,16 +39,6 @@ function usedKeys() {
   const builtins = scopes.slice(scopes.indexOf("var BUILTINS"), scopes.indexOf("function isPlainObject"))
   for (const [, key] of builtins.matchAll(/(?:title|subtitle|itemsTitle|placeholder|emptyText|openTitle): "([^"]+)"/g)) keys.add(key)
   for (const [, key] of scopes.matchAll(/\|\| "([A-Z][a-z]+)"/g)) keys.add(key)
-  for (const [, key] of scopes.matchAll(/\? "([A-Z][a-z]+)" :/g)) keys.add(key)
-  // The Todoist input: the card's lines and titles, its rows, sections and
-  // actions, and the helper's messages it shows (copied from Foamy Todoist).
-  const todoist = read("core/TodoistInput.js")
-  for (const pattern of [/line\("\w+", "([^"]+)"/g, /\? "([A-Z][^"]+)" :/g, /title: "([^"]+)"/g, /typeLabel: "([^"]+)"/g, /key: "([^"]+)"/g, /\bt\("([^"]+)"/g, /: "([A-Z][a-z]+)"/g])
-    for (const [, key] of todoist.matchAll(pattern)) keys.add(key)
-  for (const [, a, b] of todoist.matchAll(/add\("[\w-]+", (?:closeOnAdd \? )?"([^"]+)"(?: : "([^"]+)")?/g)) { keys.add(a); if (b) keys.add(b) }
-  const TodoistInput = require("../core/TodoistInput.js")
-  for (const key of TodoistInput.HELPER_MESSAGES) keys.add(key)
-  keys.add(TodoistInput.SYNTAX.find((c) => c.kind === "date").text)
   const calc = read("core/Calculator.js")
   // Calculator: context templates ([ "…", [values] ]), base names, and the
   // long unit names it passes through ENV.translate.
@@ -65,7 +54,6 @@ function usedKeys() {
     keys.add(f.title)
     if (f.emptyTitle) keys.add(f.emptyTitle)
     for (const title of Object.values(f.optionTitles || {})) keys.add(title)
-    if (f.note) keys.add(f.note)
     for (const value of [f.defaultValue, f.min, f.max, f.type === "boolean" ? !f.defaultValue : undefined, 0]) {
       if (value === undefined || (value === 0 && f.type === "string")) continue
       keys.add(Settings.display(f, value)[0])
@@ -83,19 +71,6 @@ test("every string the launcher translates has a catalog entry", () => {
   // Identifiers (lowercase) are not UI text.
   const units = new Set(["second", "seconds", "minute", "minutes", "hour", "hours", "day", "days", "week", "weeks", "month", "months",
     "year", "years", "decade", "decades", "century", "centuries", "work day", "work days", "work week", "work weeks", "ton", "tons", "pint", "pints", "cup", "cups"])
-  // The Todoist card's example date is lowercase text too.
-  units.add(require("../core/TodoistInput.js").SYNTAX.find((c) => c.kind === "date").text)
   const missing = [...usedKeys()].filter((key) => (/^[A-Z%“]/.test(key) || units.has(key)) && !Object.hasOwn(en, key) && key !== "Foamy Menu")
   assert.deepEqual(missing, [])
-})
-
-// The helper's messages the Todoist card shows come from Foamy Todoist's
-// catalogs, word for word, when that checkout is here to compare with.
-const todoistCheckout = process.env.FOAMY_TODOIST_CHECKOUT || path.join(os.homedir(), "GitHub/Personal/foamy-todoist")
-test("the Todoist helper's messages match Foamy Todoist's catalogs", { skip: !fs.existsSync(path.join(todoistCheckout, "i18n/no.json")) && "no foamy-todoist checkout" }, () => {
-  const theirs = { en: JSON.parse(fs.readFileSync(path.join(todoistCheckout, "i18n/en.json"), "utf8")), no: JSON.parse(fs.readFileSync(path.join(todoistCheckout, "i18n/no.json"), "utf8")) }
-  for (const key of require("../core/TodoistInput.js").HELPER_MESSAGES) {
-    assert.ok(Object.hasOwn(theirs.en, key), "not a Foamy Todoist message: " + key)
-    assert.equal(no[key], theirs.no[key], key)
-  }
 })

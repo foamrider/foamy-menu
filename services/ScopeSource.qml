@@ -107,7 +107,7 @@ Item {
   // Loads (or refreshes) a scope's items. A list scope is immediate.
   function refresh(id) {
     var scope = source.scope(id)
-    if (!scope || scope.source.type === "query" || scope.source.type === "input")
+    if (!scope || scope.source.type === "query")
       return
     if (scope.source.type === "list") {
       source.setItems(id, scope.source.items.slice(0, Scopes.MAX_ITEMS), "")

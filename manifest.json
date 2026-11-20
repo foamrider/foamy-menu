@@ -35,8 +35,6 @@
       "steamGames": false,
       "webSearchHistory": false,
       "webSearchSuggestions": false,
-      "todoistQuickAdd": false,
-      "todoistCloseOnAdd": false,
       "currencyRates": true,
       "clockFormat": "auto",
       "remToPxRate": 16,
@@ -143,18 +141,6 @@
         "key": "webSearchSuggestions",
         "type": "boolean",
         "label": "Show the search engine's suggestions while typing a web search (sends what you type to the engine)",
-        "defaultValue": false
-      },
-      {
-        "key": "todoistQuickAdd",
-        "type": "boolean",
-        "label": "Add Todoist tasks with td + Tab (needs Foamy Todoist)",
-        "defaultValue": false
-      },
-      {
-        "key": "todoistCloseOnAdd",
-        "type": "boolean",
-        "label": "Close the launcher after adding a Todoist task (Shift+Enter does the other)",
         "defaultValue": false
       },
       {
