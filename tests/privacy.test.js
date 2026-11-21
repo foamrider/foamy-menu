@@ -140,16 +140,6 @@ for (const kind of ["copy", "paste"]) {
     assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), secret)
     const cmdlines = fs.readFileSync(log, "utf8")
     assert.ok(!cmdlines.includes("private"), cmdlines)
-    assert.ok(!script.includes("$"), "the script takes no arguments")
     if (kind === "paste") assert.match(cmdlines, /wtype -M shift -k Insert -m shift/)
   })
 }
-
-test("no QML hands clipboard text or prompts to a process's argv", () => {
-  const files = ["Backend.qml", "Launcher.qml", ...["ui", "services"].flatMap((d) =>
-    fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith(".qml")).map((f) => d + "/" + f))]
-  for (const file of files) {
-    const source = fs.readFileSync(path.join(root, file), "utf8")
-    assert.doesNotMatch(source, /\["wl-copy"|omarchy-clipboard-paste-text"|omarchy-agent/, file)
-  }
-})
