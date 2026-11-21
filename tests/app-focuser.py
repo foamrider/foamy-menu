@@ -109,6 +109,10 @@ def main():
     if not found:
         print("FAIL app focuser: the launcher window no longer names its layer")
         return 1
+    # README documents the namespace for Hyprland layer rules.
+    if found.group(1) != "foamy-menu":
+        print(f"FAIL app focuser: the launcher's layer namespace is {found.group(1)!r}, not the documented foamy-menu")
+        return 1
 
     run = harness.Run("4.5", SHELL, plugin=PLUGIN, prefix="foamy-menu-focuser-", fakebin={"hyprctl": HYPRCTL})
     log = run.base / "hyprctl.log"

@@ -124,8 +124,11 @@ test("every provider lists its values with the current one, and set receives the
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-provider-"))
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
     fakeCommands(dir, commands)
-    const env = { ...process.env, PATH: dir + ":" + process.env.PATH }
-    const output = execFileSync("bash", ["-c", OmarchyMenu.PROVIDERS[provider].script], { env, encoding: "utf8" })
+    // PATH holds only the fakes (the scripts need nothing but bash builtins):
+    // a renamed host command is not found, rather than reaching the real one,
+    // which Omarchy also installs in /usr/bin.
+    const env = { ...process.env, PATH: dir }
+    const output = execFileSync("/bin/bash", ["-c", OmarchyMenu.PROVIDERS[provider].script], { env, encoding: "utf8" })
     const rows = OmarchyMenu.providerItems("menu", provider, output)
     const set = commands.set.join(" ")
     assert.deepEqual(rows.map(r => [r.label, r.isCurrent, r.action]),
@@ -133,7 +136,7 @@ test("every provider lists its values with the current one, and set receives the
     const value = "it's $(touch " + path.join(dir, "injected") + ") `id`"
     const action = OmarchyMenu.PROVIDERS[provider].actionFor(value)
     const received = [...commands.set.slice(1), value].join("\0") + "\0"
-    assert.equal(execFileSync("bash", ["-c", action], { env, encoding: "utf8" }), received, provider + ": one literal argument")
+    assert.equal(execFileSync("/bin/bash", ["-c", action], { env, encoding: "utf8" }), received, provider + ": one literal argument")
     assert.equal(fs.existsSync(path.join(dir, "injected")), false, provider + ": the value ran as a command")
     assert.deepEqual(OmarchyMenu.providerItems("menu", provider, ""), [], provider + ": no output, no rows")
   }
