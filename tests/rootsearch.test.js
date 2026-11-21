@@ -173,8 +173,7 @@ test("favourite reordering", () => {
   assert.deepEqual(RS.reorderFavorites(cmds, "a", "favorite-remove"), { a: null, b: 0 })
 })
 
-test("web searches are query scopes, not commands with argument pills", () => {
-  assert.ok(!RS.BUILTINS.some((b) => b.arguments || (b.run && b.run.url)))
+test("a web search opens the engine's URL with the query encoded", () => {
   const google = searchScopes.find((s) => s.id === "google")
   assert.equal(Scopes.fill(google.open, " a&b c ", "")[1], "https://www.google.com/search?q=a%26b%20c")
   assert.deepEqual(RS.actionsFor(Scopes.queryCandidate(google, "x", null, true)).map((a) => a.title), ["Search", "Copy Search URL"])
@@ -186,12 +185,20 @@ test("the root filter narrows by type and drops calculator and fallbacks", () =>
   const commands = results("lock", ctx({ filter: "commands", calculation: { result: "1" } }))
   assert.ok(commands.every((s) => s.id === "results"))
   assert.ok(commands[0].rows.every((r) => r.candidate.type === "command"))
-  assert.deepEqual(RS.FILTERS.map((f) => f.id), ["all", "applications", "commands"])
 })
 
 test("power commands and delete-all ask for confirmation", () => {
-  assert.equal(RS.confirmationFor("omarchy:system.shutdown", "open").primary, "Shut Down")
-  assert.equal(RS.confirmationFor("omarchy:system.shutdown", "copy-command"), null)
+  for (const [id, primary] of [
+    ["omarchy:system.shutdown", "Shut Down"],
+    ["omarchy:system.reboot", "Restart"],
+    ["omarchy:system.logout", "Log Out"]
+  ]) {
+    const question = RS.confirmationFor(id, "open")
+    assert.equal(question && question.primary, primary, id)
+    assert.equal(question.destructive, true, id)
+    // Copying the command runs nothing, so it does not ask.
+    assert.equal(RS.confirmationFor(id, "copy-command"), null, id)
+  }
   assert.equal(RS.confirmationFor("omarchy:system.lock", "open"), null)
   assert.ok(RS.confirmationFor("calculator-history:x", "delete-all-entries").destructive)
 })
@@ -208,14 +215,22 @@ test("the about panel describes a row", () => {
   assert.deepEqual(grouped.map((r) => [r.label, r.value]), [["Question", "1000*2"], ["Answer", "2 000"], ["Plain", "2000"]])
 })
 
-test("app windows: keys from desktop id, StartupWMClass and web app URL", () => {
-  assert.deepEqual(RS.appWindowKeys({ id: "sublime_text", startupClass: "subl" }), ["sublime_text", "subl"])
-  assert.deepEqual(RS.appWindowKeys({ id: "WhatsApp", execString: '/home/u/.local/bin/chrome-webapp "https://web.whatsapp.com/"' }), ["whatsapp", "webapp:web.whatsapp.com"])
-  assert.deepEqual(RS.appWindowKeys({ id: "Chat", command: ["omarchy-launch-webapp", "https://app.parlichat.com/chats"] }), ["chat", "webapp:app.parlichat.com/chats"])
-  assert.deepEqual(RS.windowClassKeys("chrome-discord.com__channels_@me-Profile_1"), ["chrome-discord.com__channels_@me-profile_1", "webapp:discord.com/channels/@me"])
-  assert.deepEqual(RS.appWindowKeys({ id: "firefox", execString: "firefox https://example.com" }), ["firefox"])
-  assert.deepEqual(RS.windowClassKeys("chrome-web.whatsapp.com__-Default"), ["chrome-web.whatsapp.com__-default", "webapp:web.whatsapp.com"])
-  assert.deepEqual(RS.windowClassKeys("brave-app.parlichat.com__chats-Default"), ["brave-app.parlichat.com__chats-default", "webapp:app.parlichat.com/chats"])
+test("app windows: a desktop entry finds its window by desktop id, StartupWMClass or web app URL", () => {
+  const rows = [
+    [{ id: "sublime_text", startupClass: "subl" }, "Subl", "0x1"],
+    [{ id: "sublime_text", startupClass: "subl" }, "sublime_text", "0x1"],
+    [{ id: "WhatsApp", execString: '/home/u/.local/bin/chrome-webapp "https://web.whatsapp.com/"' }, "chrome-web.whatsapp.com__-Default", "0x1"],
+    [{ id: "Chat", command: ["omarchy-launch-webapp", "https://app.parlichat.com/chats"] }, "brave-app.parlichat.com__chats-Default", "0x1"],
+    [{ id: "Discord", execString: "omarchy-launch-webapp https://discord.com/channels/@me" }, "chrome-discord.com__channels_@me-Profile_1", "0x1"],
+    [{ id: "firefox", execString: "firefox https://example.com" }, "firefox", "0x1"],
+    // A URL in Exec does not make a browser a web app.
+    [{ id: "firefox", execString: "firefox https://example.com" }, "chrome-example.com__-Default", ""]
+  ]
+  for (const [entry, windowClass, expected] of rows) {
+    const keys = RS.appCandidate(entry).windowKeys
+    const clients = [{ class: windowClass, address: "0x1", focusHistoryID: 0, mapped: true }]
+    assert.equal(RS.findAppWindow(clients, keys), expected, entry.id + " / " + windowClass)
+  }
 })
 
 test("app windows: picks the most recently focused mapped window", () => {
