@@ -492,8 +492,9 @@ route handoffs, and the rates and suggestion fetches against a local HTTPS
 server in an isolated offscreen shell with stub commands. It runs the
 dark layout in English and the light layout in Norwegian. The light run also
 runs the fetch, command scope and paste probes and checks that no fetch put
-its URL on curl's command line; every run checks that the stores it saved are
-owner-only. `preview.png` is
+its URL on curl's command line, and it moves `XDG_CONFIG_HOME` away from
+`~/.config`: the settings must still come from `~/.config/omarchy/shell.json`.
+Every run checks that the stores it saved are owner-only. `preview.png` is
 `root.png` from the English dark run of
 `python3 -I tests/launcher.py --shots DIR`. `tests/app-focuser.py` runs the
 app focuser against a fake `hyprctl`: quick repeated opens each focus the
