@@ -48,7 +48,7 @@ function runRust(home, fixture, argv) {
 
 const lines = (...rows) => rows.map((row) => row.join("\t") + "\n").join("")
 
-const SAME = [
+const CASES = [
   {
     name: "nested Includes, globs, cycles, absolute and ~/ paths, missing files",
     files: {
@@ -180,11 +180,8 @@ const SAME = [
     name: "CRLF settings",
     files: { ".ssh/config": "Host crlf\r\n  HostName crlf.example\r\n  Port 2200\r\n" },
     out: lines(["crlf", "crlf", "crlf.example:2200"])
-  }
-]
-
-// Rules a plain line reader gets wrong.
-const DIFFERENT = [
+  },
+  // Rules a plain line reader gets wrong.
   {
     name: "`Key=value` without spaces",
     why: "ssh splits the keyword at whitespace or one `=`",
@@ -222,6 +219,15 @@ const DIFFERENT = [
     out: lines(["web", "web", "inside@10.0.0.4"])
   },
   {
+    name: "the including Host block resumes after an Include that starts its own Host",
+    why: "ssh restores the including block after it reads an included file",
+    files: {
+      ".ssh/config": "Host web\n  Include common.conf\n  HostName web.example\n",
+      ".ssh/common.conf": "Host bastion\n  User jump\n"
+    },
+    out: lines(["bastion", "bastion", "jump@bastion"], ["web", "web", "web.example"])
+  },
+  {
     name: "CRLF Include lines",
     why: "ssh strips trailing whitespace, \\r included, before splitting",
     files: { ".ssh/config": "Include extra.conf\r\nHost main\r\n", ".ssh/extra.conf": "Host extra\r\n" },
@@ -235,7 +241,7 @@ const DIFFERENT = [
   }
 ]
 
-for (const fixture of [...SAME, ...DIFFERENT]) {
+for (const fixture of CASES) {
   const why = skip || (fixture.unreadable && isRoot && "root reads unreadable files")
   test(`ssh-hosts: ${fixture.name}`, { skip: why }, () => {
     const home = makeHome(fixture)
@@ -252,7 +258,7 @@ test("the SSH scope runs the bundled helper's ssh-hosts, as FoamyNative launches
   const argv = Scopes.fill(ssh.source.command, "", root)
   assert.deepEqual(argv, Array.from(FoamyNative.command(root, "foamy-menu-search", ["ssh-hosts"])))
   assert.ok(Scopes.isNativeCommand(argv))
-  const fixture = SAME[0]
+  const fixture = CASES[0]
   const home = makeHome(fixture)
   try {
     const out = runRust(home, fixture, helper.required ? undefined : argv)
