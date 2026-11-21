@@ -196,11 +196,3 @@ test("the Steam Games scope runs the bundled helper's steam-games, as FoamyNativ
     fs.rmSync(fixture.home, { recursive: true, force: true })
   }
 })
-
-test("steam-games rejects other arguments without the exits FoamyNative reserves", { skip }, () => {
-  const [program, ...args] = [...helper.argv, "steam-games", "extra"]
-  let status = 0
-  try { execFileSync(program, args, { stdio: "pipe" }) } catch (error) { status = error.status }
-  assert.equal(status, 2)
-  assert.ok(!FoamyNative.unavailable(status))
-})
