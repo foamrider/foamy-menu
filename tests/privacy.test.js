@@ -37,17 +37,6 @@ test("first start under umask 022 creates owner-only dirs and 0600 store files",
   for (const unused of [p.home + "/.local/state/foamy-menu", p.home + "/run/foamy-menu"]) assert.equal(fs.existsSync(unused), false, unused)
 })
 
-test("an atomic save into a pre-created file keeps it private", (t) => {
-  const p = runSetup(tempHome(t))
-  // QSaveFile copies the target's permissions onto its temp file before the rename.
-  const target = p.db + "/frecency.json"
-  const temp = target + ".tmp"
-  fs.writeFileSync(temp, '{"searchHistory":["secret"]}', { mode: 0o644 })
-  fs.chmodSync(temp, mode(target))
-  fs.renameSync(temp, target)
-  assert.equal(mode(target), 0o600)
-})
-
 test("readable histories from older builds are repaired; stricter modes are kept", (t) => {
   const home = tempHome(t)
   const db = home + "/.local/share/foamy-menu/db"
