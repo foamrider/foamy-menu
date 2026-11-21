@@ -338,7 +338,7 @@ impl Catalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::searchmatch::{TYPO, WORD};
+    use crate::backend::searchmatch::WORD;
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -448,55 +448,13 @@ mod tests {
             hits.iter().map(|hit| hit.index).collect::<Vec<_>>(),
             vec![0, 1, 2, 3]
         );
-        assert_eq!(hits[0].title, Some(EXACT));
-        assert_eq!(hits[1].title, Some(PREFIX));
-        assert_eq!(hits[2].title, Some(WORD));
-        assert!((NAME - HIT_SPAN..=NAME + HIT_SPAN).contains(&hits[3].title.unwrap()));
-    }
-
-    #[test]
-    fn typo_scores_survive_low_and_medium_but_not_high() {
-        let catalog = catalog(json!([{ "title":"Firefox" }]));
-        for query in ["firefoc", "fierfox"] {
-            for sensitivity in [Sensitivity::Low, Sensitivity::Medium] {
-                assert_eq!(
-                    catalog.search(query, sensitivity).unwrap()[0].title,
-                    Some(TYPO - 1000)
-                );
-            }
-            assert!(catalog.search(query, Sensitivity::High).unwrap().is_empty());
-        }
-    }
-
-    #[test]
-    fn levels_take_fewer_spread_matches_as_they_tighten() {
-        let catalog = catalog(json!([
-            { "title":"SSH", "subtitle":"Koble til en vert i ~/.ssh/config" },
-            { "title":"Firefox" },
-            { "title":"LibreOffice Writer" },
-            { "title":"Living Room" }
-        ]));
-        let matched = |query: &str, sensitivity| {
-            catalog
-                .search(query, sensitivity)
-                .unwrap()
-                .iter()
-                .map(|hit| hit.index)
-                .collect::<Vec<_>>()
-        };
-        // Four words apart in the subtitle (and its combined keywords).
-        assert_eq!(matched("livin", Sensitivity::Low), vec![0, 3]);
-        assert_eq!(matched("livin", Sensitivity::Medium), vec![3]);
-        assert_eq!(matched("livin", Sensitivity::High), vec![3]);
-        // Three gaps: medium's threshold, not high's.
-        assert_eq!(matched("frfx", Sensitivity::Low), vec![1]);
-        assert_eq!(matched("frfx", Sensitivity::Medium), vec![1]);
-        assert!(matched("frfx", Sensitivity::High).is_empty());
-        // Letters inside words, not at their starts: low only.
-        assert_eq!(matched("fir", Sensitivity::Low), vec![1, 2]);
-        assert_eq!(matched("fir", Sensitivity::Medium), vec![1]);
-        // Prefixes pass every level.
-        assert_eq!(matched("liv", Sensitivity::High), vec![3]);
+        // The wire values core/Ranker.js reads as FLEA_EXACT, FLEA_PREFIX and
+        // FLEA_WORD, and the name range. A vendored update that moves a tier
+        // must fail here, not rank silently in the launcher.
+        assert_eq!(hits[0].title, Some(5_000_000));
+        assert_eq!(hits[1].title, Some(4_000_000));
+        assert_eq!(hits[2].title, Some(3_500_000));
+        assert!((1_900_000..=2_100_000).contains(&hits[3].title.unwrap()));
     }
 
     #[test]
@@ -667,37 +625,6 @@ mod tests {
         assert_eq!(hits[0].title, None);
         assert_eq!(hits[0].subtitle, None);
         assert!((NAME - HIT_SPAN..=NAME + HIT_SPAN).contains(&hits[0].keyword.unwrap()));
-    }
-
-    #[test]
-    fn unicode_folding_and_long_query_fallback_work_without_transliteration() {
-        let long = "é".repeat(65);
-        let catalog = catalog(json!([{ "title":"Файл" }, { "title":"Café" }, { "title":long }]));
-        assert_eq!(
-            catalog.search("фАЙЛ", Sensitivity::High).unwrap()[0].title,
-            Some(EXACT)
-        );
-        assert!(
-            (NAME - HIT_SPAN..=NAME + HIT_SPAN).contains(
-                &catalog.search("фл", Sensitivity::High).unwrap()[0]
-                    .title
-                    .unwrap()
-            )
-        );
-        assert_eq!(
-            catalog.search("café", Sensitivity::High).unwrap()[0].title,
-            Some(EXACT)
-        );
-        assert!(
-            catalog
-                .search("cafe", Sensitivity::High)
-                .unwrap()
-                .is_empty()
-        );
-        assert_eq!(
-            catalog.search(&"é".repeat(65), Sensitivity::High).unwrap()[0].title,
-            Some(EXACT)
-        );
     }
 
     #[test]

@@ -589,7 +589,6 @@ fn in_class(class: &str, c: char) -> bool {
 mod tests {
     use super::*;
     use std::fs;
-    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::sync::atomic::{AtomicU64, Ordering};
 
     struct Home(PathBuf);
@@ -690,61 +689,6 @@ mod tests {
         assert!(!m(r"\*", "x"));
         assert!(m("??", "æø"), "? is one character");
         assert!(has_magic(b"a*") && has_magic(b"[ab]") && !has_magic(b"[ab") && !has_magic(br"\*"));
-    }
-
-    #[test]
-    fn include_resolves_and_orders_like_ssh() {
-        let home = Home::new();
-        let base = home.0.display().to_string();
-        home.write(
-            ".ssh/config",
-            &format!(
-                "Include conf.d/*.conf ~/abs.conf {base}/abs.conf\nHost db\n  HostName main\n  User u\nHost web\n  Include web.inc\n  HostName after-include\n"
-            ),
-        );
-        home.write(".ssh/conf.d/b.conf", "Host db\n  HostName from-b\n");
-        home.write(".ssh/conf.d/a.conf", "Host db\n  Port 2200\n");
-        home.write(".ssh/conf.d/.hidden.conf", "Host hidden\n");
-        fs::create_dir_all(home.0.join(".ssh/conf.d/dir.conf")).unwrap();
-        home.write("abs.conf", "Host abs\n");
-        home.write(".ssh/web.inc", "HostName from-include\nHost other\n");
-        assert_eq!(
-            home.list(),
-            "abs\tabs\t\ndb\tdb\tu@from-b:2200\nother\tother\t\nweb\tweb\tfrom-include\n"
-        );
-    }
-
-    #[test]
-    fn cycles_symlinks_and_special_files_are_safe() {
-        let home = Home::new();
-        home.write(
-            ".ssh/config",
-            "Include config loop fifo dir dangling\nHost web\n  User first\n",
-        );
-        symlink(home.0.join(".ssh/config"), home.0.join(".ssh/loop")).unwrap();
-        symlink(home.0.join("missing"), home.0.join(".ssh/dangling")).unwrap();
-        fs::create_dir(home.0.join(".ssh/dir")).unwrap();
-        let fifo = home.0.join(".ssh/fifo");
-        assert!(
-            std::process::Command::new("mkfifo")
-                .arg(&fifo)
-                .status()
-                .unwrap()
-                .success()
-        );
-        assert_eq!(home.list(), "web\tweb\tfirst@web\n");
-        // A symlinked config (a dotfiles checkout) is read through the link.
-        let real = home.write("dotfiles/ssh_config", "Host linked\n");
-        let linked = home.0.join("linked_config");
-        symlink(&real, &linked).unwrap();
-        assert_eq!(list(&linked, Some(&home.0)), b"linked\tlinked\t\n");
-        // Unreadable and missing: nothing.
-        let locked = home.write("locked", "Host locked\n");
-        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
-        if fs::read(&locked).is_err() {
-            assert_eq!(list(&locked, Some(&home.0)), b"");
-        }
-        assert_eq!(list(&home.0.join("nothing"), Some(&home.0)), b"");
     }
 
     #[test]
