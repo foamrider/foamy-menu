@@ -315,6 +315,7 @@ ShellRoot {
       case 9:
         if (test.waiting(test.configArrived()))
           break
+        // runtime.py counts the warning in the log: exactly one.
         test.check(wrapper.configuredWidth === 360 && wrapper.menuSurface.width === Style.space(360), "invalid setting falls back with warning")
         test.setConfig({
           layout: {

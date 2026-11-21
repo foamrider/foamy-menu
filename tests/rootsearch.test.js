@@ -180,11 +180,14 @@ test("a web search opens the engine's URL with the query encoded", () => {
 })
 
 test("the root filter narrows by type and drops calculator and fallbacks", () => {
-  const apps = results("", ctx({ filter: "applications" }))
+  // The ids come from the list the Ctrl+P dropdown offers, as a pick does.
+  assert.deepEqual(RS.FILTERS.map((f) => f.title), ["All", "Applications", "Commands"])
+  const id = Object.fromEntries(RS.FILTERS.map((f) => [f.title, f.id]))
+  const apps = results("", ctx({ filter: id.Applications }))
   assert.deepEqual(apps.map((s) => s.id), ["apps"])
-  const commands = results("lock", ctx({ filter: "commands", calculation: { result: "1" } }))
-  assert.ok(commands.every((s) => s.id === "results"))
-  assert.ok(commands[0].rows.every((r) => r.candidate.type === "command"))
+  const commands = results("lock", ctx({ filter: id.Commands, calculation: { result: "1" } }))
+  assert.ok(commands.length > 0 && commands.every((s) => s.id === "results"))
+  assert.ok(commands[0].rows.length > 0 && commands[0].rows.every((r) => r.candidate.type === "command"))
 })
 
 test("power commands and delete-all ask for confirmation", () => {
