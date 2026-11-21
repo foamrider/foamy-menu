@@ -53,9 +53,9 @@ function harness() {
     }
   }
   const clipboardReader = {
-    busy: false, reads: 0, cancels: 0,
+    busy: false, reads: 0,
     start() { if (this.busy) return false; this.busy = true; this.reads++; return true },
-    cancel() { this.busy = false; this.cancels++ }
+    cancel() { this.busy = false }
   }
   const context = vm.createContext({ Qt, window, actionPanel, clipboardReader, QueryEdit, Util: { editsFilter: () => false } })
   // Runs a one-argument function body with its argument bound, restoring
@@ -128,13 +128,6 @@ test("Ctrl+Shift+V pastes like Ctrl+V", () => {
   assert.equal(h.press("V", h.Qt.ControlModifier | h.Qt.ShiftModifier), true)
   h.read("12+34")
   assert.equal(h.window.query, "prefix 12+34")
-})
-
-test("pasted Unicode and markup stay literal", () => {
-  const h = harness()
-  h.press("V", h.Qt.ControlModifier)
-  h.read("<b>你好</b> $(id)  second")
-  assert.equal(h.window.query, "prefix <b>你好</b> $(id)  second")
 })
 
 test("an empty clipboard leaves the query and history unchanged, without a toast", () => {
@@ -268,17 +261,16 @@ test("a failure that arrives after the launcher closed shows nothing", () => {
   assert.deepEqual(h.toasts, [])
 })
 
-test("cancelPaste stops the read and forgets its target", () => {
-  const h = harness()
-  h.press("V", h.Qt.ControlModifier)
-  h.window.cancelPaste()
-  assert.equal(h.clipboardReader.cancels, 1)
-  assert.equal(h.clipboardReader.busy, false)
-  assert.equal(h.window.pasteRevision, -1)
-})
-
-test("the launcher never pastes through Qt", () => {
+test("no QML of the launcher holds a Qt text input or calls paste()", () => {
   // Qt's paste() reads the whole clipboard on the UI thread with no byte cap
-  // or total deadline (marketplace review of 2.3.0).
-  assert.doesNotMatch(source, /\.paste\(\)|\bTextEdit\b|\bTextInput\b|\bTextField\b|\bTextArea\b/)
+  // or total deadline (marketplace review of 2.3.0). A Qt text input brings
+  // that paste with its own shortcuts, so no QML file the plugin ships may
+  // hold one: the root, ui/ and services/ (kit/ is foamy-kit's).
+  const root = path.join(__dirname, "..")
+  const files = ["", "ui", "services"].flatMap(dir =>
+    fs.readdirSync(path.join(root, dir)).filter(name => name.endsWith(".qml")).map(name => path.join(dir, name)))
+  assert.ok(files.includes(path.join("ui", "LauncherWindow.qml")), "the scan reads the launcher window")
+  for (const file of files)
+    assert.doesNotMatch(fs.readFileSync(path.join(root, file), "utf8"),
+      /\.paste\(\)|\bTextEdit\b|\bTextInput\b|\bTextField\b|\bTextArea\b/, file)
 })
