@@ -118,8 +118,8 @@ test("command output: over-long lines, titles and values are skipped; a long sub
   assert.equal(items[1].subtitle.length, max)
   assert.deepEqual(Object.keys(items[2]).sort(), ["subtitle", "title", "value"], "over-long picture paths are dropped")
   assert.equal(items[3].value.length, max)
-  const many = Array.from({ length: Scopes.MAX_ITEMS + 10 }, (_, i) => "host" + i).join("\n")
-  assert.equal(Scopes.parseOutput(many).length, Scopes.MAX_ITEMS)
+  const many = Array.from({ length: 5010 }, (_, i) => "host" + i).join("\n")
+  assert.equal(Scopes.parseOutput(many).length, 5000, "README: at most 5000 items")
 })
 
 test("commands fill {value} and {plugin} inside one argument each; values are checked", () => {

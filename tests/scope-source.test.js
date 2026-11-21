@@ -264,7 +264,9 @@ function scopeCommand(command, ms) {
 }
 
 // Real processes run as ScopeSource runs them: the pid file lists every
-// process the command started; none may be left after it ends.
+// process the command started; none may be left after it ends. The sleeps
+// outlive both deadlines by far but stay short: spawnSync waits for them
+// even after its own timeout, so a lost deadline fails in about 20 s.
 function runBounded(t, script, ms) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-bounded-"))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
@@ -288,7 +290,7 @@ function runBounded(t, script, ms) {
 }
 
 test("a hung sh -c and its children end at the deadline", (t) => {
-  const r = runBounded(t, 'sleep 300 & echo $! >> "$1"; echo $$ >> "$1"; sleep 300', 300)
+  const r = runBounded(t, 'sleep 20 & echo $! >> "$1"; echo $$ >> "$1"; sleep 20', 300)
   assert.ok(r.elapsed >= 300, "not before the deadline: " + r.elapsed)
   assert.equal(r.result.status, 124)
   assert.ok(Scopes.timedOut(r.result.status, 0, r.elapsed, 300))
@@ -296,7 +298,7 @@ test("a hung sh -c and its children end at the deadline", (t) => {
 })
 
 test("a command that ignores SIGTERM is SIGKILLed a second later, children too", (t) => {
-  const r = runBounded(t, 'trap "" TERM; sh -c \'trap "" TERM; sleep 300\' & echo $! >> "$1"; echo $$ >> "$1"; sleep 300', 300)
+  const r = runBounded(t, 'trap "" TERM; sh -c \'trap "" TERM; sleep 20\' & echo $! >> "$1"; echo $$ >> "$1"; sleep 20', 300)
   assert.ok(r.elapsed >= 1300, "not before the kill-after second: " + r.elapsed)
   // timeout SIGKILLs its own group, itself included (Quickshell: crash, code 9).
   assert.equal(r.result.signal, "SIGKILL")
