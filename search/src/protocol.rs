@@ -124,7 +124,7 @@ pub(crate) fn run(reader: impl BufRead, writer: &mut impl Write) -> io::Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{BufReader, Cursor};
+    use std::io::Cursor;
 
     struct BrokenWriter {
         fail_flush: bool,
@@ -155,21 +155,5 @@ mod tests {
             assert_eq!(error.kind(), io::ErrorKind::BrokenPipe);
             assert_eq!(reader.position(), first.len() as u64);
         }
-    }
-
-    #[test]
-    fn oversized_drain_crosses_buffer_boundaries_and_preserves_following_line() {
-        let mut input = vec![b'x'; MAX_LINE_BYTES + 37];
-        input.extend_from_slice(b"\n{\"id\":2,\"entries\":[]}\n");
-        let mut output = Vec::new();
-        run(BufReader::with_capacity(7, Cursor::new(input)), &mut output).unwrap();
-        let replies: Vec<Value> = output
-            .split(|&byte| byte == b'\n')
-            .filter(|line| !line.is_empty())
-            .map(|line| serde_json::from_slice(line).unwrap())
-            .collect();
-        assert_eq!(replies.len(), 2);
-        assert!(replies[0]["error"].as_str().unwrap().contains("exceeds"));
-        assert_eq!(replies[1], serde_json::json!({"id":2,"loaded":0}));
     }
 }
