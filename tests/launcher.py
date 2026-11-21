@@ -169,11 +169,12 @@ def stop(pids):
             pass
 
 
-def private_store_problems(home):
+def private_store_problems(home, config):
     """Why the launcher's stores are not private after a real run: each store
     file holds a JSON object (an atomic save replaced the empty file the
-    first start made), nothing under the config and data folders (links left
-    out) has a group or other bit, and the cache folder is 0700."""
+    first start made), nothing under the config folder `config` and the data
+    folder (links left out) has a group or other bit, and the cache folder is
+    0700."""
     problems = []
     data = home / ".local/share/foamy-menu"
     for name in ("settings", "frecency", "calculator"):
@@ -183,7 +184,7 @@ def private_store_problems(home):
                 problems.append(f"{path} does not hold a JSON object")
         except (OSError, ValueError) as error:
             problems.append(f"{path}: {error}")
-    for root in (home / ".config/foamy-menu", data):
+    for root in (config, data):
         if not root.is_dir():
             problems.append(f"{root} is missing")
             continue
@@ -197,10 +198,13 @@ def private_store_problems(home):
     return problems
 
 
-def run_case(host, theme, width, language, shots, native=True, probes=False, icon="\U000f08c7"):
+def run_case(host, theme, width, language, shots, native=True, probes=False, icon="\U000f08c7", moved_config=False):
     """One run of the launcher runtime. probes: also run the fetch, command
     scope, guard and paste probes, which depend on no theme, width, language
-    or helper, so one run is enough. icon: the bar icon in shell.json."""
+    or helper, so one run is enough. icon: the bar icon in shell.json.
+    moved_config: XDG_CONFIG_HOME is not $HOME/.config; the launcher's own
+    folder follows it, while shell.json stays at $HOME/.config/omarchy, where
+    the host always reads it."""
     run = harness.Run(
         host,
         (PLUGIN / "tests/qml/LauncherRuntime.qml").read_text(),
@@ -248,7 +252,9 @@ def run_case(host, theme, width, language, shots, native=True, probes=False, ico
     end = text.index("\n  }", start) + len("\n  }")
     launcher.write_text(text[:start] + text[end:])
     home = Path(run.env["HOME"])
-    config = home / ".config/foamy-menu"
+    if moved_config:
+        run.env["XDG_CONFIG_HOME"] = str(home / "xdg-config")
+    config = Path(run.env["XDG_CONFIG_HOME"]) / "foamy-menu"
     config.mkdir(parents=True)
     cache = home / ".cache/foamy-menu"
     cache.mkdir(parents=True)
@@ -479,7 +485,7 @@ with open(path, "w") as f:
     if system_log.read_text():
         run.ok = False
         result += f"; a power command ran: {system_log.read_text()!r}"
-    private = private_store_problems(home)
+    private = private_store_problems(home, config)
     if private:
         run.ok = False
         result += f"; stores are not private: {private!r}"
@@ -503,11 +509,13 @@ def main():
     # English on the wide dark layout with the default icon (its root.png is
     # README's preview.png); Norwegian on the narrow light one, with the
     # probes (their failure toasts are then checked in Norwegian) and another
-    # icon, so the header must show the one shell.json sets.
+    # icon, so the header must show the one shell.json sets. That run also
+    # moves XDG_CONFIG_HOME: the settings must still come from
+    # $HOME/.config/omarchy/shell.json.
     other_icon = "\uf303"
     results = [
         run_case(host, "dark", 1280, "en", args.shots),
-        run_case(host, "light", 600, "no", args.shots, probes=True, icon=other_icon),
+        run_case(host, "light", 600, "no", args.shots, probes=True, icon=other_icon, moved_config=True),
     ]
     # The same checks with no bundled helper (JS matcher fallback).
     results.append(run_case(host, "dark", 1280, "en", None, native=False, icon=other_icon))
