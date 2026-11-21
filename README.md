@@ -494,7 +494,8 @@ dark layout in English and the light layout in Norwegian. `preview.png` is
 `root.png` from the English dark run of
 `python3 -I tests/launcher.py --shots DIR`. `tests/app-focuser.py` runs the
 app focuser against a fake `hyprctl`: quick repeated opens each focus the
-open window.
+open window, focus waits until the launcher's layer is gone, and a lookup
+that fails (bad output, an error, a hung `hyprctl`) launches the app once.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.
