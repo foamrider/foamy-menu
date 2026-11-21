@@ -1041,8 +1041,10 @@ ShellRoot {
         }).data.alias === "st", "an alias is saved trimmed and in lower case")
         var taken = alias("builtin:calculator-history", "st")
         test.check(!taken.ok && taken.error.indexOf("already used") >= 0, "an alias another command uses is refused: " + taken.error)
-        test.check(!alias("builtin:calculator-history", "a b").ok, "an alias with a space is refused")
-        test.check(!alias("builtin:no-such-command", "x").ok, "an alias for an unknown command is refused")
+        var spaced = alias("builtin:calculator-history", "a b")
+        test.check(!spaced.ok && spaced.error.indexOf("cannot contain spaces") >= 0, "an alias with a space is refused: " + spaced.error)
+        var unknown = alias("builtin:no-such-command", "x")
+        test.check(!unknown.ok && unknown.error.indexOf("Unknown command") >= 0, "an alias for an unknown command is refused: " + unknown.error)
         view.popToRoot()
         view.setQuery("st")
         break
@@ -1082,10 +1084,13 @@ ShellRoot {
           windowMode: "compact"
         })
         test.check(!shellKey.ok && shellKey.error.indexOf("omarchy bar set foamy.menu windowMode") >= 0, "a shell.json setting is refused with the command that sets it: " + shellKey.error)
-        test.check(!backend.callSync("settings.updateGeneralSettings", {
+        var bigZoom = backend.callSync("settings.updateGeneralSettings", {
           uiZoom: "big"
-        }).ok, "a zoom that is not a number is refused")
-        test.check(!backend.callSync("calculator.refreshCurrencies", null).ok, "rates are not downloaded while currencyRates is off")
+        })
+        test.check(!bigZoom.ok && bigZoom.error.indexOf("uiZoom must be a number") >= 0, "a zoom that is not a number is refused: " + bigZoom.error)
+        // The reason, not just a failure: a broken handler fails too.
+        var off = backend.callSync("calculator.refreshCurrencies", null)
+        test.check(!off.ok && off.error.indexOf("currencyRates is off") >= 0, "rates are not downloaded while currencyRates is off: " + off.error)
         // The window settings no other stage acts on; each is set back after.
         test.setting("navigationBindings")
         break

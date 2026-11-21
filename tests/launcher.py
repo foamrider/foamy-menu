@@ -159,12 +159,21 @@ def left_running(pids):
     return left()
 
 
-def stop(pids):
+def written_logs(logs):
+    """A note for each stand-in log that a passing run leaves empty."""
+    return "".join(f"; {what}: {log.read_text()!r}" for what, log in logs.items() if log.read_text())
+
+
+def stop(pids, base):
     """Kill what a failed run left running, so it does not outlive the test
-    (a run that fails early ends before the hung guard's deadline)."""
+    (a run that fails early ends before the hung guard's deadline). Only a
+    process whose environment names this run's folder `base` is killed: a
+    pid the system has given to another program since then is left alone."""
+    marker = str(base).encode()
     for pid in pids:
         try:
-            os.kill(int(pid), signal.SIGKILL)
+            if marker in Path(f"/proc/{int(pid)}/environ").read_bytes():
+                os.kill(int(pid), signal.SIGKILL)
         except (OSError, ValueError):
             pass
 
@@ -288,17 +297,36 @@ def run_case(host, theme, width, language, shots, native=True, probes=False, ico
     )
     stubs = run.base / "stubs"
     # Every curl the launcher starts logs its arguments, then is the real
-    # curl (exec keeps stdin, the pid and signals): no fetch may put its URL
-    # on the command line, where other users can read it.
+    # curl (exec keeps the pid and signals): no fetch may put its URL on the
+    # command line, where other users can read it. The request comes on stdin
+    # as a curl config; a URL that is not the local fixture server is refused
+    # and logged, so a broken guard fails the run without a real download.
     real_curl = shutil.which("curl")
     assert real_curl, "the launcher's fetches need curl"
     curl_args = run.base / "curl-args"
     curl_args.write_text("")
+    curl_refused = run.base / "curl-refused"
+    curl_refused.write_text("")
     (stubs / "curl").write_text(
-        '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$FOAMY_CURL_ARGS"\nexec "$FOAMY_REAL_CURL" "$@"\n'
+        r"""#!/bin/sh
+printf '%s\n' "$*" >> "$FOAMY_CURL_ARGS"
+config=$(cat)
+case "$config" in
+'url = "https://127.0.0.1:'*) ;;
+*)
+  printf '%s\n' "$config" | head -n 1 >> "$FOAMY_CURL_REFUSED"
+  exit 7
+  ;;
+esac
+exec "$FOAMY_REAL_CURL" "$@" <<EOF
+$config
+EOF
+"""
     )
     (stubs / "curl").chmod(0o755)
-    run.env.update({"FOAMY_CURL_ARGS": str(curl_args), "FOAMY_REAL_CURL": real_curl})
+    run.env.update(
+        {"FOAMY_CURL_ARGS": str(curl_args), "FOAMY_CURL_REFUSED": str(curl_refused), "FOAMY_REAL_CURL": real_curl}
+    )
     # A power command must only ask: anything reaching omarchy-system is a failure.
     system_log = run.base / "omarchy-system.log"
     system_log.write_text("")
@@ -464,7 +492,7 @@ with open(path, "w") as f:
     if (probes and len(listed) < 4) or left:
         run.ok = False
         result += f"; hung scope/guard processes: listed {listed!r}, still running {left!r}"
-        stop(left)
+        stop(left, run.base)
     if probes:
         # The cancelled paste's wl-paste ignores TERM; closing the launcher
         # mid-read must still end it.
@@ -475,16 +503,19 @@ with open(path, "w") as f:
         if paste_left:
             run.ok = False
             result += f"; a cancelled paste left wl-paste running: {paste_left!r}"
-            stop(paste_left)
+            stop(paste_left, run.base)
         # The rates and suggestion probes ran curl: 2 rate and 3 suggestion fetches.
         calls = curl_args.read_text().splitlines()
         leaked = [line for line in calls if any(part in line for part in ("://", "127.0.0.1", "pasta", "?q="))]
         if len(calls) < 4 or leaked:
             run.ok = False
             result += f"; curl command lines: {len(calls)} calls, with the URL or query: {leaked!r}"
-    if system_log.read_text():
+    written = written_logs(
+        {"a power command ran": system_log, "a fetch went to a URL outside the fixture server": curl_refused}
+    )
+    if written:
         run.ok = False
-        result += f"; a power command ran: {system_log.read_text()!r}"
+        result += written
     private = private_store_problems(home, config)
     if private:
         run.ok = False
