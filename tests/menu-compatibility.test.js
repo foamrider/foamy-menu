@@ -65,7 +65,9 @@ function harness(tree) {
   })
 
   test("Omarchy v" + version + " unsupported submenus open in the stock menu, including links", () => {
-    for (const item of parsed.items.filter(i => i.kind === "menu" && i.provider && !OmarchyMenu.PROVIDERS[i.provider])) {
+    const unsupported = parsed.items.filter(i => i.kind === "menu" && i.provider && !OmarchyMenu.PROVIDERS[i.provider])
+    assert.deepEqual(unsupported.map(i => i.id), ["setup.language"], "the fixture's provider the launcher does not list")
+    for (const item of unsupported) {
       const linked = OmarchyMenu.buildTree(parsed.items, OmarchyMenu.parse(JSON.stringify({ shortcut: { label: "Shortcut", target: item.id } })).items)
       for (const id of ["omarchy:" + item.id, "omarchy:shortcut"]) {
         const h = harness(linked)
@@ -81,13 +83,6 @@ function harness(tree) {
   })
 }
 
-test("an unknown extension provider opens in the stock menu", () => {
-  const tree = OmarchyMenu.buildTree(OmarchyMenu.parse('{"custom":{"label":"Custom","provider":"future-provider"}}').items, [])
-  const h = harness(tree)
-  assert.deepEqual(h.open("omarchy:custom"), { close: true })
-  assert.deepEqual(h.summons, [{ id: "omarchy.menu", payload: { menu: "custom" } }])
-})
-
 test("kernel rows obey the menu visibility guard and remain searchable when visible", () => {
   const parsed = OmarchyMenu.parse(fs.readFileSync(path.join(__dirname, "fixtures/omarchy-menu-v4.5.0.jsonc"), "utf8"))
   const tree = OmarchyMenu.buildTree(parsed.items, [])
@@ -99,17 +94,47 @@ test("kernel rows obey the menu visibility guard and remain searchable when visi
   assert.ok(!hidden.some(c => c.menuId.startsWith("update.kernel")))
 })
 
-test("kernel enumeration reads list/get and set receives the selected value literally", t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-kernels-"))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  fs.writeFileSync(path.join(dir, "omarchy-kernel"), '#!/bin/bash\ncase "$1" in\nget) echo linux-lts ;;\nlist) printf "linux\\nlinux-lts\\n" ;;\nset) printf "%s\\0" "$@" ;;\n*) exit 1 ;;\nesac\n', { mode: 0o755 })
-  const env = { ...process.env, PATH: dir + ":" + process.env.PATH }
-  const output = execFileSync("bash", ["-c", OmarchyMenu.PROVIDERS.kernels.script], { env, encoding: "utf8" })
-  const rows = OmarchyMenu.providerItems("update.kernel", "kernels", output)
-  assert.deepEqual(rows.map(r => [r.label, r.isCurrent, r.action]), [["linux", false, "omarchy-kernel set 'linux'"], ["linux-lts", true, "omarchy-kernel set 'linux-lts'"]])
-  const value = "it's $(touch " + path.join(dir, "injected") + ") `id`"
-  const action = OmarchyMenu.PROVIDERS.kernels.actionFor(value)
-  assert.equal(execFileSync("bash", ["-c", action], { env, encoding: "utf8" }), "set\0" + value + "\0")
-  assert.equal(fs.existsSync(path.join(dir, "injected")), false)
-  assert.deepEqual(OmarchyMenu.providerItems("update.kernel", "kernels", ""), [])
+// Each provider's script runs in bash against fake host commands: list
+// prints two values (one with a space), current names one of them, and set
+// prints all its arguments NUL-separated so the test sees each one exactly.
+// A command's second word must be its first argument.
+const providerCommands = {
+  kernels: { current: ["omarchy-kernel", "get"], list: ["omarchy-kernel", "list"], set: ["omarchy-kernel", "set"] },
+  fonts: { current: ["omarchy-font-current"], list: ["omarchy-font-list"], set: ["omarchy-font-set"] },
+  "power-profiles": { current: ["powerprofilesctl", "get"], list: ["omarchy-powerprofiles-list"], set: ["omarchy-powerprofiles-set", "autodetect"] }
+}
+
+function fakeCommands(dir, commands) {
+  const scripts = {}
+  const add = (argv, body) => {
+    const [name, sub] = argv
+    scripts[name] = scripts[name] || []
+    scripts[name].push(sub ? '[[ $1 == "' + sub + '" ]] && { ' + body + '; exit; }' : body + "; exit")
+  }
+  add(commands.current, "echo 'beta two'")
+  add(commands.list, "printf 'alpha\\nbeta two\\n'")
+  add(commands.set, "printf '%s\\0' \"$@\"")
+  for (const [name, lines] of Object.entries(scripts))
+    fs.writeFileSync(path.join(dir, name), "#!/bin/bash\n" + lines.join("\n") + "\nexit 1\n", { mode: 0o755 })
+}
+
+test("every provider lists its values with the current one, and set receives the selected value literally", t => {
+  assert.deepEqual(Object.keys(OmarchyMenu.PROVIDERS).sort(), Object.keys(providerCommands).sort(), "a fake for each provider")
+  for (const [provider, commands] of Object.entries(providerCommands)) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-provider-"))
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
+    fakeCommands(dir, commands)
+    const env = { ...process.env, PATH: dir + ":" + process.env.PATH }
+    const output = execFileSync("bash", ["-c", OmarchyMenu.PROVIDERS[provider].script], { env, encoding: "utf8" })
+    const rows = OmarchyMenu.providerItems("menu", provider, output)
+    const set = commands.set.join(" ")
+    assert.deepEqual(rows.map(r => [r.label, r.isCurrent, r.action]),
+      [["alpha", false, set + " 'alpha'"], ["beta two", true, set + " 'beta two'"]], provider)
+    const value = "it's $(touch " + path.join(dir, "injected") + ") `id`"
+    const action = OmarchyMenu.PROVIDERS[provider].actionFor(value)
+    const received = [...commands.set.slice(1), value].join("\0") + "\0"
+    assert.equal(execFileSync("bash", ["-c", action], { env, encoding: "utf8" }), received, provider + ": one literal argument")
+    assert.equal(fs.existsSync(path.join(dir, "injected")), false, provider + ": the value ran as a command")
+    assert.deepEqual(OmarchyMenu.providerItems("menu", provider, ""), [], provider + ": no output, no rows")
+  }
 })
