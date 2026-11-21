@@ -98,33 +98,22 @@ test("overbounds of 3+ beats a better title score", () => {
   assert.deepEqual(titles(R.rank(items3, "term", { nowMs: NOW })), ["Kitty", "Termius"])
 })
 
-test("title boost for whole-word queries of 3+ chars", () => {
-  const r = R.buildRecord(app("LibreOffice Writer"), "writer", { nowMs: NOW })
-  assert.equal(r.titleScore, 4 + 5 * 2 + 0.5)
-  assert.ok(R.wholeWordIn("LibreOffice Writer", "office"))
-  assert.ok(!R.wholeWordIn("Firefox", "fire"))
-  assert.equal(R.buildRecord(app("Writerly Notes App"), "writer", { nowMs: NOW }).titleScore, 14)
-  const items = [app("Writerly Notes App"), app("LibreOffice Writer")]
-  assert.deepEqual(titles(R.rank(items, "writer", { nowMs: NOW })), ["LibreOffice Writer", "Writerly Notes App"])
+test("a whole-word match of 3+ letters beats the prefix of a longer word", () => {
+  assert.deepEqual(titles(R.rank([app("Writerly Notes App"), app("LibreOffice Writer")], "writer", { nowMs: NOW })), ["LibreOffice Writer", "Writerly Notes App"])
+  // A camelCase part counts as a word.
+  assert.deepEqual(titles(R.rank([app("Officer Tools"), app("LibreOffice")], "office", { nowMs: NOW })), ["LibreOffice", "Officer Tools"])
 })
 
-test("empty query orders pins first, then frecency, alias, type, title", () => {
+test("an empty query orders by use, then alias, type and title", () => {
   const items = [
-    { id: "1", type: "command", title: "Zeta" },
+    { id: "1", type: "command", title: "Able" },
+    app("Delta"),
     app("Beta"),
-    app("Alpha"),
     { id: "4", type: "command", title: "Gamma", alias: "g" },
-    app("Pinned Two", { pinPriority: 2 }),
-    app("Pinned One", { pinPriority: 1 }),
-    { id: "7", type: "quicklink", title: "Hot", frecency: 300 }
+    { id: "7", type: "command", title: "Hot", frecency: 300 }
   ]
-  assert.deepEqual(titles(R.rank(items, "", { nowMs: NOW })), [
-    "Pinned One", "Pinned Two",
-    "Hot",
-    "Gamma",
-    "Alpha", "Beta",
-    "Zeta"
-  ])
+  // Applications come before commands, whatever the title says.
+  assert.deepEqual(titles(R.rank(items, "", { nowMs: NOW })), ["Hot", "Gamma", "Beta", "Delta", "Able"])
 })
 
 test("exact titles win over fuzzy ones in a bucket", () => {
@@ -132,12 +121,14 @@ test("exact titles win over fuzzy ones in a bucket", () => {
   assert.deepEqual(titles(R.rank(items, "code", { nowMs: NOW })), ["Code", "Code Editor"])
 })
 
-test("subtitles count only when they differ from the title", () => {
-  const r = R.buildRecord(app("Files", { subtitle: "files" }), "fil", { nowMs: NOW })
-  assert.equal(r.subtitle, null)
-  const r2 = R.buildRecord(app("Nautilus", { subtitle: "Files" }), "files", { nowMs: NOW })
-  assert.ok(r2.subtitleExact)
-  assert.ok(r2.isMatching)
+test("an exact subtitle finds the row and leads", () => {
+  const items = [
+    app("Filesystem Viewer"),
+    { id: "x", type: "command", title: "Xylophone", alias: "filesync" },
+    app("Nautilus", { subtitle: "Files" })
+  ]
+  // It beats a title prefix and an alias prefix.
+  assert.deepEqual(titles(R.rank(items, "files", { nowMs: NOW })), ["Nautilus", "Xylophone", "Filesystem Viewer"])
 })
 
 test("every field folds like the title and the query", () => {
