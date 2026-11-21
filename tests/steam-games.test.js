@@ -188,3 +188,25 @@ test("the Steam Games scope runs the bundled helper's steam-games, as FoamyNativ
     fs.rmSync(fixture.home, { recursive: true, force: true })
   }
 })
+
+// Steam rewrites appinfo.vdf while it runs, so the helper may meet it broken
+// or half written. The installed games still list from their manifests, and
+// tools are then told apart by name.
+test("an unreadable appinfo.vdf does not stop the list: games by their manifests, tools left out by name", { skip }, () => {
+  const variants = {
+    "not appinfo at all": (file) => fs.writeFileSync(file, Buffer.alloc(64, 0x41)),
+    "cut inside an entry": (file) => fs.writeFileSync(file, appinfo([[8930, { type: "Game" }]]).subarray(0, 40)),
+    "a FIFO nobody writes": (file) => { fs.rmSync(file); execFileSync("mkfifo", [file]) }
+  }
+  for (const [name, breakIt] of Object.entries(variants)) {
+    const fixture = makeSteam()
+    try {
+      breakIt(path.join(fixture.steam, "appcache/appinfo.vdf"))
+      const [program, ...args] = [...helper.argv, "steam-games"]
+      const out = execFileSync(program, args, { env: { HOME: fixture.home, PATH: process.env.PATH }, encoding: "utf8", timeout: 10000 })
+      assert.deepEqual(Scopes.parseOutput(out).map((i) => [i.title, i.value]), [["Deep Rock Galactic", "548430"], ["Sid Meier's Civilization V", "8930"]], name)
+    } finally {
+      fs.rmSync(fixture.home, { recursive: true, force: true })
+    }
+  }
+})
