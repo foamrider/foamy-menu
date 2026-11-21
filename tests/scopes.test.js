@@ -49,10 +49,39 @@ test("a scope file takes its id from the file name and must be an object", () =>
   assert.equal(Scopes.parseFile("bookmarks.json", '{"title":"Bookmarks"}').definition.id, "bookmarks")
   assert.ok(Scopes.parseFile("x.json", "[1]").errors)
   assert.ok(Scopes.parseFile("x.json", "{").errors)
-  assert.ok(Scopes.normalize({ id: "Bad Id", title: "x" }).errors)
   assert.ok(Scopes.normalize({ id: "x", title: "X", source: { type: "list", items: [] }, open: ["{value}"] }).errors, "{value} cannot be the program")
   assert.ok(Scopes.normalize({ id: "x", title: "X", source: { type: "list", items: [] }, open: ["a"], valuePattern: "(" }).errors)
   assert.ok(Scopes.normalize({ id: "x", title: "X", source: { type: "list", items: [] }, open: ["a"], actions: [{ title: "Both", copy: "a", open: ["b"] }] }).errors)
+})
+
+test("invalid scope definitions are rejected, naming the field", () => {
+  const base = { id: "notes", title: "Notes", source: { type: "list", items: ["a"] }, open: ["true", "{value}"] }
+  const command = (timeout) => ({ source: { type: "command", command: ["true"], timeout } })
+  const query = { source: { type: "query" }, open: ["true", "{query}"], suggest: true }
+  assert.ok(Scopes.normalize(base).scope, "the base definition is valid")
+  const cases = [
+    [{ id: "Bad Id" }, "id must be lowercase letters, digits and dashes"],
+    [{ enabled: "false" }, "enabled must be true or false"],
+    [{ title: undefined }, "title is required"],
+    [{ keyword: "two words" }, "keyword must be 1\u201332 characters without spaces"],
+    [{ keyword: "k".repeat(33) }, "keyword must be 1\u201332 characters without spaces"],
+    [{ title: "t".repeat(513) }, "title is longer than 512 characters"],
+    [{ open: ["true", ""] }, "open[1] must be a non-empty string"],
+    [{ open: ["true", 5] }, "open[1] must be a non-empty string"],
+    [{ open: [] }, "open must be a non-empty array of strings"],
+    [command(99), "source.timeout must be 100\u201360000 ms"],
+    [command(60001), "source.timeout must be 100\u201360000 ms"],
+    [command("soon"), "source.timeout must be 100\u201360000 ms"],
+    [{ source: { type: "list", items: [5] } }, "source.items[0] must be a string or an object"],
+    [{ source: { type: "files" } }, "source.type must be \"command\", \"list\" or \"query\""],
+    [Object.assign({ suggestUrl: "http://example.com/?q={query}" }, query), "suggest needs a suggestUrl: an https URL with {query}"],
+    [Object.assign({ suggestUrl: "https://example.com/" }, query), "suggest needs a suggestUrl: an https URL with {query}"]
+  ]
+  for (const [change, message] of cases) {
+    const definition = Object.assign({}, base, change)
+    assert.deepEqual(Scopes.normalize(definition).errors, [message], JSON.stringify(change).slice(0, 80))
+  }
+  for (const timeout of [100, 60000]) assert.equal(Scopes.normalize(Object.assign({}, base, command(timeout))).scope.source.timeout, timeout)
 })
 
 test("Tab names a scope by its keyword, with or without a search after it", () => {
@@ -71,6 +100,26 @@ test("command output: title, value and subtitle per line; blanks and duplicates 
     { title: "db", value: "db", subtitle: "" },
     { title: "label", value: "value", subtitle: "" }
   ])
+})
+
+test("command output: over-long lines, titles and values are skipped; a long subtitle is cut; at most 5000 items", () => {
+  const max = Scopes.MAX_TEXT
+  const long = "x".repeat(max + 1)
+  const items = Scopes.parseOutput([
+    "ok\tok\tsub",
+    long,
+    "t\t" + long,
+    "cut\tcut\t" + long,
+    "icon\ticon\t\t/" + "i".repeat(max) + "\t/" + "c".repeat(max),
+    ["l".repeat(max), "w".repeat(max), "s".repeat(max), "/" + "i".repeat(max - 1), "/" + "c".repeat(max - 1)].join("\t"),
+    "edge\t" + "v".repeat(max)
+  ].join("\n"))
+  assert.deepEqual(items.map((i) => i.title), ["ok", "cut", "icon", "edge"], "skipped: an over-long title, value or whole line")
+  assert.equal(items[1].subtitle.length, max)
+  assert.deepEqual(Object.keys(items[2]).sort(), ["subtitle", "title", "value"], "over-long picture paths are dropped")
+  assert.equal(items[3].value.length, max)
+  const many = Array.from({ length: Scopes.MAX_ITEMS + 10 }, (_, i) => "host" + i).join("\n")
+  assert.equal(Scopes.parseOutput(many).length, Scopes.MAX_ITEMS)
 })
 
 test("commands fill {value} and {plugin} inside one argument each; values are checked", () => {
