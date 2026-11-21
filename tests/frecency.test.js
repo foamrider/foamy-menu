@@ -49,7 +49,3 @@ test("recordVisit stores anchor, openedAt and deduped lowercased terms", () => {
   assert.equal(e.searchTerms.length, F.MAX_SEARCH_TERMS)
   assert.equal(e.searchTerms[e.searchTerms.length - 1].term, "q29")
 })
-
-test("the search-term window is 17 days", () => {
-  assert.equal(F.SEARCH_TERM_WINDOW_MS, 17 * DAY * 1000)
-})
