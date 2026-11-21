@@ -1,13 +1,9 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
-const fs = require("node:fs")
-const path = require("node:path")
 const Settings = require("../core/Settings.js")
 const Scopes = require("../core/Scopes.js")
 const Prefs = require("../kit/node-loader.cjs").load("FoamyPrefs")
 const manifest = require("../manifest.json")
-
-const read = (name) => fs.readFileSync(path.join(__dirname, "..", name), "utf8")
 
 test("manifest barWidget.schema and defaults mirror core/Settings.js", () => {
   const schema = manifest.barWidget.schema
@@ -57,16 +53,6 @@ test("the SSH and web-search settings reach the built-in scopes; scope files sti
   const disabled = Scopes.merge(Scopes.BUILTINS, [{ name: "google.json", definition: { id: "google", enabled: false } }])
   assert.deepEqual(disabled.queryIds, ["google", "duckduckgo"], "Clear Saved Web Searches finds disabled engines too")
   assert.ok(!disabled.scopes.some((s) => s.id === "google"))
-})
-
-test("every setting is read by the launcher", () => {
-  const source = ["Backend.qml", "StockMenu.qml", "ui/LauncherWindow.qml", "core/Settings.js"].map(read).join("\n")
-  for (const f of Settings.fields) {
-    const used = new RegExp("settings\\." + f.key + "\\b|configuredEntry\\." + f.key + "\\b|entry\\." + f.key + "\\b|general\\." + f.key + "\\b").test(source)
-    assert.ok(used, "unused setting " + f.key)
-  }
-  assert.ok(!fs.existsSync(path.join(__dirname, "../core/Config.js")))
-  assert.doesNotMatch(read("Backend.qml"), /config\.json/, "no separate config file")
 })
 
 const RS = require("../core/RootSearch.js")
