@@ -139,13 +139,10 @@ test("bounded fetch: a normal reply parses; oversized and endless replies stop a
   assert.equal(downgraded.text, "")
 })
 
-test("bounded fetch: the URL stays off the command line; unsafe URLs are refused", () => {
+// That the URL stays off curl's command line is checked where curl really
+// starts: tests/launcher.py logs every curl command line of its fetches.
+test("bounded fetch: unsafe URLs are refused; the config holds the URL and headers", () => {
   const url = "https://duckduckgo.com/ac/?q=my%20private%20question&type=list"
-  const argv = Fetch.argv(MAX, 3)
-  assert.equal(argv[0], "curl")
-  assert.equal(argv[1], "--disable", "--disable must be first for curl to skip ~/.curlrc")
-  assert.ok(!argv.join(" ").includes("private"))
-  assert.deepEqual(argv.slice(argv.indexOf("--max-filesize"), argv.indexOf("--max-filesize") + 2), ["--max-filesize", String(MAX)])
   assert.equal(Fetch.config(url, []), `url = "${url}"\nuser-agent = "Mozilla/5.0"\n`)
   for (const bad of ["http://example.com/", "file:///etc/passwd", "https://", "https://a/\"\nupload-file = x",
     "https://a/ b", "https://a/\\", "https://a/\u0000", ""]) {

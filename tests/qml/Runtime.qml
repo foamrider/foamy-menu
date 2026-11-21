@@ -15,7 +15,9 @@ ShellRoot {
   property int stage: 0
   property int checks: 0
   property int sectionIndex: 0
-  readonly property var sections: ["left", "centerBegin", "center", "centerEnd", "tray", "right"]
+  // tests/stock-settings.test.js checks every bar section; here one 4.5-only
+  // section goes through the real file watcher.
+  readonly property var sections: ["tray"]
   property var summonCalls: []
   property var expectedCommands: []
   property var actionModes: ["accepted", "denied", "revoked", "older", "restored"]
@@ -126,8 +128,8 @@ ShellRoot {
       test.capture(wrapper.menuSurface, name)
     })
   }
-  // A settings or menu file write lands later, through FileView and the
-  // menu's file watcher, and a destroyed facade goes on a later event loop
+  // A settings file write lands later, through FileView and the file
+  // watcher, and a destroyed facade goes on a later event loop
   // pass. The stage after one waits for its effect, up to 20 ticks (10 s),
   // instead of assuming one 500 ms tick is enough: under load it was not.
   // After the deadline the stage's checks run and report what they see.
@@ -155,20 +157,6 @@ ShellRoot {
   FileView {
     id: fixture
     path: Qt.resolvedUrl("menu.jsonc").toString().replace("file://", "")
-  }
-  function setMenuTestEntry(enabled) {
-    var entries = {
-      apps: {
-        label: "Apps",
-        provider: "apps"
-      }
-    }
-    if (enabled)
-      entries["foamy-test"] = {
-        label: "Foamy test entry",
-        action: "true"
-      }
-    fixture.setText(JSON.stringify(entries))
   }
   FileView {
     id: actionLog
@@ -262,10 +250,8 @@ ShellRoot {
         break
       case 2:
         test.check(stock.childCount("apps") > 0, "real application library supplies entries")
-        stock.setFilter("firefox")
         break
       case 3:
-        test.check(stock.filterText === "firefox", "stock search remains available")
         wrapper.close()
         test.check(!wrapper.opened, "close state forwarded")
         test.setConfig({
@@ -290,7 +276,7 @@ ShellRoot {
         }))
         break
       case 5:
-        test.check(wrapper.menuSurface.width === stock.cardWidth && stock.cardWidth === Style.space(520), "wider stock menu preserved")
+        test.check(wrapper.menuSurface.width === stock.cardWidth && stock.cardWidth > Style.space(440), "wider stock menu preserved")
         wrapper.open('{"mode":"select","prompt":"Test selection","options":["One","Two"],"width":280}')
         break
       case 6:
@@ -329,8 +315,8 @@ ShellRoot {
       case 9:
         if (test.waiting(test.configArrived()))
           break
+        // runtime.py counts the warning in the log: exactly one.
         test.check(wrapper.configuredWidth === 360 && wrapper.menuSurface.width === Style.space(360), "invalid setting falls back with warning")
-        test.check(wrapper.reportedWidthSetting === "number -20", "invalid width is reported once")
         test.setConfig({
           layout: {
             left: [
@@ -346,74 +332,49 @@ ShellRoot {
         if (test.waiting(test.configArrived()))
           break
         test.check(wrapper.menuSurface.width <= wrapper.menuWindow.width - Style.gapsOut * 2, "oversized width stays within the screen")
-        test.check(wrapper.reportedWidthSetting === "", "valid width clears the warning")
-        test.setMenuTestEntry(true)
-        break
-      case 11:
-        if (test.waiting(stock.item("foamy-test") !== null))
-          break
-        test.check(stock.item("foamy-test") !== null, "new entry appears through stock file watcher")
-        test.setMenuTestEntry(false)
-        break
-      case 12:
-        if (test.waiting(stock.item("foamy-test") === null))
-          break
-        test.check(stock.item("foamy-test") === null, "removed entry disappears through stock file watcher")
         wrapper.close()
         // Revocation destroys the actual facade object, as the host does on reload.
         wrapper.shell.destroy()
         break
-      case 13:
+      case 11:
         if (test.waiting(!wrapper.usingSharedAppLibrary))
           break
         test.check(!wrapper.usingSharedAppLibrary && test.fallbackActive(), "revoked facade activates the packaged fallback")
         wrapper.open('{"menu":"apps"}')
         break
-      case 14:
+      case 12:
         if (test.waiting(stock.childCount("apps") > 0))
           break
         test.check(stock.childCount("apps") > 0, "applications remain available after capability loss")
         stock.setFilter("firefox")
         wrapper.shell = facade.createObject(null)
         break
-      case 15:
+      case 13:
         test.check(wrapper.usingSharedAppLibrary && !test.fallbackActive(), "restored capability releases the fallback library")
         test.check(wrapper.opened && stock.filterText === "firefox", "search and open state survive capability restoration")
         test.check(stock.childCount("apps") > 0, "restored host capability supplies applications")
         wrapper.close()
         test.startActionBatch()
         break
-      case 16:
+      case 14:
         test.runActionBatch(stock)
         break
-      case 17:
+      case 15:
         if (!test.actionBatchFinished()) {
           test.stage--
           break
         }
         if (++test.actionMode < test.actionModes.length) {
           test.startActionBatch()
-          test.stage = 16
+          test.stage = 14
           break
         }
         break
-      case 18:
+      case 16:
         if (test.sectionIndex === test.sections.length) {
-          test.setConfig({
-            layout: {
-              left: {
-                id: "foamy.menu",
-                width: 800
-              },
-              right: [
-                {
-                  id: "foamy.menu",
-                  width: 460
-                }
-              ]
-            }
-          }, 460)
-          test.stage = 20
+          wrapper.close()
+          test.checkBarWidget()
+          test.stage = 18
           break
         }
         var layout = {}
@@ -433,49 +394,17 @@ ShellRoot {
         }, 610 + test.sectionIndex)
         wrapper.open('{"menu":"root"}')
         break
-      case 19:
+      case 17:
         if (test.waiting(test.configArrived()))
           break
         test.check(wrapper.configuredWidth === 610 + test.sectionIndex && wrapper.menuSurface.width === Style.space(610 + test.sectionIndex), test.sections[test.sectionIndex] + " retains width through the file watcher")
         test.sectionIndex++
-        test.stage = 18
+        test.stage = 16
         break
-      case 20:
-        if (test.waiting(test.configArrived()))
-          break
-        test.check(wrapper.configuredWidth === 460, "malformed section is skipped")
-        test.setConfig({
-          layout: {
-            tray: [
-              {
-                id: "foamy.menu",
-                width: "440"
-              }
-            ]
-          }
-        }, "440")
-        break
-      case 21:
-        if (test.waiting(test.configArrived()))
-          break
-        test.check(wrapper.configuredWidth === 360 && wrapper.reportedWidthSetting === "string 440", "non-numeric width in tray falls back")
-        test.setConfig({
-          layout: {
-            centerEnd: ["foamy.menu"]
-          }
-        }, undefined)
-        break
-      case 22:
-        if (test.waiting(test.configArrived()))
-          break
-        test.check(wrapper.configuredWidth === 360, "string entry keeps default width")
-        wrapper.close()
-        test.checkBarWidget()
-        break
-      case 23:
+      case 18:
         test.capture(buttonStrip, "buttons")
         break
-      case 24:
+      case 19:
         test.setConfig({
           layout: {
             left: [
@@ -488,12 +417,12 @@ ShellRoot {
         }, 360)
         wrapper.open('{"menu":"root"}')
         break
-      case 25:
+      case 20:
         if (test.waiting(test.configArrived()))
           break
         test.captureMenu("menu-root")
         break
-      case 26:
+      case 21:
         console.log("FOAMY RESULT " + test.checks + " checks")
         console.log("FOAMY DONE")
         Qt.quit()

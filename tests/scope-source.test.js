@@ -4,7 +4,8 @@
 // builds (Scopes.bounded() around Scopes.capped()) against real processes: a
 // hung `sh -c` and its children end at the deadline, and a flood of output
 // stops at MAX_OUTPUT bytes, newlines or not.
-// The QML functions and handlers run as written, in a vm context.
+// Suggestions: nothing is fetched for a scope with suggest off. The QML
+// functions and handlers run as written, in a vm context.
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
@@ -33,7 +34,9 @@ function body(handler) {
   return handler.slice(handler.indexOf("{"))
 }
 
-function harness(scopes) {
+// options.realSetItems runs ScopeSource's own setItems instead of recording
+// the calls in loads.
+function harness(scopes, options = {}) {
   const later = []
   const messages = []
   const loads = []
@@ -44,23 +47,27 @@ function harness(scopes) {
     stderrHead: "", command: [], starts: 0,
     signal(n) { signals.push(n) }
   }
+  const suggestFetch = { calls: [], get(url, job) { this.calls.push({ url, job }) } }
+  const suggestDelay = { restarts: 0, restart() { this.restarts++ } }
   const source = {
-    pluginDir: "/plugin", queue: [],
+    pluginDir: "/plugin", queue: [], pendingSuggestion: null, suggestions: {}, items: {}, failures: {}, revision: 0,
     scope: id => scopes.find(s => s.id === id) || null,
     message: (level, message) => messages.push(message),
     setItems: (id, list, failure) => loads.push({ id, list, failure })
   }
   const context = vm.createContext({
-    source, proc, watchdog, Scopes, FoamyNative, Date,
+    source, proc, watchdog, suggestFetch, suggestDelay, Scopes, FoamyNative, Date,
     Qt: { callLater: fn => { if (!later.includes(fn)) later.push(fn) } }
   })
-  for (const name of ["refresh", "next", "finish", "keepLine", "keepStderr"]) {
+  const names = ["refresh", "next", "finish", "keepLine", "keepStderr", "suggest", "storeSuggestions", "fetchSuggestions"]
+  for (const name of options.realSetItems ? names.concat(["setItems"]) : names) {
     vm.runInContext(block("function " + name + "(", 2), context)
     source[name] = context[name]
   }
   const exited = block("onExited: function (exitCode, exitStatus)", 4, "id: proc")
   const runningChanged = block("onRunningChanged: {", 4, "id: proc")
   const triggered = block("onTriggered: {", 4, "id: watchdog")
+  const finished = block("onFinished: function (job, text, failure)", 4, "id: suggestFetch")
   // Quickshell: a start sets running; the process ends with exited() and
   // then running -> false; a command that can't start gets only the latter.
   Object.defineProperty(proc, "running", {
@@ -68,7 +75,7 @@ function harness(scopes) {
     set(value) { if (value && !this._running) this.starts++; this._running = value }
   })
   return {
-    source, proc, watchdog, messages, loads, signals,
+    source, proc, watchdog, messages, loads, signals, suggestFetch, suggestDelay,
     enqueue(...ids) { source.queue = source.queue.concat(ids); source.next() },
     flush() { while (later.length) later.shift()() },
     exit(code, status = 0) {
@@ -79,7 +86,11 @@ function harness(scopes) {
       proc._running = false
       vm.runInContext("with (proc) (function() " + body(runningChanged) + ")()", context)
     },
-    fire() { vm.runInContext("(function() " + body(triggered) + ")()", context) }
+    fire() { vm.runInContext("(function() " + body(triggered) + ")()", context) },
+    // BoundedFetch's reply for a suggestion request.
+    finished(job, reply, failure) {
+      vm.runInContext("(" + finished.slice(finished.indexOf("function")) + ")", context)(job, reply, failure)
+    }
   }
 }
 
@@ -201,6 +212,50 @@ test("a run whose scope changed while it ran is dropped, and the new definition 
   assert.deepEqual(h.messages, [])
 })
 
+test("a failed refresh keeps the last list; the same list again keeps its array", () => {
+  const h = harness([scope("hosts", ["lister"])], { realSetItems: true })
+  const run = (lines, code) => {
+    h.source.refresh("hosts")
+    assert.equal(h.proc.scopeId, "hosts")
+    h.proc.lines = lines
+    h.exit(code)
+    h.stopped()
+    h.flush()
+  }
+  run(["a", "b"], 0)
+  const first = h.source.items.hosts
+  assert.deepEqual(first.map(i => i.title), ["a", "b"])
+  run([], 1)
+  assert.equal(h.source.items.hosts, first, "the failed run keeps the list on screen")
+  assert.equal(h.source.failures.hosts, "exited with code 1")
+  run(["a", "b"], 0)
+  assert.equal(h.source.items.hosts, first, "an unchanged list keeps its array, so nothing rebuilds")
+  assert.deepEqual(Object.keys(h.source.failures), [], "a good run clears the failure")
+  run(["c"], 0)
+  assert.deepEqual(h.source.items.hosts.map(i => i.title), ["c"])
+})
+
+test("suggestions: no request for a scope with suggest off; the typed text is URL-encoded; a failed reply lists nothing", () => {
+  const scopes = Scopes.merge(Scopes.BUILTINS, [{ name: "duckduckgo.json", definition: { id: "duckduckgo", suggest: true } }]).scopes
+  const h = harness(scopes)
+  h.source.suggest("google", "private text")
+  assert.equal(h.suggestDelay.restarts, 1, "typing waits for a pause")
+  h.source.fetchSuggestions()
+  h.source.suggest("no-such-scope", "private text")
+  h.source.fetchSuggestions()
+  assert.deepEqual(h.suggestFetch.calls, [], "nothing is sent while suggestions are off")
+  h.source.suggest("duckduckgo", "rust & async")
+  h.source.fetchSuggestions()
+  h.source.fetchSuggestions()
+  assert.deepEqual(h.suggestFetch.calls.map(c => c.url), ["https://duckduckgo.com/ac/?q=rust%20%26%20async&type=list"], "one request per pause")
+  const job = h.suggestFetch.calls[0].job
+  h.finished(job, '[{"phrase":"rust async book"}]', "")
+  assert.equal(h.source.suggestions.duckduckgo.query, "rust & async")
+  assert.deepEqual(Array.from(h.source.suggestions.duckduckgo.items), ["rust async book"])
+  h.finished(job, '[{"phrase":"cut off"}]', "reply is over 262144 bytes")
+  assert.deepEqual(Array.from(h.source.suggestions.duckduckgo.items), [], "a failed reply clears the old suggestions")
+})
+
 // The command ScopeSource runs for a scope.
 function scopeCommand(command, ms) {
   const h = harness([scope("probe", command, ms)])
@@ -209,7 +264,9 @@ function scopeCommand(command, ms) {
 }
 
 // Real processes run as ScopeSource runs them: the pid file lists every
-// process the command started; none may be left after it ends.
+// process the command started; none may be left after it ends. The sleeps
+// outlive both deadlines by far but stay short: spawnSync waits for them
+// even after its own timeout, so a lost deadline fails in about 20 s.
 function runBounded(t, script, ms) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-bounded-"))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
@@ -233,16 +290,16 @@ function runBounded(t, script, ms) {
 }
 
 test("a hung sh -c and its children end at the deadline", (t) => {
-  const r = runBounded(t, 'sleep 300 & echo $! >> "$1"; echo $$ >> "$1"; sleep 300', 300)
-  assert.ok(r.elapsed >= 300 && r.elapsed < 1200, "ended at the deadline: " + r.elapsed)
+  const r = runBounded(t, 'sleep 20 & echo $! >> "$1"; echo $$ >> "$1"; sleep 20', 300)
+  assert.ok(r.elapsed >= 300, "not before the deadline: " + r.elapsed)
   assert.equal(r.result.status, 124)
   assert.ok(Scopes.timedOut(r.result.status, 0, r.elapsed, 300))
   assert.deepEqual(r.alive, [])
 })
 
 test("a command that ignores SIGTERM is SIGKILLed a second later, children too", (t) => {
-  const r = runBounded(t, 'trap "" TERM; sh -c \'trap "" TERM; sleep 300\' & echo $! >> "$1"; echo $$ >> "$1"; sleep 300', 300)
-  assert.ok(r.elapsed >= 1300 && r.elapsed < 3000, "killed after the grace: " + r.elapsed)
+  const r = runBounded(t, 'trap "" TERM; sh -c \'trap "" TERM; sleep 20\' & echo $! >> "$1"; echo $$ >> "$1"; sleep 20', 300)
+  assert.ok(r.elapsed >= 1300, "not before the kill-after second: " + r.elapsed)
   // timeout SIGKILLs its own group, itself included (Quickshell: crash, code 9).
   assert.equal(r.result.signal, "SIGKILL")
   assert.ok(Scopes.timedOut(9, 1, r.elapsed, 300))

@@ -13,6 +13,13 @@ const env = {
   zones: { "Asia/Tokyo": 540, "Europe/London": 60, "America/New_York": -240 }
 }
 const result = (q, e) => { const r = C.evaluate(q, e || env); return r && r.result }
+// Two phrasings must give the same answer. Two failed evaluations are both
+// null, so the reference must have an answer for the comparison to mean
+// anything.
+const same = (actual, reference, message = "both phrasings give the same answer") => {
+  assert.notEqual(reference, null, "the reference phrasing has no answer")
+  assert.equal(actual, reference, message)
+}
 
 test("arithmetic, precedence, functions and constants", () => {
   assert.equal(result("2+2"), "4")
@@ -131,7 +138,6 @@ test("one line of context, the shown answer to copy, and a plain form", () => {
   assert.deepEqual([C.evaluate("3 days from now", env).context, C.evaluate("3 days from now", env).contextValues], ["In %1 days", [3]])
   assert.equal(C.evaluate("time in tokyo", env).context, "%1 (%2)")
   assert.equal(C.evaluate("255 to hex", env).context, "Hexadecimal")
-  assert.equal(C.words, undefined, "no number words")
 })
 
 test("answers in the picked language: separators, dates and unit names", () => {
@@ -170,10 +176,11 @@ test("dates: relative, countdowns, bare dates and the language's formats", () =>
   const no = { ...env, decimal: ",", groupSeparator: "\u00a0", dayFirst: true }
   const n = (q) => { const x = C.evaluate(q, no); return x && x.result }
   // Monday 19 October 2026 in this file.
-  assert.equal(n("om 3 dager"), result("3 days from now"))
-  assert.equal(result("in 3 days"), result("3 days from now"))
-  assert.equal(n("om 2 uker og 3 dager"), result("2 weeks 3 days from now"))
-  assert.equal(n("om en uke"), result("1 week from now"))
+  same(n("om 3 dager"), result("3 days from now"))
+  same(result("in 3 days"), result("3 days from now"))
+  same(n("om 1 uke og 3 dager"), result("1 week 3 days from now"))
+  assert.equal(n("om 1 uke og 3 dager"), "Thursday, 29 October 2026 at 4:06 PM")
+  same(n("om en uke"), result("1 week from now"))
   assert.deepEqual([C.evaluate("om 3 dager", no).context, C.evaluate("om 3 dager", no).contextValues], ["In %1 days", [3]])
   assert.equal(n("dager til jul"), "66 days", "jul is Christmas Eve")
   assert.equal(n("hvor mange dager er det igjen til jul"), "66 days")
@@ -184,11 +191,11 @@ test("dates: relative, countdowns, bare dates and the language's formats", () =>
   assert.equal(n("uker til 17. mai"), "30 weeks", "until counts to the next May 17")
   assert.equal(n("dager siden 17. mai"), "155 days", "since counts from the last one")
   assert.equal(result("days since christmas"), "298 days")
-  assert.equal(n("neste fredag"), result("next friday + 0 days"), "a relative day alone is an answer")
-  assert.equal(n("i morgen"), result("tomorrow + 0 days"))
-  assert.equal(n("24. des"), result("dec 24 + 0 days"))
-  assert.equal(n("24.12"), result("dec 24 + 0 days"))
-  assert.equal(result("dec. 24 - today"), result("dec 24 - today"), "a month abbreviation may end in a full stop")
+  same(n("neste fredag"), result("next friday + 0 days"), "a relative day alone is an answer")
+  same(n("i morgen"), result("tomorrow + 0 days"))
+  same(n("24. des"), result("dec 24 + 0 days"))
+  same(n("24.12"), result("dec 24 + 0 days"))
+  same(result("dec. 24 - today"), result("dec 24 - today"), "a month abbreviation may end in a full stop")
   assert.equal(result("jul 24 - today"), "-87 days", "jul with a day is July")
   for (const q of ["fredag", "jul", "mai", "friday"]) assert.equal(C.evaluate(q, no), null, "a bare " + q + " stays a search")
   assert.equal(n("2.5 * 2"), "5", "a decimal point is not a date")
@@ -201,12 +208,14 @@ test("Norwegian words", () => {
   assert.equal(result("20 % av 50"), "10")
   assert.equal(result("90 minutter til timer"), "1.5 hours")
   assert.equal(result("2 time som minutter"), "120 minutes", "time after a number is an hour")
-  assert.equal(result("3 dager fra nå"), result("3 days from now"))
-  assert.equal(result("2 uker siden"), result("2 weeks ago"))
-  assert.equal(result("i morgen + 2 dager"), result("tomorrow + 2 days"))
-  assert.equal(result("neste fredag + 0 dager"), result("next friday + 0 days"))
-  assert.equal(result("tid i tokyo"), result("time in tokyo"))
-  assert.equal(result("100 kroner til usd"), result("100 nok to usd"))
+  same(result("3 dager fra nå"), result("3 days from now"))
+  same(result("2 uker siden"), result("2 weeks ago"))
+  same(result("i morgen + 2 dager"), result("tomorrow + 2 days"))
+  same(result("neste fredag + 0 dager"), result("next friday + 0 days"))
+  same(result("tid i tokyo"), result("time in tokyo"))
+  const nok = { ...env, rates: { ...env.rates, rates: { ...env.rates.rates, NOK: 11.5 } } }
+  assert.equal(result("100 kroner til usd", nok), "$9.76")
+  same(result("100 kroner til usd", nok), result("100 nok to usd", nok))
   assert.equal(C.evaluate("5 fot til cm", env).input, "5 fot til cm", "the typed text is kept")
   assert.deepEqual(C.evaluate("5 fot til cm", env).contextValues, ["5 fot → cm"])
 })

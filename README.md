@@ -469,10 +469,10 @@ pin with the source. The helper tests (`cargo test --test protocol` in `search/`
 `node --test tests/*.test.js`) run against another build when `FOAMY_HELPER` holds
 a JSON argv prefix with an absolute path, e.g.
 `FOAMY_HELPER="[\"$PWD/bin/aarch64/foamy-menu-search\"]"` (qemu-user binfmt).
-`tests/ssh-hosts.test.js` runs `foamy-menu-search ssh-hosts` next to the retired
-Bash lister (`tests/fixtures/foamy-ssh-hosts.sh`, a test fixture only) over
-fixture homes and requires the same bytes, or the documented ssh-correct
-difference where the script misread `ssh_config`. `tests/fetch.test.js` runs
+`tests/ssh-hosts.test.js` runs `foamy-menu-search ssh-hosts` over fixture homes
+and requires the exact output for each `ssh_config` rule.
+`tests/ssh-connect.test.js` runs `bin/foamy-ssh-connect` against a stand-in
+`ssh`. `tests/fetch.test.js` runs
 the bounded curl fetch (`core/Fetch.js`) against a local HTTPS server with a
 throwaway `openssl` certificate: normal, oversized, endless and stalled replies.
 
@@ -490,11 +490,20 @@ the new launcher, action panel, calculator, Apps grid, scopes (a fake
 stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts,
 route handoffs, and the rates and suggestion fetches against a local HTTPS
 server in an isolated offscreen shell with stub commands. It runs the
-dark layout in English and the light layout in Norwegian. `preview.png` is
+dark layout in English and the light layout in Norwegian. The light run also
+runs the fetch, command scope and paste probes and checks that no fetch put
+its URL on curl's command line, and it moves `XDG_CONFIG_HOME` away from
+`~/.config`: the settings must still come from `~/.config/omarchy/shell.json`.
+Every run checks that the stores it saved are owner-only. `preview.png` is
 `root.png` from the English dark run of
 `python3 -I tests/launcher.py --shots DIR`. `tests/app-focuser.py` runs the
 app focuser against a fake `hyprctl`: quick repeated opens each focus the
-open window.
+open window, focus waits until the launcher's layer is gone, and a lookup
+that fails (bad output, an error, a hung `hyprctl`) launches the app once.
+`tests/json-store.py` runs the store that holds favorites, aliases, ranking
+and calculator history against real files: a new file, an unreadable one and
+one from a newer build (left as they are), a save just before the store goes,
+and a file another program replaced.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

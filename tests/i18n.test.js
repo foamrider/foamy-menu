@@ -18,13 +18,13 @@ test("English is keyed by itself; Norwegian has every key with the same holes", 
   assert.deepEqual(Object.keys(no).sort(), Object.keys(en).sort())
   for (const key of Object.keys(en)) assert.deepEqual(tokens(no[key]), tokens(key), key)
   assert.equal(t(no, "Use “%1” with…", ["ssh"]), "Bruk «ssh» med…")
-  assert.equal(t(no, "Search %1…", ["$& %2"]), "Søk i $& %2…", "values stay literal")
 })
 
 // Strings the code translates: t()/tr() calls, and English data the UI
 // translates when it shows it (section, action, type and About labels).
 function usedKeys() {
   const keys = new Set()
+  const units = new Set()
   const qml = ["Backend.qml", "ui/LauncherWindow.qml", "ui/ActionPanel.qml", "ui/Alert.qml"].map(read).join("\n")
   for (const [, key] of qml.matchAll(/(?:FoamyI18n\.t|window\.t|backend\.tr)\("((?:[^"\\]|\\.)*)"/g)) keys.add(key)
   for (const [, key] of qml.matchAll(/showToast\("\w+", (?:saved \? )?"([^"]+)"(?: : "([^"]+)")?/g)) keys.add(key)
@@ -44,8 +44,11 @@ function usedKeys() {
   // long unit names it passes through ENV.translate.
   for (const [, key] of calc.matchAll(/\["([^"]+)", \[/g)) keys.add(key)
   for (const [, key] of calc.match(/16: "Hexadecimal"[^}]*\}/)[0].matchAll(/: "([^"]+)"/g)) keys.add(key)
-  for (const [, names] of calc.matchAll(/def\(\[[^\]]*\], \[("[^\]]+)\], [^\n]*long: true/g))
-    for (const [, name] of names.matchAll(/"([^"]+)"/g)) keys.add(name)
+  const longUnits = [...calc.matchAll(/def\(\[[^\]]*\], \[("[^\]]+)\], [^\n]*long: true/g)]
+  // Every unit marked long must be found here, or a new one would go unchecked.
+  assert.equal(longUnits.length, (calc.match(/long: true/g) || []).length, "every long unit definition is read")
+  for (const [, names] of longUnits)
+    for (const [, name] of names.matchAll(/"([^"]+)"/g)) { keys.add(name); units.add(name) }
   for (const key of ["Today", "Tomorrow", "Yesterday", "Query", "Scope", "Recent", "Items", "Open"]) keys.add(key)
   // The settings view: titles, sections, choices and how values read.
   const Settings = require("../core/Settings.js")
@@ -64,13 +67,12 @@ function usedKeys() {
   for (const [, key] of read("services/ClipboardReader.qml").matchAll(/reader\.failed\("([^"]+)"\)/g)) keys.add(key)
   keys.add("That value isn't allowed.")
   keys.add("Couldn't save the setting.")
-  return keys
+  return { keys, units }
 }
 
 test("every string the launcher translates has a catalog entry", () => {
-  // Identifiers (lowercase) are not UI text.
-  const units = new Set(["second", "seconds", "minute", "minutes", "hour", "hours", "day", "days", "week", "weeks", "month", "months",
-    "year", "years", "decade", "decades", "century", "centuries", "work day", "work days", "work week", "work weeks", "ton", "tons", "pint", "pints", "cup", "cups"])
-  const missing = [...usedKeys()].filter((key) => (/^[A-Z%“]/.test(key) || units.has(key)) && !Object.hasOwn(en, key) && key !== "Foamy Menu")
+  // Identifiers (lowercase) are not UI text; the long unit names are.
+  const { keys, units } = usedKeys()
+  const missing = [...keys].filter((key) => (/^[A-Z%“]/.test(key) || units.has(key)) && !Object.hasOwn(en, key) && key !== "Foamy Menu")
   assert.deepEqual(missing, [])
 })

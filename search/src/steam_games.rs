@@ -829,8 +829,14 @@ mod tests {
             "an unclosed object is rejected"
         );
         assert_eq!(parse_text(br#""a" "b" }"#), None);
-        let deep = "\"k\" {".repeat(MAX_DEPTH + 2);
-        assert_eq!(parse_text(deep.as_bytes()), None, "nesting is bounded");
+        // Closed objects, so only the depth bound can reject the deeper one.
+        let nested = |depth: usize| format!("{}{}", "\"k\" {".repeat(depth), "}".repeat(depth));
+        assert!(parse_text(nested(MAX_DEPTH).as_bytes()).is_some());
+        assert_eq!(
+            parse_text(nested(MAX_DEPTH + 1).as_bytes()),
+            None,
+            "nesting is bounded"
+        );
     }
 
     #[test]
@@ -867,20 +873,38 @@ mod tests {
 
     #[test]
     fn binary_values_of_every_type_parse() {
-        let mut data = vec![0x02];
-        data.extend_from_slice(b"i\0");
-        data.extend_from_slice(&(-3i32).to_le_bytes());
-        data.push(0x07);
-        data.extend_from_slice(b"u\0");
-        data.extend_from_slice(&u64::MAX.to_le_bytes());
+        // One value of each type, then "last": finding it proves that every
+        // value before it took the right number of bytes.
+        let mut data = Vec::new();
+        for kind in [0x02u8, 0x03, 0x04, 0x06] {
+            data.push(kind);
+            data.extend_from_slice(format!("four{kind}\0").as_bytes());
+            data.extend_from_slice(&(-3i32).to_le_bytes());
+        }
+        for kind in [0x07u8, 0x0a] {
+            data.push(kind);
+            data.extend_from_slice(format!("eight{kind}\0").as_bytes());
+            data.extend_from_slice(&u64::MAX.to_le_bytes());
+        }
         data.push(0x05);
-        data.extend_from_slice(b"w\0");
+        data.extend_from_slice(b"wide\0");
         data.extend_from_slice(&[b'h', 0, b'i', 0, 0, 0]);
+        data.push(0x00);
+        data.extend_from_slice(b"object\0");
         data.push(0x08);
-        let kv = Kv::Obj(parse_binary(&data, &mut 0, None, 0).unwrap());
-        assert_eq!(kv.str("i"), Some("-3"));
-        assert_eq!(kv.str("u"), Some("18446744073709551615"));
-        assert_eq!(kv.str("w"), Some("hi"));
+        data.push(0x01);
+        data.extend_from_slice(b"last\0v\0");
+        data.push(0x0b);
+        let kv = Kv::Obj(
+            parse_binary(&data, &mut 0, None, 0)
+                .expect("each value takes its own width, and 0x0b ends the object"),
+        );
+        assert_eq!(kv.str("last"), Some("v"));
+        assert_eq!(kv.str("four2"), Some("-3"));
+        assert_eq!(kv.str("eight7"), Some("18446744073709551615"));
+        assert_eq!(kv.str("eight10"), Some("-1"));
+        assert_eq!(kv.str("wide"), Some("hi"));
+        assert_eq!(kv.get("object"), Some(&Kv::Obj(Vec::new())));
         assert_eq!(
             parse_binary(&[0x09, b'k', 0], &mut 0, None, 0),
             None,
@@ -890,6 +914,18 @@ mod tests {
             parse_binary(&[0x01, b'k', 0, b'v'], &mut 0, None, 0),
             None,
             "truncated data too"
+        );
+        // Closed objects, so only the depth bound can reject the deeper one.
+        let nested = |depth: usize| {
+            let mut bytes = [0x00u8, 0x00].repeat(depth);
+            bytes.extend(std::iter::repeat_n(0x08, depth + 1));
+            bytes
+        };
+        assert!(parse_binary(&nested(MAX_DEPTH), &mut 0, None, 0).is_some());
+        assert_eq!(
+            parse_binary(&nested(MAX_DEPTH + 1), &mut 0, None, 0),
+            None,
+            "nesting is bounded"
         );
     }
 
@@ -968,16 +1004,25 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_steam_lists_nothing() {
-        let root = Root::new();
-        fs::remove_dir_all(root.0.join("steamapps")).unwrap();
-        assert!(list(&root.0).is_empty());
-        assert_eq!(find_root(&root.0), None);
-        fs::create_dir_all(root.0.join(".local/share/Steam/steamapps")).unwrap();
-        assert_eq!(
-            find_root(&root.0),
-            Some(fs::canonicalize(root.0.join(".local/share/Steam")).unwrap())
-        );
+    fn the_steam_root_is_the_first_candidate_with_steamapps() {
+        let home = Root::new();
+        fs::remove_dir_all(home.0.join("steamapps")).unwrap();
+        assert!(list(&home.0).is_empty());
+        assert_eq!(find_root(&home.0), None);
+        let real = |rel: &str| {
+            fs::create_dir_all(home.0.join(rel).join("steamapps")).unwrap();
+            fs::canonicalize(home.0.join(rel)).unwrap()
+        };
+        // Created from the last candidate to the first: each takes over.
+        let flatpak = real(".var/app/com.valvesoftware.Steam/.local/share/Steam");
+        assert_eq!(find_root(&home.0), Some(flatpak));
+        let native = real(".local/share/Steam");
+        assert_eq!(find_root(&home.0), Some(native));
+        // Steam's own link comes first, and the root is the folder it names.
+        let linked = real("elsewhere/Steam");
+        fs::create_dir_all(home.0.join(".steam")).unwrap();
+        std::os::unix::fs::symlink(&linked, home.0.join(".steam/steam")).unwrap();
+        assert_eq!(find_root(&home.0), Some(linked));
     }
 
     #[test]
@@ -991,5 +1036,61 @@ mod tests {
         assert_eq!(parse_appid("007"), Some(7));
         assert_eq!(parse_appid("0"), None);
         assert_eq!(parse_appid("99999999999"), None);
+    }
+
+    #[test]
+    fn a_hostile_appinfo_is_bounded_and_never_panics() {
+        let root = Root::new();
+        let game: &[(&str, &str)] = &[("type", "Game")];
+        // An entry size over the cap ends the scan before anything is
+        // allocated for it; the entries read before it are kept.
+        let mut oversized = appinfo(APPINFO_V28, &[(9, game)]);
+        oversized.truncate(oversized.len() - 4);
+        oversized.extend_from_slice(&7u32.to_le_bytes());
+        oversized.extend_from_slice(&(MAX_APPINFO_ENTRY + 1).to_le_bytes());
+        let path = root.write("oversized.vdf", oversized);
+        let infos = read_appinfo(&path, &HashSet::from([7, 9]))
+            .expect("an oversized entry ends the scan before it is read");
+        assert!(infos.contains_key(&9) && !infos.contains_key(&7));
+        // A string table that claims too many strings is refused.
+        let mut table = Vec::new();
+        table.extend_from_slice(&APPINFO_V29.to_le_bytes());
+        table.extend_from_slice(&1u32.to_le_bytes());
+        table.extend_from_slice(&20u64.to_le_bytes());
+        table.extend_from_slice(&0u32.to_le_bytes());
+        table.extend_from_slice(&(MAX_STRINGS + 1).to_le_bytes());
+        let path = root.write("strings.vdf", table);
+        let error = read_appinfo(&path, &HashSet::from([7])).unwrap_err();
+        assert!(
+            error.to_string().contains("string table is too large"),
+            "{error}"
+        );
+        // A key index outside the string table drops that entry only.
+        let mut indexed = appinfo(APPINFO_V29, &[(7, game), (9, game)]);
+        // File header 16, appid and size 8, entry header 60, type byte 1.
+        let first_key = 16 + 8 + 60 + 1;
+        indexed[first_key..first_key + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let path = root.write("indexed.vdf", indexed);
+        let infos = read_appinfo(&path, &HashSet::from([7, 9])).unwrap();
+        assert!(!infos.contains_key(&7));
+        assert_eq!(infos.get(&9).unwrap().kind.as_deref(), Some("Game"));
+    }
+
+    #[test]
+    fn art_file_names_from_appinfo_must_be_hashes() {
+        // appinfo.vdf names an icon by its hash. Anything else, such as a
+        // path, must never become a file name.
+        let root = Root::new();
+        root.manifest("", 7, "Game");
+        // Both art fields: clienticon (an .ico) and icon (a .jpg).
+        let outside = root.write("outside.ico", b"ico");
+        root.write("outside.jpg", b"jpg");
+        let named = outside.with_extension("");
+        let named = named.to_str().unwrap();
+        let fields: &[(&str, &str)] = &[("type", "game"), ("clienticon", named), ("icon", named)];
+        root.write("appcache/appinfo.vdf", appinfo(APPINFO_V28, &[(7, fields)]));
+        let games = list(&root.0);
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].icon, None);
     }
 }

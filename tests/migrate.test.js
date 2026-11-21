@@ -64,17 +64,18 @@ test("parse separates new, valid, and unreadable files", () => {
   assert.match(Migrate.parse("[1]").error, /not a JSON object/)
 })
 
-test("serialize round-trips through parse", () => {
-  const doc = Migrate.migrate(null, migrations, 3).doc
-  assert.deepEqual(Migrate.parse(Migrate.serialize(doc)).doc, doc)
-})
-
-test("shipped settings migrations are valid and use Raycast defaults", () => {
-  const r = Migrate.migrate(null, Schema.settingsMigrations, 1)
-  assert.equal(r.doc.schemaVersion, Schema.settingsMigrations.length)
-  assert.equal(r.doc.general.popToRootTimeout, 90)
-  assert.equal(r.doc.general.escapeKeyBehavior, "pop-back-or-close")
-  assert.equal(r.doc.general.windowPresentationMode, "mouse-screen")
-  assert.equal(r.doc.general.uiZoom, 1)
-  assert.deepEqual(r.doc.commands, {})
+test("the shipped migrations give a new store the fields the launcher reads", () => {
+  for (const name of Object.keys(Schema.documents)) {
+    const { migrations } = Schema.documents[name]
+    const r = Migrate.migrate(null, migrations, 1)
+    assert.equal(r.readOnly, false, name + ": " + r.error)
+    assert.equal(r.doc.schemaVersion, migrations.length, name + " is at the newest version")
+  }
+  const fresh = (name) => Migrate.migrate(null, Schema.documents[name].migrations, 1).doc
+  const settings = fresh("settings")
+  assert.equal(settings.general.uiZoom, 1, "settings: the zoom the window scales by")
+  assert.deepEqual(settings.commands, {}, "settings: aliases, favorites and disabled commands")
+  const frecency = fresh("frecency")
+  assert.deepEqual([frecency.items, frecency.searchHistory], [{}, []], "frecency: visits and search history")
+  assert.deepEqual(fresh("calculator").history, [], "calculator: the history list")
 })

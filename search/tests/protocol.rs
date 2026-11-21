@@ -300,32 +300,33 @@ fn wire_limit_accepts_boundary_and_drains_oversized_reload_before_recovery() {
     assert_eq!(boundary.len(), MAX_LINE_BYTES);
     input.extend_from_slice(&boundary);
     input.push(b'\n');
-    input.extend_from_slice(b"{\"id\":3,\"entries\":[],\"padding\":\"");
-    input.extend(std::iter::repeat_n(b'x', MAX_LINE_BYTES * 2));
-    input.extend_from_slice(b"\"}\n{\"id\":4,\"query\":\"keep\"}\n");
+    // One byte over the limit: a complete reload, which must not be read.
+    let mut oversized = b"{\"id\":3,\"entries\":[],\"padding\":\"".to_vec();
+    oversized.resize(MAX_LINE_BYTES - 1, b'x');
+    oversized.extend_from_slice(b"\"}");
+    assert_eq!(oversized.len(), MAX_LINE_BYTES + 1);
+    input.extend_from_slice(&oversized);
+    input.push(b'\n');
+    // Far over the limit: the rest of this line spans many reads, and all of
+    // it must be skipped, or its tail would be read as new requests.
+    let mut far = b"{\"id\":4,\"entries\":[],\"padding\":\"".to_vec();
+    far.resize(far.len() + MAX_LINE_BYTES * 2, b'x');
+    far.extend_from_slice(b"\"}");
+    input.extend_from_slice(&far);
+    input.extend_from_slice(b"\n{\"id\":5,\"query\":\"keep\"}\n");
     let output = exchange(&input);
-    assert_eq!(output.len(), 4);
+    assert_eq!(output.len(), 5);
     assert_eq!(output[1], json!({"id":2,"hits":[]}));
-    assert!(
-        output[2]["error"]
-            .as_str()
-            .unwrap()
-            .contains("8388608 bytes")
-    );
-    assert!(output[2].get("id").is_none());
-    assert_eq!(output[3]["hits"][0]["title"], 5_000_000);
-}
-
-#[test]
-fn oversized_final_line_without_newline_reports_one_error() {
-    let output = exchange(&vec![b'x'; MAX_LINE_BYTES + 1]);
-    assert_eq!(output.len(), 1);
-    assert!(
-        output[0]["error"]
-            .as_str()
-            .unwrap()
-            .contains("8388608 bytes")
-    );
+    for reply in &output[2..4] {
+        assert!(
+            reply["error"]
+                .as_str()
+                .expect("a line over the limit is rejected")
+                .contains("8388608 bytes")
+        );
+        assert!(reply.get("id").is_none());
+    }
+    assert_eq!(output[4]["hits"][0]["title"], 5_000_000);
 }
 
 #[test]

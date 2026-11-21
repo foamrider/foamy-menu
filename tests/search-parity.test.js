@@ -32,7 +32,8 @@ const candidates = [
   { id: "naut", title: "Filbehandler", type: "application", bundleId: "org.gnome.Nautilus" },
   { id: "skjaer", title: "Skjærgård", type: "command", alternateTitles: ["Øyrike"] },
   { id: "os", title: "ΟΣ", type: "command" },
-  { id: "odysseus", title: "Οδυσσεύς", type: "command" }
+  { id: "odysseus", title: "Οδυσσεύς", type: "command" },
+  { id: "kas", title: "ΚΑΣ ΒΓ", type: "command" }
 ]
 
 // [query, {level: matched ids}]; every row runs through both matchers.
@@ -103,7 +104,9 @@ const SHARED = [
   // helper's matcher lowercases each letter ("οσ"). Both sides fold it.
   ["ΟΣ", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
   ["οσ", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
-  ["ος", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }]
+  ["ος", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
+  // A word-final capital sigma inside a title, found as a prefix.
+  ["κασ", { low: ["kas"], medium: ["kas"], high: ["kas"] }]
 ]
 
 // Edit typos (swapped or wrong letters) are the helper's own: the built-in

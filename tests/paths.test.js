@@ -1,6 +1,10 @@
 const test = require("node:test")
 const assert = require("node:assert/strict")
+const fs = require("node:fs")
+const path = require("node:path")
+const vm = require("node:vm")
 const Paths = require("../core/Paths.js")
+const Schema = require("../core/Schema.js")
 
 const envOf = (vars) => (name) => vars[name] || ""
 
@@ -33,12 +37,80 @@ test("missing HOME is an error", () => {
   assert.throws(() => Paths.resolve(envOf({})), /HOME is not set/)
 })
 
-test("startup creates only the dirs the launcher uses, and makes them private", () => {
-  const p = Paths.resolve(envOf({ HOME: "/h", XDG_RUNTIME_DIR: "/r" }))
-  assert.deepEqual(Paths.directoriesToCreate(p), [
-    "/h/.config/foamy-menu", "/h/.config/foamy-menu/scopes", "/h/.local/share/foamy-menu/db", "/h/.cache/foamy-menu"
-  ])
-  assert.deepEqual(Paths.privateRoots(p), ["/h/.config/foamy-menu", "/h/.local/share/foamy-menu", "/h/.cache/foamy-menu"])
-  assert.deepEqual(Paths.privateTrees(p), ["/h/.config/foamy-menu", "/h/.local/share/foamy-menu"])
+// Backend.qml's directory setup: directoriesDone() and the handlers of the
+// mkdirs Process run as written, in a vm context with a fake backend.
+const backendText = fs.readFileSync(path.join(__dirname, "../Backend.qml"), "utf8")
+
+function qmlBlock(signature, indentation, from) {
+  if (from) assert.ok(backendText.indexOf(from) >= 0, from)
+  const start = backendText.indexOf(signature, from ? backendText.indexOf(from) : 0)
+  assert.ok(start >= 0, signature)
+  const end = backendText.indexOf("\n" + " ".repeat(indentation) + "}", start) + indentation + 2
+  assert.ok(end > start, signature)
+  return backendText.slice(start, end)
+}
+
+// A handler of one statement: its first line and the deeper lines after it.
+function qmlHandler(name, from) {
+  assert.ok(backendText.indexOf(from) >= 0, from)
+  const start = backendText.indexOf(name + ": ", backendText.indexOf(from))
+  assert.ok(start >= 0, name)
+  const indent = start - (backendText.lastIndexOf("\n", start) + 1)
+  const lines = backendText.slice(start + name.length + 2).split("\n")
+  const body = [lines[0]]
+  for (const line of lines.slice(1)) {
+    if (line.length - line.trimStart().length <= indent) break
+    body.push(line)
+  }
+  return body.join("\n")
+}
+
+function directorySetup() {
+  const logs = []
+  const backend = { directoriesReady: false, log: (...args) => logs.push(args) }
+  const mkdirs = { running: true }
+  const context = vm.createContext({ backend, mkdirs })
+  vm.runInContext(qmlBlock("function directoriesDone(", 2), context)
+  backend.directoriesDone = context.directoriesDone
+  const exited = qmlBlock("onExited: function (exitCode) {", 4, "id: mkdirs")
+  const runningChanged = qmlHandler("onRunningChanged", "id: mkdirs")
+  return {
+    backend, logs,
+    // Quickshell: the setup ends with exited(), then running -> false.
+    exit(code) {
+      mkdirs.running = false
+      vm.runInContext("(" + exited.slice(exited.indexOf("function")) + ")(" + code + ")", context)
+    },
+    // Alone, for a setup that could not start.
+    stopped() {
+      mkdirs.running = false
+      vm.runInContext("(function(running) { " + runningChanged + " })(false)", context)
+    }
+  }
+}
+
+test("the launcher becomes ready whatever the directory setup did", () => {
+  for (const [name, end, errors] of [
+    ["exit 0", (h) => { h.exit(0); h.stopped() }, 0],
+    ["exit 1", (h) => { h.exit(1); h.stopped() }, 1],
+    ["exit 124 at the deadline", (h) => { h.exit(124); h.stopped() }, 1],
+    ["could not start: running -> false alone", (h) => h.stopped(), 1]
+  ]) {
+    const h = directorySetup()
+    end(h)
+    assert.equal(h.backend.directoriesReady, true, name)
+    assert.equal(h.logs.length, errors, name + ": " + JSON.stringify(h.logs))
+    for (const entry of h.logs) assert.deepEqual(entry.slice(0, 2), ["error", "paths"], name)
+  }
 })
 
+test("the directory setup runs under a deadline, so a stuck filesystem cannot hold the launcher back", () => {
+  // The command binding of the mkdirs Process, evaluated as written.
+  const start = backendText.indexOf("command: ", backendText.indexOf("id: mkdirs"))
+  const end = backendText.indexOf("\n    onExited", start)
+  assert.ok(backendText.indexOf("id: mkdirs") >= 0 && start >= 0 && end > start, "the mkdirs command binding")
+  const paths = Paths.resolve(envOf({ HOME: "/home/u" }))
+  const context = vm.createContext({ Paths, Schema, backend: { paths } })
+  const command = Array.from(vm.runInContext(backendText.slice(start + "command: ".length, end), context))
+  assert.deepEqual(command.slice(0, 6), ["timeout", "--kill-after=1s", "10s", "bash", "-c", Paths.SETUP_SCRIPT])
+})

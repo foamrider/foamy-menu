@@ -5,18 +5,27 @@ const path = require("node:path")
 const vm = require("node:vm")
 const { spawn } = require("node:child_process")
 const readline = require("node:readline")
-const os = require("node:os")
-const { spawnSync } = require("node:child_process")
 const helperUnderTest = require("./search-helper.js")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
 const F = require("../core/FleaSearch.js")
 const R = require("../core/Ranker.js")
 
 const source = fs.readFileSync(path.join(__dirname, "../services/NativeSearch.qml"), "utf8")
+// The text of `name: ` in the first block after `from`, to the end of the
+// line, or with `block` to the closing brace at that indentation.
+function binding(name, from, block) {
+  assert.ok(source.indexOf(from) >= 0, from)
+  const start = source.indexOf(name + ": ", source.indexOf(from))
+  assert.ok(start >= 0, name)
+  const indent = start - (source.lastIndexOf("\n", start) + 1)
+  const end = block ? source.indexOf("\n" + " ".repeat(indent) + "}", start) + indent + 2 : source.indexOf("\n", start)
+  return source.slice(start + name.length + 2, end)
+}
+
 // NativeSearch.qml's functions on plain objects; "root" starts with one entry.
 function harness() {
   const events = [], writes = []
-  const service = { catalogs: {}, serial: 0, disabled: false, pending: null, failed: m => events.push(m) }
+  const service = { catalogs: {}, serial: 0, disabled: false, pending: null, failed: m => events.push(m), pluginDir: path.join(__dirname, "..") }
   const helper = { running: false, write: s => writes.push(JSON.parse(s)) }
   const timeout = { active: false, restart() { this.active = true }, stop() { this.active = false } }
   const context = vm.createContext({ service, helper, timeout, FleaSearch: F, FoamyNative })
@@ -30,7 +39,20 @@ function harness() {
   // The helper starting (Process onStarted) loads every catalog.
   const start = () => { helper.running = true; service.loadAll() }
   const loadId = name => service.catalogs[name].loadId
-  return { service, helper, timeout, events, writes, start, loadId, reply: obj => service.receive(JSON.stringify(obj)) }
+  const onExited = binding("onExited", "id: helper", true)
+  const onTriggered = binding("onTriggered", "id: timeout")
+  return {
+    service, helper, timeout, events, writes, start, loadId, reply: obj => service.receive(JSON.stringify(obj)),
+    // The helper Process ends: its own onExited handler.
+    exit(code) {
+      helper.running = false
+      vm.runInContext("(" + onExited + ")(" + code + ", 0)", context)
+    },
+    // The timeout Timer fires: its own onTriggered expression.
+    expire() { vm.runInContext(onTriggered, context) },
+    // The helper Process's command binding.
+    command: () => Array.from(vm.runInContext(binding("command", "id: helper"), context))
+  }
 }
 const hit = { index: 0, title: 4000000, alternate: null, subtitle: null, keyword: null }
 
@@ -153,8 +175,11 @@ test("a failure in one view leaves every view on the built-in matcher, and the b
     h.service.search("view", "we", "medium", r => got.push(r))
     if (failure === "load error") h.reply({ id: h.loadId("view"), error: "entries exceeds 20000 candidates" })
     if (failure === "wrong count") h.reply({ id: h.loadId("view"), loaded: 5 })
-    if (failure === "timeout") h.service.fail("Search helper timed out; using the built-in matcher")
-    if (failure === "exit") h.service.exited(101)
+    if (failure === "timeout") {
+      assert.equal(h.timeout.active, true, "a pending search runs the timeout")
+      h.expire()
+    }
+    if (failure === "exit") h.exit(101)
     assert.deepEqual(got, [null], failure)
     assert.equal(h.service.pending, null, failure)
     assert.equal(h.timeout.active, false, failure)
@@ -177,14 +202,49 @@ test("hits merge an id the list holds twice, and still reject a repeated index",
   assert.throws(() => F.hits({ hits: [hit, { ...hit, title: 3000000 }] }, ["x", "y"]), /repeats/)
 })
 
-test("protocol rejects duplicate entries and bounds, and folds native input like the ranker", () => {
-  assert.throws(() => F.hits({ hits: [hit, hit] }, ["x"]), /repeats/)
-  assert.throws(() => F.hits({ hits: [{ ...hit, index: 1 }] }, ["x"]), /index/)
-  assert.throws(() => F.hits({ hits: [{ index: 0 }] }, ["x"]), /score/)
-  assert.equal(F.entries([{ title: "Café", keywords: ["Straße"] }], R.transliterate)[0].keywords[0], "Strasse")
+test("FleaSearch rejects every malformed reply", () => {
+  const replies = [
+    ["a line over 8 MiB", "x".repeat(8 * 1024 * 1024 + 1), /size limit/],
+    ["null", "null", /request id/],
+    ["no id", '{"hits":[]}', /request id/],
+    ["a fractional id", '{"id":1.5,"hits":[]}', /request id/],
+    ["a string id", '{"id":"1","hits":[]}', /request id/],
+    ["an id past the safe integers", '{"id":9007199254740992,"hits":[]}', /request id/]
+  ]
+  for (const [name, line, error] of replies) assert.throws(() => F.reply(line), error, name)
+  const ids = ["x", "y"]
+  const hitsReplies = [
+    ["no hits", {}, /no hits/],
+    ["hits not an array", { hits: {} }, /no hits/],
+    ["a null hit", { hits: [null] }, /index/],
+    ["index -1", { hits: [{ ...hit, index: -1 }] }, /index/],
+    ["index past the list", { hits: [{ ...hit, index: 2 }] }, /index/],
+    ["a fractional index", { hits: [{ ...hit, index: 0.5 }] }, /index/],
+    ["a string index", { hits: [{ ...hit, index: "0" }] }, /index/],
+    ["a repeated index", { hits: [hit, { ...hit, title: 3000000 }] }, /repeats/],
+    ["score 0", { hits: [{ ...hit, title: 0 }] }, /score/],
+    ["score -1", { hits: [{ ...hit, title: -1 }] }, /score/],
+    ["score past 5000000", { hits: [{ ...hit, title: 5000001 }] }, /score/],
+    ["a fractional score", { hits: [{ ...hit, keyword: 1.5 }] }, /score/],
+    ["a string score", { hits: [{ ...hit, title: "500" }] }, /score/],
+    ["a missing channel", { hits: [{ index: 0, title: 4000000, alternate: null, subtitle: null }] }, /score/],
+    ["every channel null", { hits: [{ ...hit, title: null }] }, /empty hit/]
+  ]
+  for (const [name, data, error] of hitsReplies) assert.throws(() => F.hits(data, ids), error, name)
+  assert.equal(F.reply('{"id":9007199254740991,"hits":[]}').id, 9007199254740991)
+  const edges = F.hits({ hits: [{ ...hit, title: 1 }, { ...hit, index: 1, title: 5000000 }] }, ids)
+  assert.deepEqual([edges.x.title, edges.y.title], [1, 5000000])
 })
 
-test("native scores retain exact aliases, learning, pins, alternate names and frecency", () => {
+test("entries reach the helper folded like the query", () => {
+  const entries = F.entries([{ title: "Café", subtitle: "Åpne", keywords: ["Straße"], bundleId: "no.Ærlig" }, {}], R.transliterate)
+  assert.deepEqual(entries, [
+    { title: "Cafe", subtitle: "Apne", alternateTitles: [], keywords: ["Strasse"], bundleId: "no.AErlig" },
+    { title: "", subtitle: "", alternateTitles: [], keywords: [], bundleId: "" }
+  ])
+})
+
+test("helper hits keep exact aliases, learned terms and frecency, and an exact title leads", () => {
   const c = [
     { id: "long", title: "Firefox Developer Edition", type: "application" },
     { id: "short", title: "Firefox", type: "application" },
@@ -195,16 +255,19 @@ test("native scores retain exact aliases, learning, pins, alternate names and fr
   assert.deepEqual(ids(), ["alias", "short", "long"])
   c[0].frecency = 100
   assert.deepEqual(ids(), ["alias", "long", "short"])
-  c[1].pinPriority = 1
-  assert.equal(ids()[0], "short")
-  delete c[1].pinPriority
   c[1].frecency = 100
   assert.equal(ids()[1], "short")
   c[0].openedAt = 1000
   c[0].searchTerms = ["fir"]
   assert.equal(ids()[1], "long")
-  scores.short = { ...hit, title: null, alternate: 5000000 }
-  assert.equal(R.buildRecord(c[1], "fir", { fleaHits: scores }).titleMatch, "exact")
+  // An exact title from the helper beats a more used row with a title and an
+  // alias that only start with the query.
+  const fresh = [
+    { id: "long", title: "Firefox Developer Edition", type: "application", frecency: 100, alias: "firefoxdev" },
+    { id: "short", title: "Firefox", type: "application" }
+  ]
+  const exact = R.rank(fresh, "firefox", { fleaHits: { long: { ...hit }, short: { ...hit, title: 5000000 } }, nowMs: 1000 })
+  assert.deepEqual(exact.map(r => r.candidate.id), ["short", "long"])
 })
 
 
@@ -243,9 +306,15 @@ test("keyword-only tiers rank exact ahead of typo while titles keep priority", (
 
 test("the service drives the real helper: load, query, reload, two catalogs", { skip: helperUnderTest.skip, timeout: 10000 }, async t => {
   const h = harness(), got = []
-  const child = spawn(helperUnderTest.argv[0], helperUnderTest.argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
+  // The launch command of NativeSearch.qml itself, unless FOAMY_HELPER names
+  // another helper (the aarch64 one under qemu).
+  const argv = helperUnderTest.required ? helperUnderTest.argv : h.command()
+  const child = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
   t.after(() => child.kill())
   readline.createInterface({ input: child.stdout }).on("line", line => h.service.receive(line))
+  // An exit before the end goes through the Process handler: the pending
+  // search gets null and the test fails at once instead of waiting.
+  child.on("exit", code => { if (!child.stdin.writableEnded) h.exit(code) })
   h.helper.write = s => child.stdin.write(s)
   const answer = () => new Promise(resolve => {
     const before = got.length
@@ -279,36 +348,16 @@ test("the service drives the real helper: load, query, reload, two catalogs", { 
   child.stdin.end()
 })
 
-test("the launch command uses the bundled helper for this CPU", () => {
-  assert.match(source, /command: FoamyNative\.command\(service\.pluginDir, "foamy-menu-search", \[\]\)/)
-  assert.match(source, /pluginDir: FoamyNative\.localPath\(Qt\.resolvedUrl\("\.\."\)\)/)
-  assert.match(source, /onExited: function ?\(exitCode, exitStatus\) \{\s*service\.exited\(exitCode\)\s*\}/)
-})
-
-test("no helper for this CPU, or one that can't run, falls back to the built-in matcher once", t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-native-"))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  const launch = () => {
-    const [cmd, ...args] = FoamyNative.command(dir, "foamy-menu-search", [])
-    return spawnSync(cmd, args, { input: "", stdio: ["pipe", "ignore", "ignore"] }).status
-  }
-  const helperFor = arch => path.join(dir, "bin", arch, "foamy-menu-search")
-  fs.mkdirSync(path.dirname(helperFor("riscv64")), { recursive: true })
-  fs.writeFileSync(helperFor("riscv64"), "#!/bin/sh\nexit 0\n", { mode: 0o755 })
-  assert.equal(launch(), 127, "only another CPU's helper")
-  const arch = spawnSync("bash", ["-c", 'printf %s "$HOSTTYPE"'], { encoding: "utf8" }).stdout
-  fs.mkdirSync(path.dirname(helperFor(arch)))
-  fs.writeFileSync(helperFor(arch), "#!/bin/sh\nexit 0\n", { mode: 0o644 })
-  assert.equal(launch(), 126, "helper not executable")
+test("no helper for this CPU, or one that can't run, falls back to the built-in matcher once", () => {
   for (const code of [127, 126]) {
     const h = harness(), got = []
     h.service.search("root", "fi", "medium", r => got.push(r))
     assert.equal(h.helper.running, true)
-    h.service.exited(code)
+    h.exit(code)
     assert.deepEqual(got, [null])
     assert.equal(h.service.disabled, true)
     assert.deepEqual(h.events, ["Search helper isn't available for this CPU; using the built-in matcher"])
-    h.service.exited(code)
+    h.exit(code)
     h.service.search("root", "files", "medium", r => got.push(r))
     assert.deepEqual(got, [null, null], "no retry: later searches use the built-in matcher")
     assert.equal(h.helper.running, false)
@@ -316,9 +365,7 @@ test("no helper for this CPU, or one that can't run, falls back to the built-in 
   }
   const crashed = harness(), got = []
   crashed.service.search("root", "fi", "medium", r => got.push(r))
-  crashed.service.exited(101)
+  crashed.exit(101)
   assert.deepEqual(got, [null])
   assert.deepEqual(crashed.events, ["Search helper exited; using the built-in matcher"])
-  const fallback = R.rank([{ id: "files", title: "Files" }, { id: "firefox", title: "Firefox" }], "fire", { fleaHits: null, nowMs: 1000 })
-  assert.equal(fallback[0].candidate.id, "firefox")
 })

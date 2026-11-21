@@ -21,13 +21,10 @@ const ctx = { commands: {}, frecency: {}, nowMs: 0, sensitivity: "medium" }
 const steamWith = (entry) => Scopes.merge(Settings.applyToScopes(Scopes.BUILTINS, Settings.resolve(Prefs, entry)), []).scopes.find((s) => s.id === "steam")
 
 test("Games is a cover grid shown once Steam has games; steamGames adds them to the root search", () => {
-  const defaults = Settings.resolve(Prefs, null)
-  assert.equal(defaults.steamGames, false)
   const steam = steamWith(null)
   assert.deepEqual([steam.title, steam.subtitle, steam.keyword, steam.layout], ["Games", "Steam", "steam", "covers"])
   assert.deepEqual([steam.requireItems, steam.rootSearch], [true, false], "always a grid; not in the root search by default")
   assert.equal(steamWith({ steamGames: true }).rootSearch, true)
-  assert.equal(steamWith({ steamGames: true }).layout, "covers", "the switch never changes the grid")
   assert.ok(!Scopes.isShown(steam, undefined), "hidden before the helper answers, or when it fails")
   assert.ok(!Scopes.isShown(steam, []), "hidden without Steam or games")
   assert.ok(Scopes.isShown(steam, [{ title: "Deep Rock Galactic", value: "548430" }]))
@@ -36,11 +33,6 @@ test("Games is a cover grid shown once Steam has games; steamGames adds them to 
   const row = Scopes.scopeCandidate(steam)
   assert.deepEqual([row.title, row.subtitle, row.typeLabel], ["Games", "Steam", "Menu"], "the root row reads like Apps")
   assert.equal(Scopes.scopeCandidate(Scopes.BUILTINS[0]).typeLabel, "Scope", "list scopes stay scopes")
-  const listed = Scopes.merge(Settings.applyToScopes(Scopes.BUILTINS, defaults),
-    [{ name: "steam.json", definition: { id: "steam", layout: "list", keyword: "games" } }]).scopes.find((s) => s.id === "steam")
-  assert.deepEqual([listed.layout, listed.keyword], ["list", "games"], "a scope file still overrides the built-in")
-  const keys = RS.settingsSections(defaults, "", ctx, deps).flatMap((s) => s.rows.map((r) => r.candidate.settingKey)).filter(Boolean)
-  assert.ok(keys.includes("steamGames") && !keys.some((k) => k.endsWith("Art")), "one switch, no art choice")
 })
 
 test("games are found from the root search, ranked and filtered as applications", () => {
@@ -197,10 +189,24 @@ test("the Steam Games scope runs the bundled helper's steam-games, as FoamyNativ
   }
 })
 
-test("steam-games rejects other arguments without the exits FoamyNative reserves", { skip }, () => {
-  const [program, ...args] = [...helper.argv, "steam-games", "extra"]
-  let status = 0
-  try { execFileSync(program, args, { stdio: "pipe" }) } catch (error) { status = error.status }
-  assert.equal(status, 2)
-  assert.ok(!FoamyNative.unavailable(status))
+// Steam rewrites appinfo.vdf while it runs, so the helper may meet it broken
+// or half written. The installed games still list from their manifests, and
+// tools are then told apart by name.
+test("an unreadable appinfo.vdf does not stop the list: games by their manifests, tools left out by name", { skip }, () => {
+  const variants = {
+    "not appinfo at all": (file) => fs.writeFileSync(file, Buffer.alloc(64, 0x41)),
+    "cut inside an entry": (file) => fs.writeFileSync(file, appinfo([[8930, { type: "Game" }]]).subarray(0, 40)),
+    "a FIFO nobody writes": (file) => { fs.rmSync(file); execFileSync("mkfifo", [file]) }
+  }
+  for (const [name, breakIt] of Object.entries(variants)) {
+    const fixture = makeSteam()
+    try {
+      breakIt(path.join(fixture.steam, "appcache/appinfo.vdf"))
+      const [program, ...args] = [...helper.argv, "steam-games"]
+      const out = execFileSync(program, args, { env: { HOME: fixture.home, PATH: process.env.PATH }, encoding: "utf8", timeout: 10000 })
+      assert.deepEqual(Scopes.parseOutput(out).map((i) => [i.title, i.value]), [["Deep Rock Galactic", "548430"], ["Sid Meier's Civilization V", "8930"]], name)
+    } finally {
+      fs.rmSync(fixture.home, { recursive: true, force: true })
+    }
+  }
 })

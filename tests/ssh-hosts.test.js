@@ -1,13 +1,6 @@
-// The SSH scope's host list: `foamy-menu-search ssh-hosts` (Rust) against the
-// retired Bash script (tests/fixtures/foamy-ssh-hosts.sh) over the same
-// fixture homes. Where the two agree the output must be byte-identical. Where
-// the Bash script misread ssh_config(5), each case records both outputs and
-// why: Rust follows ssh, and the old output is checked too, so a difference
-// can't appear or disappear unnoticed.
-//
-// The Bash script runs with LC_ALL=C. In another locale its `sort` orders
-// Include glob matches by that locale's collation; ssh's glob(3) (and Rust)
-// use byte order, since ssh only sets LC_CTYPE.
+// The SSH scope's host list: foamy-menu-search ssh-hosts over fixture homes,
+// run as the launcher runs it. Each case is one rule of ssh_config(5) and the
+// exact bytes expected.
 const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
@@ -19,7 +12,6 @@ const Scopes = require("../core/Scopes.js")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
 
 const root = path.join(__dirname, "..")
-const script = path.join(__dirname, "fixtures/foamy-ssh-hosts.sh")
 const skip = helper.skip && "no bundled search helper for this CPU"
 const isRoot = typeof process.getuid === "function" && process.getuid() === 0
 
@@ -44,13 +36,9 @@ function makeHome(fixture) {
 }
 
 function env(home, fixture) {
-  const out = { HOME: home, PATH: process.env.PATH, LC_ALL: "C" }
+  const out = { HOME: home, PATH: process.env.PATH }
   if (fixture.config) out.FOAMY_SSH_CONFIG = path.join(home, fixture.config)
   return out
-}
-
-function runBash(home, fixture) {
-  return execFileSync("bash", [script], { env: env(home, fixture), encoding: "utf8", timeout: 10000 })
 }
 
 function runRust(home, fixture, argv) {
@@ -60,8 +48,7 @@ function runRust(home, fixture, argv) {
 
 const lines = (...rows) => rows.map((row) => row.join("\t") + "\n").join("")
 
-// Both implementations print `out`.
-const SAME = [
+const CASES = [
   {
     name: "nested Includes, globs, cycles, absolute and ~/ paths, missing files",
     files: {
@@ -193,94 +180,76 @@ const SAME = [
     name: "CRLF settings",
     files: { ".ssh/config": "Host crlf\r\n  HostName crlf.example\r\n  Port 2200\r\n" },
     out: lines(["crlf", "crlf", "crlf.example:2200"])
-  }
-]
-
-// The Bash script got these wrong; Rust follows ssh_config(5).
-const DIFFERENT = [
+  },
+  // Rules a plain line reader gets wrong.
   {
     name: "`Key=value` without spaces",
-    why: "ssh splits the keyword at whitespace or one `=`; the script only at whitespace, so `Host=x` and `HostName=x` were not seen",
+    why: "ssh splits the keyword at whitespace or one `=`",
     files: { ".ssh/config": "Host=eqhost\nHostName=10.0.0.1\nHost plain\nUser=me\n" },
-    bash: lines(["plain", "plain", ""]),
     out: lines(["eqhost", "eqhost", "10.0.0.1"], ["plain", "plain", "me@plain"])
   },
   {
     name: "trailing comments",
-    why: "ssh ends a line at an argument starting with `#`; the script listed the comment's words as hosts and kept them in values",
+    why: "ssh ends a line at an argument starting with `#`",
     files: { ".ssh/config": "Host web # the web server\n  HostName 10.0.0.4 # primary\n" },
-    bash: lines(["#", "#", "10.0.0.4 # primary"], ["server", "server", "10.0.0.4 # primary"], ["the", "the", "10.0.0.4 # primary"], ["web", "web", "10.0.0.4 # primary"]),
     out: lines(["web", "web", "10.0.0.4"])
   },
   {
     name: "single quotes, quotes inside a word and escapes",
-    why: "ssh's argv_split handles both quote kinds anywhere in a word and `\\` escapes; the script only dropped one double quote at each end. Names that hold whitespace are not hosts",
+    why: "ssh's argv_split handles both quote kinds anywhere in a word and `\\` escapes. Names that hold whitespace are not hosts",
     files: { ".ssh/config": "Host 'single' \"two words\" esc\\ aped\n  User 'admin'\n  HostName \"a\"b\n" },
-    bash: lines(...["'single'", "aped", "esc\\", "two", "words"].map((h) => [h, h, "'admin'@a\"b"])),
     out: lines(["single", "single", "admin@ab"])
   },
   {
     name: "Include is read where it stands",
-    why: "ssh reads an included file at the Include line, so its values come first; the script read the whole including file first",
+    why: "ssh reads an included file at the Include line, so its values come first",
     files: {
       ".ssh/config": "Include first.conf\nHost db\n  HostName from-main\n",
       ".ssh/first.conf": "Host db\n  HostName from-include\n  User inc\n"
     },
-    bash: lines(["db", "db", "inc@from-main"]),
     out: lines(["db", "db", "inc@from-include"])
   },
   {
     name: "an included file continues the including Host block",
-    why: "ssh applies an included file's lines before its own first Host to the block the Include is in; the script ignored them",
+    why: "ssh applies an included file's lines before its own first Host to the block the Include is in",
     files: {
       ".ssh/config": "Host web\n  Include web-settings.conf\n  User after\n",
       ".ssh/web-settings.conf": "HostName 10.0.0.4\nUser inside\n"
     },
-    bash: lines(["web", "web", "after@web"]),
     out: lines(["web", "web", "inside@10.0.0.4"])
   },
   {
+    name: "the including Host block resumes after an Include that starts its own Host",
+    why: "ssh restores the including block after it reads an included file",
+    files: {
+      ".ssh/config": "Host web\n  Include common.conf\n  HostName web.example\n",
+      ".ssh/common.conf": "Host bastion\n  User jump\n"
+    },
+    out: lines(["bastion", "bastion", "jump@bastion"], ["web", "web", "web.example"])
+  },
+  {
     name: "CRLF Include lines",
-    why: "ssh strips trailing whitespace, \\r included, before splitting; the script kept the \\r in the Include path",
+    why: "ssh strips trailing whitespace, \\r included, before splitting",
     files: { ".ssh/config": "Include extra.conf\r\nHost main\r\n", ".ssh/extra.conf": "Host extra\r\n" },
-    bash: lines(["main", "main", ""]),
     out: lines(["extra", "extra", ""], ["main", "main", ""])
   },
   {
     name: "a keyword without a value, and extra values",
-    why: "ssh rejects `User` with no argument (the script kept an empty first value) and takes one argument (the script kept the rest of the line)",
+    why: "ssh rejects `User` with no argument and takes one argument",
     files: { ".ssh/config": "Host web\n  User\n  User deploy\n  HostName a b\n" },
-    bash: lines(["web", "web", "a b"]),
     out: lines(["web", "web", "deploy@a"])
   }
 ]
 
-function compare(fixture, check) {
-  const home = makeHome(fixture)
-  try {
-    check(runBash(home, fixture), runRust(home, fixture), home)
-  } finally {
-    fs.rmSync(home, { recursive: true, force: true })
-  }
-}
-
-for (const fixture of SAME) {
+for (const fixture of CASES) {
   const why = skip || (fixture.unreadable && isRoot && "root reads unreadable files")
-  test(`ssh-hosts matches the Bash script: ${fixture.name}`, { skip: why }, () => {
-    compare(fixture, (bash, rust) => {
-      assert.equal(rust, bash, "byte-identical to the Bash script")
-      assert.equal(rust, fixture.out)
-    })
-  })
-}
-
-for (const fixture of DIFFERENT) {
-  test(`ssh-hosts follows ssh where the Bash script did not: ${fixture.name}`, { skip }, () => {
-    assert.ok(fixture.why)
-    compare(fixture, (bash, rust) => {
-      assert.equal(bash, fixture.bash, "the Bash script's documented output")
-      assert.equal(rust, fixture.out)
-    })
+  test(`ssh-hosts: ${fixture.name}`, { skip: why }, () => {
+    const home = makeHome(fixture)
+    try {
+      assert.equal(runRust(home, fixture), fixture.out, fixture.why)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
   })
 }
 
@@ -289,7 +258,7 @@ test("the SSH scope runs the bundled helper's ssh-hosts, as FoamyNative launches
   const argv = Scopes.fill(ssh.source.command, "", root)
   assert.deepEqual(argv, Array.from(FoamyNative.command(root, "foamy-menu-search", ["ssh-hosts"])))
   assert.ok(Scopes.isNativeCommand(argv))
-  const fixture = SAME[0]
+  const fixture = CASES[0]
   const home = makeHome(fixture)
   try {
     const out = runRust(home, fixture, helper.required ? undefined : argv)

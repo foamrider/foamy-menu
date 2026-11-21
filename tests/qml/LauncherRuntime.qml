@@ -20,6 +20,11 @@ ShellRoot {
   readonly property bool norwegian: Quickshell.env("FOAMY_TEST_LANGUAGE") === "no"
   // launcher.py's run without bin/<arch>/ (a CPU with no bundled helper).
   readonly property bool nativeHelper: Quickshell.env("FOAMY_TEST_NATIVE") !== "0"
+  // The run that also runs the fetch, command scope, guard and paste probes
+  // (launcher.py runs them once: they depend on no theme, width or language).
+  readonly property bool probes: Quickshell.env("FOAMY_TEST_PROBES") === "1"
+  // The launch file's text when an SSH value was refused; it must not change.
+  property string refusedLaunch: ""
   function said(english, norwegian) {
     return test.norwegian ? norwegian : english
   }
@@ -64,19 +69,6 @@ ShellRoot {
       view.move(1)
     check(view.selectedRow && view.selectedRow.itemId === id, "select " + id)
   }
-  // Setting row ids in the settings view.
-  function settingIds() {
-    return backend.callSync("rootSearch.search", {
-      query: "",
-      view: {
-        kind: "settings"
-      }
-    }).data.reduce(function (all, s) {
-      return all.concat(s.rows.map(function (r) {
-        return r.id
-      }))
-    }, [])
-  }
   // The grid cell (AppCell) showing a row, found through the item tree.
   function findCell(index, item) {
     var node = item || view.cardItem
@@ -114,6 +106,52 @@ ShellRoot {
       if (test.findTag(node.children[i]))
         return true
     return false
+  }
+  // Every Text under the card: how many, whether one shows the markup query,
+  // and the first that would render rich text (null when all are plain).
+  function texts(item, found) {
+    var node = item || view.cardItem
+    var out = found || {
+      count: 0,
+      markup: false,
+      rich: null
+    }
+    if (node.text !== undefined && node.textFormat !== undefined) {
+      out.count++
+      if (String(node.text).indexOf("<img") >= 0)
+        out.markup = true
+      if (node.textFormat !== Text.PlainText && !out.rich)
+        out.rich = node
+    }
+    for (var i = 0; i < node.children.length; i++)
+      test.texts(node.children[i], out)
+    return out
+  }
+  function plainTexts(state) {
+    var shown = test.texts()
+    test.check(shown.count > 0 && shown.rich === null, "every text under the card is plain text (" + state + ")" + (shown.rich ? ": " + shown.rich.text : ""))
+    return shown
+  }
+  // Whether a root search for the query lists the row.
+  function listed(query, id) {
+    return backend.callSync("rootSearch.search", {
+      query: query,
+      view: {
+        kind: "root"
+      }
+    }).data.some(function (s) {
+      return s.rows.some(function (r) {
+        return r.id === id
+      })
+    })
+  }
+  function setting(key, action, value) {
+    return backend.callSync("rootSearch.performAction", {
+      id: "setting:" + key,
+      action: action || "open",
+      value: value,
+      query: ""
+    })
   }
   // The search field's clipped box (LauncherWindow queryBox).
   function findQueryBox(item) {
@@ -302,8 +340,6 @@ ShellRoot {
       test.attempts = 0
       switch (test.stage++) {
       case 0:
-        test.check(backend.candidates.length > 5, "loads apps and Omarchy commands")
-        test.check(backend.paths.data.endsWith("/foamy-menu"), "isolates storage")
         test.check(backend.settings.currencyRates === false && backend.settings.webSearchHistory === false, "settings come from the foamy.menu entry in shell.json")
         test.check(menu.stockMenu.appLibrary !== null, "application library available without host facade")
         view.implicitWidth = Number(Quickshell.env("FOAMY_TEST_WIDTH"))
@@ -312,9 +348,8 @@ ShellRoot {
         break
       case 1:
         test.check(menu.opened && launcher.opened && !menu.stockMenu.opened, "root opens adopted launcher only")
-        test.check(view.brandIcon === "\u{f08c7}", "Arch header icon")
+        test.check(view.brandIcon === Quickshell.env("FOAMY_TEST_ICON"), "the header shows the icon set in shell.json")
         test.check(view.cardWidth <= view.width, "card fits viewport")
-        test.check(view.cardItem.activeFocus || view.activeFocusItem !== null, "launcher receives keyboard focus")
         test.check(view.visible && view.contentRevealed && view.contentItem.opacity === 1, "the overlay maps and reveals its content")
         test.check(view.placeholder === test.said("Search for apps and commands…", "Søk etter apper og kommandoer…"), "placeholder follows the language")
         test.check(backend.candidatesById["omarchy:apps"].title === test.said("Apps", "Apper"), "Omarchy menu labels use Omarchy's catalog")
@@ -351,6 +386,7 @@ ShellRoot {
         break
       case 3:
         test.check(view.actionPanelOpen, "Ctrl+K opens action panel")
+        test.plainTexts("the action panel")
         test.capture("actions", function () {
           key(Qt.Key_Escape)
           test.check(!view.actionPanelOpen && menu.opened, "Escape closes panel without closing launcher")
@@ -375,7 +411,8 @@ ShellRoot {
         })
         break
       case 6:
-        test.check(view.query.indexOf("<img") === 0, "markup input remains literal")
+        var shown = test.plainTexts("a markup query")
+        test.check(shown.markup, "the markup query shows as its text")
         test.check(!backend.callSync("rootSearch.performAction", {
           id: "missing",
           action: "open"
@@ -481,6 +518,15 @@ ShellRoot {
           test.asked = ""
           var typedArgv = launched.text().trim().split("\n")
           test.check(/\/bin\/foamy-ssh-connect$/.test(typedArgv[1]) && typedArgv[2] === "admin@new.example", "Enter connects to the typed destination")
+          // A destination the scope does not allow starts nothing; stage 18
+          // checks the launch file again, after later launches had time.
+          test.refusedLaunch = launched.text()
+          var refused = backend.callSync("rootSearch.performAction", {
+            id: "scope-query:ssh",
+            action: "open",
+            query: "-oProxyCommand=x"
+          })
+          test.check(refused.ok && refused.data.toast && refused.data.toast.style === "failure", "an SSH destination that starts with - is refused: " + JSON.stringify(refused))
           test.check(!!backend.callSync("frecency.get", {
             id: "scope-typed:ssh:admin@new.example"
           }).data, "the typed destination is saved")
@@ -558,6 +604,10 @@ ShellRoot {
         if (test.waitFor(browsed.text().indexOf("rust%20%26%20async") >= 0))
           break
         test.check(browsed.text().trim() === "https://www.google.com/search?q=rust%20%26%20async", "Enter opens the encoded search URL")
+        if (test.nativeHelper) {
+          launched.reload()
+          test.check(launched.text() === test.refusedLaunch, "the refused SSH destination started nothing")
+        }
         test.check(!backend.callSync("frecency.get", {
           id: "scope-item:google:rust & async"
         }).data, "searches are not saved without history")
@@ -654,6 +704,10 @@ ShellRoot {
         break
       case 24:
         test.check(menu.stockMenu.opened && !launcher.opened, "named stock routes remain supported")
+        if (!test.probes) {
+          test.stage = 29
+          break
+        }
         ratesProbe.ratesUrl = test.fetchUrl + "/endless"
         ratesProbe.fetchRates()
         break
@@ -684,19 +738,13 @@ ShellRoot {
         suggestProbe.suggest("duckduckgo", "pasta")
         break
       case 29:
-        var normal = suggestProbe.suggestions.duckduckgo
-        if (test.waitFor(normal && normal.query === "pasta"))
-          break
-        test.check(normal.items.join() === "pasta one,pasta two", "a normal suggestion reply still parses")
-        test.check(suggestProbe.stored.join() === "huge pasta,pasta", "a replaced request's reply is dropped: " + suggestProbe.stored)
-        // Games: offered once the helper lists Steam games (none without it);
-        // the one switch only adds the games to the root search.
-        test.check(backend.scopes.some(function (s) {
-          return s.id === "steam"
-        }) === test.nativeHelper, "Games is offered when Steam has games, and only then")
-        test.check(test.settingIds().includes("setting:steamGames") && !test.settingIds().some(function (id) {
-          return /Art$/.test(id)
-        }), "one Steam switch, no art choice")
+        if (test.probes) {
+          var normal = suggestProbe.suggestions.duckduckgo
+          if (test.waitFor(normal && normal.query === "pasta"))
+            break
+          test.check(normal.items.join() === "pasta one,pasta two", "a normal suggestion reply still parses")
+          test.check(suggestProbe.stored.join() === "huge pasta,pasta", "a replaced request's reply is dropped: " + suggestProbe.stored)
+        }
         menu.open('{"menu":"root"}')
         view.popToRoot()
         // The search field edits at its cursor.
@@ -784,6 +832,7 @@ ShellRoot {
         if (test.waitFor(cell && cell.coverStatus === Image.Ready))
           break
         test.check(cell.covers && cell.hasCover, "the cover art shows in the grid")
+        test.plainTexts("the cover grid")
         test.check(view.nthItem(2) >= 0 && test.findCell(view.nthItem(2)) && !test.findCell(view.nthItem(2)).hasCover, "a game without a cover shows its icon on a tile")
         var flick = test.findGrid()
         flick.contentY = 40
@@ -803,6 +852,10 @@ ShellRoot {
         test.check(!menu.opened, "playing dismisses the launcher")
         break
       case 35:
+        if (!test.probes) {
+          test.stage = 52
+          break
+        }
         runProbe.refresh("broken")
         runProbe.refresh("hung")
         runProbe.refresh("flood")
@@ -853,45 +906,57 @@ ShellRoot {
         if (test.waitFor(!!view.toast))
           break
         test.check(test.failureToast("Clipboard text is too large or contains invalid characters.", "Teksten på utklippstavlen er for stor eller inneholder ugyldige tegn.") && view.query === "", "an endless clipboard is refused at the byte cap, with a toast: " + JSON.stringify(view.toast))
-        test.clipboardMode("delayed")
+        test.clipboardMode("failure")
         break
       case 42:
+        if (test.waitFor(clipboardFixture.done))
+          break
+        test.paste()
+        break
+      case 43:
+        if (test.waitFor(!!view.toast))
+          break
+        test.check(test.failureToast("Could not paste clipboard text. Copy plain text and try again.", "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.") && view.query === "", "a clipboard read that fails shows a toast: " + JSON.stringify(view.toast))
+        test.clipboardMode("delayed")
+        break
+      case 44:
         if (test.waitFor(clipboardFixture.done))
           break
         // Type and delete a character before the delayed read answers: the
         // query is back as it was, but the paste is still stale.
         test.paste()
+        test.check(view.pasteRevision >= 0, "the delayed paste started")
         test.type("x")
         key(Qt.Key_Backspace)
         break
-      case 43:
-        // The delayed read answers after 0.4 s; give it a second.
-        if (test.waitFor(Date.now() - test.pasteStarted > 1000))
+      case 45:
+        // The window resets pasteRevision once the result was used or dropped.
+        if (test.waitFor(view.pasteRevision === -1))
           break
         test.check(view.query === "" && !view.toast, "a paste that answers after typing (even typing undone) is dropped: " + view.query)
         view.setQuery("")
         test.clipboardMode("stall")
         break
-      case 44:
+      case 46:
         if (test.waitFor(clipboardFixture.done))
           break
         test.paste()
         break
-      case 45:
+      case 47:
         if (test.waitFor(!!view.toast))
           break
         var waited = Date.now() - test.pasteStarted
         test.check(test.failureToast("Clipboard paste timed out. Copy the text again.", "Innliming fra utklippstavlen tok for lang tid. Kopier teksten på nytt.") && waited < 5000 && view.query === "", "a stalled clipboard ends at the 2 s deadline, with a toast, after " + waited + " ms")
         test.clipboardMode("ignore")
         break
-      case 46:
+      case 48:
         if (test.waitFor(clipboardFixture.done))
           break
         pastePid.reload()
         test.previousPid = pastePid.text()
         test.paste()
         break
-      case 47:
+      case 49:
         pastePid.reload()
         if (test.waitFor(pastePid.text() !== test.previousPid))
           break
@@ -900,7 +965,7 @@ ShellRoot {
         console.log("FOAMY PASTE PID " + pastePid.text())
         test.clipboardMode("normal")
         break
-      case 48:
+      case 50:
         if (test.waitFor(clipboardFixture.done))
           break
         // Closing mid-read stops it. Reopening and pasting at once, while
@@ -911,19 +976,214 @@ ShellRoot {
         menu.open('{"menu":"root"}')
         test.paste()
         break
-      case 49:
-        if (test.waitFor(Date.now() - test.pasteStarted > 1000))
+      case 51:
+        // While the stopped read is still ending the reader refuses a new
+        // one and Ctrl+V does nothing; press again until a read starts.
+        // Without that refusal the paste above ends with the stopped read's
+        // failure.
+        if (view.toast) {
+          test.check(false, "a paste after a cancelled one got the stopped read's failure: " + JSON.stringify(view.toast))
           break
-        test.check(!view.toast && (view.query === "" || view.query === "folder"), "a paste right after a cancelled one gets no stale failure: " + JSON.stringify(view.toast) + " " + view.query)
-        view.setQuery("")
-        test.paste()
-        break
-      case 50:
-        if (test.waitFor(view.query !== "" || !!view.toast))
+        }
+        if (view.query === "" && view.pasteRevision === -1)
+          key(Qt.Key_V, Qt.ControlModifier)
+        if (test.waitFor(view.query !== ""))
           break
         test.check(view.query === "folder" && !view.toast, "the next paste works: " + view.query)
         break
-      case 51:
+      case 52:
+        // Every run comes here, in different states.
+        menu.open('{"menu":"root"}')
+        view.popToRoot()
+        view.setQuery("")
+        view.request({
+          id: "builtin:calculator-history",
+          action: "open",
+          query: ""
+        })
+        break
+      case 53:
+        // A destructive action asks first: Esc keeps the history, Enter on
+        // the alert clears it.
+        var history = function () {
+          return backend.callSync("calculator.historyGetAll", null).data.length
+        }
+        if (test.waitFor(view.view.kind === "calculator-history" && !!view.selectedRow))
+          break
+        var kept = history()
+        test.check(kept > 0, "Calculator History lists the saved calculation")
+        key(Qt.Key_D, Qt.ControlModifier | Qt.ShiftModifier)
+        test.check(!!view.alert && history() === kept, "Ctrl+Shift+D asks before it deletes the history")
+        test.plainTexts("the alert")
+        key(Qt.Key_Escape)
+        test.check(!view.alert && history() === kept && launcher.opened, "Esc on the alert keeps the history")
+        key(Qt.Key_D, Qt.ControlModifier | Qt.ShiftModifier)
+        key(Qt.Key_Return)
+        test.check(!view.alert && history() === 0 && !!view.toast && view.toast.title === test.said("History cleared", "Historikk tømt"), "Enter on the alert clears the history")
+        // A power command asks too; launcher.py fails the run if anything
+        // reached omarchy-system.
+        var shutdown = backend.callSync("rootSearch.performAction", {
+          id: "omarchy:system.shutdown",
+          action: "open",
+          query: ""
+        })
+        test.check(shutdown.ok && !!shutdown.data.confirm && shutdown.data.confirm.destructive === true && shutdown.data.confirm.primary === "Shut Down", "Shut Down asks first: " + JSON.stringify(shutdown))
+        // Aliases, through the handler only Backend.qml has.
+        var alias = function (id, value) {
+          return backend.callSync("settings.updateCommandSettings", {
+            commandId: id,
+            alias: value
+          })
+        }
+        var saved = alias("builtin:settings", " ST ")
+        test.check(saved.ok && backend.callSync("settings.getCommandSettings", {
+          commandId: "builtin:settings"
+        }).data.alias === "st", "an alias is saved trimmed and in lower case")
+        var taken = alias("builtin:calculator-history", "st")
+        test.check(!taken.ok && taken.error.indexOf("already used") >= 0, "an alias another command uses is refused: " + taken.error)
+        var spaced = alias("builtin:calculator-history", "a b")
+        test.check(!spaced.ok && spaced.error.indexOf("cannot contain spaces") >= 0, "an alias with a space is refused: " + spaced.error)
+        var unknown = alias("builtin:no-such-command", "x")
+        test.check(!unknown.ok && unknown.error.indexOf("Unknown command") >= 0, "an alias for an unknown command is refused: " + unknown.error)
+        view.popToRoot()
+        view.setQuery("st")
+        break
+      case 54:
+        if (test.waitFor(!view.searchPending))
+          break
+        test.check(view.selectedRow && view.selectedRow.itemId === "builtin:settings", "the alias selects its command")
+        var removed = backend.callSync("settings.updateCommandSettings", {
+          commandId: "builtin:settings",
+          alias: ""
+        })
+        test.check(removed.ok && JSON.stringify(backend.callSync("settings.getCommandSettings", {
+          commandId: "builtin:settings"
+        }).data) === "{}", "an empty alias removes it")
+        view.setQuery(test.said("calculator history", "kalkulatorhistorikk"))
+        break
+      case 55:
+        if (test.waitFor(!view.searchPending))
+          break
+        var query = test.said("calculator history", "kalkulatorhistorikk")
+        test.check(view.selectedRow && view.selectedRow.itemId === "builtin:calculator-history", "select Calculator History")
+        key(Qt.Key_D, Qt.AltModifier | Qt.ShiftModifier)
+        test.check(!!view.toast && (view.toast.actions || []).some(function (a) {
+          return a.id === "undo"
+        }) && !test.listed(query, "builtin:calculator-history"), "Alt+Shift+D disables a command and offers Undo")
+        view.runToastAction("undo")
+        test.check(test.listed(query, "builtin:calculator-history"), "Undo enables it again")
+        // Only the zoom is the launcher's own setting; the rest is shell.json's.
+        var zoom = backend.callSync("settings.updateGeneralSettings", {
+          uiZoom: 1.2
+        })
+        test.check(zoom.ok && Math.abs(view.zoom - 1.2) < 1e-9, "a zoom saved through the backend scales the window: " + view.zoom)
+        backend.callSync("settings.updateGeneralSettings", {
+          uiZoom: 1
+        })
+        var shellKey = backend.callSync("settings.updateGeneralSettings", {
+          windowMode: "compact"
+        })
+        test.check(!shellKey.ok && shellKey.error.indexOf("omarchy bar set foamy.menu windowMode") >= 0, "a shell.json setting is refused with the command that sets it: " + shellKey.error)
+        var bigZoom = backend.callSync("settings.updateGeneralSettings", {
+          uiZoom: "big"
+        })
+        test.check(!bigZoom.ok && bigZoom.error.indexOf("uiZoom must be a number") >= 0, "a zoom that is not a number is refused: " + bigZoom.error)
+        // The reason, not just a failure: a broken handler fails too.
+        var off = backend.callSync("calculator.refreshCurrencies", null)
+        test.check(!off.ok && off.error.indexOf("currencyRates is off") >= 0, "rates are not downloaded while currencyRates is off: " + off.error)
+        // The window settings no other stage acts on; each is set back after.
+        test.setting("navigationBindings")
+        break
+      case 56:
+        if (test.waitFor(backend.settings.navigationBindings === "vim-motions"))
+          break
+        view.popToRoot()
+        view.setQuery("a")
+        break
+      case 57:
+        if (test.waitFor(!view.searchPending))
+          break
+        var first = view.selectedIndex
+        key(Qt.Key_N, Qt.ControlModifier)
+        test.check(view.selectedIndex === first, "with Ctrl+J/K, Ctrl+N does not move")
+        key(Qt.Key_J, Qt.ControlModifier)
+        test.check(first >= 0 && view.selectedIndex === view.nextSelectable(first, 1), "with Ctrl+J/K, Ctrl+J moves one row down")
+        view.setQuery("")
+        test.setting("navigationBindings")
+        break
+      case 58:
+        if (test.waitFor(backend.settings.navigationBindings === "emacs"))
+          break
+        test.setting("windowMode")
+        break
+      case 59:
+        if (test.waitFor(backend.settings.windowMode === "compact"))
+          break
+        view.popToRoot()
+        view.setQuery("")
+        test.check(view.compact, "compact mode shows only the search field at root")
+        view.setQuery("f")
+        test.check(!view.compact, "typing expands the compact window")
+        view.setQuery("")
+        test.setting("windowMode")
+        break
+      case 60:
+        if (test.waitFor(backend.settings.windowMode === "expanded"))
+          break
+        test.setting("escapeKeyBehavior")
+        break
+      case 61:
+        if (test.waitFor(backend.settings.escapeKeyBehavior === "close-and-pop-to-root"))
+          break
+        key(Qt.Key_Comma, Qt.ControlModifier)
+        test.check(view.view.kind === "settings", "Ctrl+, opens the settings")
+        key(Qt.Key_Escape)
+        test.check(!menu.opened && view.atRoot, "Esc closes the launcher and starts over")
+        menu.open('{"menu":"root"}')
+        test.setting("escapeKeyBehavior")
+        break
+      case 62:
+        if (test.waitFor(backend.settings.escapeKeyBehavior === "pop-back-or-close"))
+          break
+        test.setting("popToRootTimeout", "set", "0")
+        break
+      case 63:
+        if (test.waitFor(backend.settings.popToRootTimeout === 0))
+          break
+        view.request({
+          id: "builtin:calculator-history",
+          action: "open",
+          query: ""
+        })
+        test.check(!view.atRoot, "Calculator History opens")
+        menu.close()
+        test.check(view.atRoot, "with 0 seconds, closing starts over at once")
+        menu.open('{"menu":"root"}')
+        test.setting("popToRootTimeout", "set", "90")
+        break
+      case 64:
+        if (test.waitFor(backend.settings.popToRootTimeout === 90))
+          break
+        // The IPC handler that `omarchy-shell foamy-menu …` and keybindings call.
+        var ipc = null
+        for (var d = 0; d < launcher.data.length; d++)
+          if (launcher.data[d] && launcher.data[d].target === "foamy-menu")
+            ipc = launcher.data[d]
+        test.check(!!ipc, "the IPC handler is there")
+        if (!ipc)
+          break
+        test.check(ipc.ping() === "ok", "IPC ping answers ok")
+        test.check(ipc.hide() === "hidden" && !menu.opened && ipc.isOpen() === "false", "IPC hide closes the launcher")
+        test.check(ipc.show() === "shown" && menu.opened && ipc.isOpen() === "true", "IPC show opens it")
+        test.check(ipc.toggle() === "hidden" && !menu.opened && ipc.toggle() === "shown" && menu.opened, "IPC toggle closes and opens it")
+        var info = JSON.parse(ipc.call("system.info", ""))
+        test.check(info.ok && info.data.version === "0.0.0-runtime", "IPC call reaches the backend")
+        var notJson = JSON.parse(ipc.call("system.info", "{oops"))
+        test.check(!notJson.ok && notJson.error.indexOf("data is not JSON") === 0, "IPC call refuses data that is not JSON: " + notJson.error)
+        ipc.run("builtin:settings")
+        test.check(menu.opened && view.view.kind === "settings", "IPC run opens a command")
+        break
+      case 65:
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

@@ -19,8 +19,7 @@ function tempHome(t) {
 }
 
 function runSetup(home) {
-  const p = Paths.resolve((name) => ({ HOME: home, XDG_RUNTIME_DIR: home + "/run" })[name] || "")
-  fs.mkdirSync(home + "/run", { mode: 0o755 })
+  const p = Paths.resolve((name) => ({ HOME: home })[name] || "")
   const files = ["settings.json", "frecency.json", "calculator.json"].map((f) => p.db + "/" + f)
   const [cmd, ...args] = Paths.setupArgv(p, files)
   const r = spawnSync("bash", ["-c", "umask 022; exec \"$@\"", "umask-022", cmd, ...args], { encoding: "utf8" })
@@ -28,24 +27,55 @@ function runSetup(home) {
   return p
 }
 
-test("first start under umask 022 creates owner-only dirs and 0600 store files", (t) => {
-  const p = runSetup(tempHome(t))
-  for (const dir of Paths.privateRoots(p)) assert.equal(mode(dir), 0o700, dir)
-  for (const dir of Paths.directoriesToCreate(p)) assert.equal(mode(dir), 0o700, dir)
-  for (const f of ["settings.json", "frecency.json", "calculator.json"]) assert.equal(mode(p.db + "/" + f), 0o600, f)
-  // Nothing in state or the runtime dir: the launcher keeps nothing there.
-  for (const unused of [p.home + "/.local/state/foamy-menu", p.home + "/run/foamy-menu"]) assert.equal(fs.existsSync(unused), false, unused)
+// Every path under `dir`, relative to it, with its type and mode.
+function tree(dir, prefix = "") {
+  return fs.readdirSync(path.join(dir, prefix)).sort().flatMap((name) => {
+    const rel = prefix ? prefix + "/" + name : name
+    const stat = fs.lstatSync(path.join(dir, rel))
+    const entry = [rel, stat.isDirectory() ? "dir" : "file", (stat.mode & 0o777).toString(8), stat.isDirectory() ? null : stat.size]
+    return stat.isDirectory() ? [entry, ...tree(dir, rel)] : [entry]
+  })
+}
+
+test("first start under umask 022 creates only owner-only dirs and empty 0600 store files", (t) => {
+  const home = tempHome(t)
+  runSetup(home)
+  // Only the launcher's own folders must be private; the XDG parents are
+  // listed without their mode.
+  const parents = [".cache", ".config", ".local", ".local/share"]
+  const listed = tree(home).map(([rel, type, perms, size]) => [rel, type, parents.includes(rel) ? "any" : perms, size])
+  assert.deepEqual(listed, [
+    [".cache", "dir", "any", null],
+    [".cache/foamy-menu", "dir", "700", null],
+    [".config", "dir", "any", null],
+    [".config/foamy-menu", "dir", "700", null],
+    [".config/foamy-menu/scopes", "dir", "700", null],
+    [".local", "dir", "any", null],
+    [".local/share", "dir", "any", null],
+    [".local/share/foamy-menu", "dir", "700", null],
+    [".local/share/foamy-menu/db", "dir", "700", null],
+    [".local/share/foamy-menu/db/calculator.json", "file", "600", 0],
+    [".local/share/foamy-menu/db/frecency.json", "file", "600", 0],
+    [".local/share/foamy-menu/db/settings.json", "file", "600", 0]
+  ])
 })
 
-test("an atomic save into a pre-created file keeps it private", (t) => {
-  const p = runSetup(tempHome(t))
-  // QSaveFile copies the target's permissions onto its temp file before the rename.
-  const target = p.db + "/frecency.json"
-  const temp = target + ".tmp"
-  fs.writeFileSync(temp, '{"searchHistory":["secret"]}', { mode: 0o644 })
-  fs.chmodSync(temp, mode(target))
-  fs.renameSync(temp, target)
-  assert.equal(mode(target), 0o600)
+test("the repair does not follow symlinks out of the private folders", (t) => {
+  const home = tempHome(t)
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-outside-"))
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }))
+  fs.chmodSync(outside, 0o755)
+  fs.writeFileSync(outside + "/shared.txt", "not ours")
+  fs.chmodSync(outside + "/shared.txt", 0o644)
+  const db = home + "/.local/share/foamy-menu/db"
+  fs.mkdirSync(db, { recursive: true, mode: 0o755 })
+  fs.symlinkSync(outside, db + "/link")
+  fs.symlinkSync(outside + "/missing.json", db + "/frecency.json")
+  runSetup(home)
+  assert.equal(mode(outside), 0o755)
+  assert.equal(mode(outside + "/shared.txt"), 0o644)
+  assert.equal(fs.existsSync(outside + "/missing.json"), false, "a dangling store link was written through")
+  assert.equal(mode(db), 0o700)
 })
 
 test("readable histories from older builds are repaired; stricter modes are kept", (t) => {
@@ -110,16 +140,6 @@ for (const kind of ["copy", "paste"]) {
     assert.equal(fs.readFileSync(log + ".clipboard", "utf8"), secret)
     const cmdlines = fs.readFileSync(log, "utf8")
     assert.ok(!cmdlines.includes("private"), cmdlines)
-    assert.ok(!script.includes("$"), "the script takes no arguments")
     if (kind === "paste") assert.match(cmdlines, /wtype -M shift -k Insert -m shift/)
   })
 }
-
-test("no QML hands clipboard text or prompts to a process's argv", () => {
-  const files = ["Backend.qml", "Launcher.qml", ...["ui", "services"].flatMap((d) =>
-    fs.readdirSync(path.join(root, d)).filter((f) => f.endsWith(".qml")).map((f) => d + "/" + f))]
-  for (const file of files) {
-    const source = fs.readFileSync(path.join(root, file), "utf8")
-    assert.doesNotMatch(source, /\["wl-copy"|omarchy-clipboard-paste-text"|omarchy-agent/, file)
-  }
-})

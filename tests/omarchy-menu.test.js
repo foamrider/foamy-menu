@@ -2,8 +2,10 @@ const test = require("node:test")
 const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const path = require("node:path")
+const os = require("node:os")
 const { execFileSync } = require("node:child_process")
 const M = require("../core/OmarchyMenu.js")
+const RootSearch = require("../core/RootSearch.js")
 
 const sample = `{
   // comment line
@@ -60,6 +62,23 @@ test("the guard script runs in bash and reports each guard", () => {
   assert.deepEqual({ ...M.parseGuardOutput(out).when }, { "system.suspend": false })
 })
 
+test("the guard script leaves out an item whose id is not safe in a shell", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-menu-guard-"))
+  try {
+    const marker = path.join(dir, "injected")
+    const items = M.parse(JSON.stringify({
+      ok: { label: "OK", action: "true", when: "true" },
+      [`x'; touch ${marker}; echo '`]: { label: "X", action: "true", when: "true" }
+    })).items
+    const script = M.guardScript(M.buildTree(items, []))
+    const out = execFileSync("bash", ["-c", script], { encoding: "utf8" })
+    assert.equal(out, "ok:w:1\n")
+    assert.equal(fs.existsSync(marker), false, "the id ran as a command")
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test("provider output becomes action rows with quoted commands", () => {
   const rows = M.providerItems("style.font", "fonts", "JetBrains Mono\tJetBrains Mono\tJetBrains Mono\nIt's Font\tIt's Font\tother\n")
   assert.equal(rows.length, 2)
@@ -83,6 +102,11 @@ test("the installed Omarchy menu parses completely", { skip: !fs.existsSync(ship
   const tree = M.buildTree(r.items, [])
   for (const id of ["apps", "system", "setup", "install", "remove", "update"]) assert.ok(tree.children.root.includes(id), id)
   assert.ok(tree.children.root.includes("style") || tree.children.root.includes("appearance"))
+  // The launcher asks before these; a renamed id would run them at once.
+  for (const id of ["system.shutdown", "system.reboot", "system.logout"]) {
+    assert.equal(tree.items[id] && tree.items[id].kind, "action", id)
+    assert.ok(RootSearch.confirmationFor("omarchy:" + id, "open"), id)
+  }
 })
 
 test("trailing commas go, but never from inside a string", () => {

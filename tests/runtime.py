@@ -131,6 +131,13 @@ def run_host(host_name, shots, plugin, shell_path):
     result = next(
         (line.split("FOAMY RESULT ", 1)[1] for line in run.log.splitlines() if "FOAMY RESULT" in line), "no result"
     )
+    # Stage 9 writes the only invalid width (-20) into shell.json: the file
+    # change must warn, and only once for that value.
+    warning = "foamy.menu: width must be an integer from 0 to 4096; using 360"
+    warned = sum(warning in line for line in run.log.splitlines())
+    if warned != 1:
+        run.ok = False
+        result += f"; the invalid width warned {warned} times, not once"
     # Every host command the QML runs has a stand-in here; the harness
     # refuses (and logs) any other.
     refused = run.host_commands()
