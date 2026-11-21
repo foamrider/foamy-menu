@@ -15,9 +15,10 @@ const text = fs.readFileSync(sourcePath, "utf8")
 const guardValues = (g) => ({ when: { ...g.when }, checked: { ...g.checked }, disabled: { ...g.disabled } })
 const methods = ["createGuardCompiler", "guardItems", "compileGuards", "guardKeys", "finishGuards", "bounded", "refresh"]
 
-// QML block sample: "  function refresh() {\n  }".
-function block(signature, indentation) {
-  const start = text.indexOf(signature)
+// QML block sample: "  function refresh() {\n  }". With `from`, the first
+// block after that text.
+function block(signature, indentation, from) {
+  const start = text.indexOf(signature, from ? text.indexOf(from) : 0)
   assert.ok(start >= 0, signature)
   const open = text.indexOf("{", start)
   const end = text.indexOf("\n" + " ".repeat(indentation) + "}", open) + indentation + 2
@@ -232,10 +233,11 @@ test("a hung guard batch and its background groups end at the deadline", (t) => 
   h.start()
   const [cmd, ...args] = h.guardProc.command
   assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "2s", "bash", "-lc"])
-  const started = Date.now()
   const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
-  const elapsed = Date.now() - started
-  assert.ok(elapsed >= 2000 && elapsed < 2900, "ended at the deadline: " + elapsed)
+  // 124 means the deadline fired and SIGTERM ended the group; when only the
+  // SIGKILL a second later works, timeout dies by it (signal, no status).
+  assert.ifError(result.error)
+  assert.equal(result.signal, null)
   assert.equal(result.status, 124)
   const listed = fs.readFileSync(pids, "utf8").trim().split(/\s+/)
   // Each group runs its guards in turn: its first one hangs (two pids each).
@@ -301,6 +303,114 @@ test("empty guard scripts do not launch a process", () => {
   h.start()
   assert.equal(h.guardProc.running, false)
   assert.equal(h.guardProc.requestTree, null)
+})
+
+// The provider lists (fonts, kernels) run one at a time in providerProc.
+// Guards are left out: guardProc counts as busy, so refresh() starts none.
+function providerHarness() {
+  const source = {
+    commandTimeout: "10s", revision: 3, providerQueue: [], pendingProviderItems: {},
+    tree: OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify({
+      style: { label: "Style" },
+      "style.font": { label: "Font", provider: "fonts" },
+      update: { label: "Update" },
+      "update.kernel": { label: "Kernel", provider: "kernels" },
+      setup: { label: "Setup" },
+      "setup.language": { label: "Language", provider: "languages" }
+    })).items, []),
+    providerItems: { "style.font": [{ id: "style.font.old", label: "Old Font" }], "update.kernel": [{ id: "update.kernel.old", label: "old" }] }
+  }
+  const providerProc = { running: false, menuId: "", collected: "", command: [], starts: [] }
+  const context = vm.createContext({ source, guardProc: { running: true }, providerProc, OmarchyMenu })
+  for (const name of ["providerMenus", "startNextProvider", "finishProvider", "bounded", "refresh"]) {
+    vm.runInContext(method(name), context)
+    source[name] = context[name]
+  }
+  // Every start of a list, in order.
+  Object.defineProperty(providerProc, "running", {
+    get() { return this._running || false },
+    set(value) { if (value && !this._running) this.starts.push(Array.from(this.command)); this._running = value }
+  })
+  const exited = block("onExited: function (exitCode, exitStatus)", 4, "id: providerProc")
+  const runningChanged = handler("onRunningChanged", "id: providerProc")
+  // The running change sees the value running has then: a list started from
+  // exited() is running again.
+  const changed = () => vm.runInContext("(function(running) { " + runningChanged + " })(providerProc.running)", context)
+  return {
+    source, providerProc, changed,
+    // Quickshell: the list ends with exited(), then running -> false.
+    end(code, status, output = "") {
+      providerProc._running = false
+      providerProc.collected = output
+      vm.runInContext("(" + exited.slice(exited.indexOf("function")) + ")(" + code + ", " + status + ")", context)
+      changed()
+    },
+    // A command that can't start gets only running -> false.
+    lost() {
+      providerProc._running = false
+      changed()
+    }
+  }
+}
+
+const bash = (script) => ["timeout", "--kill-after=1s", "10s", "bash", "-lc", script]
+
+test("provider lists run one at a time under the deadline and publish together", () => {
+  const h = providerHarness()
+  const before = h.source.providerItems
+  h.source.refresh()
+  assert.deepEqual(h.providerProc.starts, [bash(OmarchyMenu.PROVIDERS.fonts.script)])
+  // A refresh while a list runs starts no second one.
+  h.source.refresh()
+  assert.equal(h.providerProc.starts.length, 1)
+  h.end(0, 0, "JetBrains Mono\tJetBrains Mono\tJetBrains Mono\nHack\tHack\tJetBrains Mono\n")
+  assert.deepEqual(h.providerProc.starts.slice(1), [bash(OmarchyMenu.PROVIDERS.kernels.script)])
+  assert.equal(h.source.providerItems, before, "nothing is published before the last list ends")
+  assert.equal(h.source.revision, 3)
+  h.source.refresh()
+  h.end(0, 0, "linux\tlinux\tlinux-lts\nlinux-lts\tlinux-lts\tlinux-lts\n")
+  assert.equal(h.providerProc.running, false, "a refresh during a list starts no list again")
+  // The languages provider is not one the launcher runs.
+  assert.equal(h.providerProc.starts.length, 2)
+  assert.equal(h.source.revision, 4)
+  const rows = h.source.providerItems
+  assert.deepEqual(rows["style.font"].map((r) => [r.id, r.isCurrent]), [["style.font.jetbrains-mono", true], ["style.font.hack", false]])
+  assert.deepEqual(rows["update.kernel"].map((r) => [r.label, r.action, r.isCurrent]), [
+    ["linux", "omarchy-kernel set 'linux'", false], ["linux-lts", "omarchy-kernel set 'linux-lts'", true]
+  ])
+  assert.deepEqual(Object.keys(rows).sort(), ["style.font", "update.kernel"])
+})
+
+test("a list that times out, crashes or cannot start keeps the previous list and the queue goes on", () => {
+  for (const [name, fail] of [
+    ["exit 124 at the deadline", (h) => h.end(124, 0, "Half Font\tHalf Font\t\n")],
+    ["abnormal exit", (h) => h.end(0, 1, "Half Font\tHalf Font\t\n")],
+    ["running -> false without exited()", (h) => h.lost()]
+  ]) {
+    const h = providerHarness()
+    const previous = h.source.providerItems["style.font"]
+    h.source.refresh()
+    fail(h)
+    assert.deepEqual(h.providerProc.starts.slice(1), [bash(OmarchyMenu.PROVIDERS.kernels.script)], name)
+    h.end(0, 0, "linux\tlinux\tlinux\n")
+    assert.equal(h.source.providerItems["style.font"], previous, name)
+    assert.deepEqual(h.source.providerItems["update.kernel"].map((r) => r.label), ["linux"], name)
+    assert.equal(h.source.revision, 4, name + ": one publish")
+    assert.equal(h.providerProc.starts.length, 2, name)
+  }
+})
+
+test("running -> false after the last exit changes nothing", () => {
+  const h = providerHarness()
+  h.source.refresh()
+  h.end(0, 0, "Hack\tHack\tHack\n")
+  h.end(0, 0, "linux\tlinux\tlinux\n")
+  const published = h.source.providerItems
+  h.changed()
+  h.lost()
+  assert.equal(h.source.providerItems, published)
+  assert.equal(h.source.revision, 4)
+  assert.equal(h.providerProc.starts.length, 2)
 })
 
 function sandbox(t) {
