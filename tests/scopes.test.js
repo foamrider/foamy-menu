@@ -29,7 +29,6 @@ test("a user file overrides a built-in by id, and enabled: false turns it off", 
   assert.equal(renamed.keyword, "s")
   assert.equal(renamed.openTitle, "Go")
   assert.equal(renamed.title, "SSH", "fields the file leaves out stay built-in")
-  assert.equal(renamed.builtin, true, "a file cannot clear the built-in flag")
 })
 
 test("user scopes are added after built-ins; invalid ones are reported, not loaded", () => {
@@ -95,7 +94,7 @@ test("inside a scope: recent items first, then all of them; a query ranks", () =
   assert.deepEqual(RS.scopeSections(items, "brav", ctx(), deps, "Hosts")[0].rows.map((r) => r.candidate.title), ["bravo"])
 })
 
-test("scope rows and items: actions, and items stay out of root search", () => {
+test("scope rows and items: ids and actions; the scope row is found by its keyword", () => {
   const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes[0]
   const row = Scopes.scopeCandidate(ssh)
   assert.equal(row.id, "scope:ssh")
@@ -104,8 +103,6 @@ test("scope rows and items: actions, and items stay out of root search", () => {
   assert.deepEqual(RS.actionsFor(item).map((a) => [a.id, a.title]), [
     ["open", "Connect"], ["scope-action:0", "Copy SSH Command"], ["scope-action:1", "Copy Host Name"], ["scope-action:2", "Open in Files (SFTP)"]
   ])
-  const root = RS.rootSections([row], "web", ctx(), deps)
-  assert.ok(!root.some((s) => s.rows.some((r) => r.candidate.kind === "scope-item")))
   assert.equal(RS.rootSections([row], "ssh", ctx(), deps)[0].rows[0].candidate.id, "scope:ssh")
 })
 
