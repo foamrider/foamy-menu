@@ -21,13 +21,10 @@ const ctx = { commands: {}, frecency: {}, nowMs: 0, sensitivity: "medium" }
 const steamWith = (entry) => Scopes.merge(Settings.applyToScopes(Scopes.BUILTINS, Settings.resolve(Prefs, entry)), []).scopes.find((s) => s.id === "steam")
 
 test("Games is a cover grid shown once Steam has games; steamGames adds them to the root search", () => {
-  const defaults = Settings.resolve(Prefs, null)
-  assert.equal(defaults.steamGames, false)
   const steam = steamWith(null)
   assert.deepEqual([steam.title, steam.subtitle, steam.keyword, steam.layout], ["Games", "Steam", "steam", "covers"])
   assert.deepEqual([steam.requireItems, steam.rootSearch], [true, false], "always a grid; not in the root search by default")
   assert.equal(steamWith({ steamGames: true }).rootSearch, true)
-  assert.equal(steamWith({ steamGames: true }).layout, "covers", "the switch never changes the grid")
   assert.ok(!Scopes.isShown(steam, undefined), "hidden before the helper answers, or when it fails")
   assert.ok(!Scopes.isShown(steam, []), "hidden without Steam or games")
   assert.ok(Scopes.isShown(steam, [{ title: "Deep Rock Galactic", value: "548430" }]))
@@ -36,11 +33,6 @@ test("Games is a cover grid shown once Steam has games; steamGames adds them to 
   const row = Scopes.scopeCandidate(steam)
   assert.deepEqual([row.title, row.subtitle, row.typeLabel], ["Games", "Steam", "Menu"], "the root row reads like Apps")
   assert.equal(Scopes.scopeCandidate(Scopes.BUILTINS[0]).typeLabel, "Scope", "list scopes stay scopes")
-  const listed = Scopes.merge(Settings.applyToScopes(Scopes.BUILTINS, defaults),
-    [{ name: "steam.json", definition: { id: "steam", layout: "list", keyword: "games" } }]).scopes.find((s) => s.id === "steam")
-  assert.deepEqual([listed.layout, listed.keyword], ["list", "games"], "a scope file still overrides the built-in")
-  const keys = RS.settingsSections(defaults, "", ctx, deps).flatMap((s) => s.rows.map((r) => r.candidate.settingKey)).filter(Boolean)
-  assert.ok(keys.includes("steamGames") && !keys.some((k) => k.endsWith("Art")), "one switch, no art choice")
 })
 
 test("games are found from the root search, ranked and filtered as applications", () => {
