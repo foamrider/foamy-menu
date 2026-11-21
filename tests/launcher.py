@@ -11,7 +11,9 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import ssl
+import stat
 import struct
 import subprocess
 import sys
@@ -157,7 +159,48 @@ def left_running(pids):
     return left()
 
 
-def run_case(host, theme, width, language, shots, native=True):
+def stop(pids):
+    """Kill what a failed run left running, so it does not outlive the test
+    (a run that fails early ends before the hung guard's deadline)."""
+    for pid in pids:
+        try:
+            os.kill(int(pid), signal.SIGKILL)
+        except (OSError, ValueError):
+            pass
+
+
+def private_store_problems(home):
+    """Why the launcher's stores are not private after a real run: each store
+    file holds a JSON object (an atomic save replaced the empty file the
+    first start made), nothing under the config and data folders (links left
+    out) has a group or other bit, and the cache folder is 0700."""
+    problems = []
+    data = home / ".local/share/foamy-menu"
+    for name in ("settings", "frecency", "calculator"):
+        path = data / "db" / f"{name}.json"
+        try:
+            if not isinstance(json.loads(path.read_text()), dict):
+                problems.append(f"{path} does not hold a JSON object")
+        except (OSError, ValueError) as error:
+            problems.append(f"{path}: {error}")
+    for root in (home / ".config/foamy-menu", data):
+        if not root.is_dir():
+            problems.append(f"{root} is missing")
+            continue
+        for path in [root, *root.rglob("*")]:
+            mode = path.lstat().st_mode
+            if not stat.S_ISLNK(mode) and mode & 0o077:
+                problems.append(f"{path} is {stat.filemode(mode)}")
+    cache = home / ".cache/foamy-menu"
+    if stat.S_IMODE(cache.stat().st_mode) != 0o700:
+        problems.append(f"{cache} is {stat.filemode(cache.stat().st_mode)}")
+    return problems
+
+
+def run_case(host, theme, width, language, shots, native=True, probes=False, icon="\U000f08c7"):
+    """One run of the launcher runtime. probes: also run the fetch, command
+    scope, guard and paste probes, which depend on no theme, width, language
+    or helper, so one run is enough. icon: the bar icon in shell.json."""
     run = harness.Run(
         host,
         (PLUGIN / "tests/qml/LauncherRuntime.qml").read_text(),
@@ -225,7 +268,7 @@ def run_case(host, theme, width, language, shots, native=True):
                         "left": [
                             {
                                 "id": "foamy.menu",
-                                "icon": "\U000f08c7",
+                                "icon": icon,
                                 "width": 360,
                                 "currencyRates": False,
                                 "todoistQuickAdd": True,
@@ -238,6 +281,24 @@ def run_case(host, theme, width, language, shots, native=True):
         )
     )
     stubs = run.base / "stubs"
+    # Every curl the launcher starts logs its arguments, then is the real
+    # curl (exec keeps stdin, the pid and signals): no fetch may put its URL
+    # on the command line, where other users can read it.
+    real_curl = shutil.which("curl")
+    assert real_curl, "the launcher's fetches need curl"
+    curl_args = run.base / "curl-args"
+    curl_args.write_text("")
+    (stubs / "curl").write_text(
+        '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$FOAMY_CURL_ARGS"\nexec "$FOAMY_REAL_CURL" "$@"\n'
+    )
+    (stubs / "curl").chmod(0o755)
+    run.env.update({"FOAMY_CURL_ARGS": str(curl_args), "FOAMY_REAL_CURL": real_curl})
+    # A power command must only ask: anything reaching omarchy-system is a failure.
+    system_log = run.base / "omarchy-system.log"
+    system_log.write_text("")
+    (stubs / "omarchy-system").write_text('#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$FOAMY_SYSTEM_LOG"\nexit 1\n')
+    (stubs / "omarchy-system").chmod(0o755)
+    run.env["FOAMY_SYSTEM_LOG"] = str(system_log)
     (stubs / "wl-copy").write_text('#!/bin/sh\ncat > "$FOAMY_COPY_FILE"\n')
     (stubs / "wl-copy").chmod(0o755)
     (stubs / "wtype").write_text("#!/bin/sh\nexit 0\n")
@@ -363,6 +424,8 @@ with open(path, "w") as f:
             "FOAMY_BROWSER_FILE": str(run.base / "browsed"),
             "FOAMY_TEST_LANGUAGE": language,
             "FOAMY_TEST_NATIVE": "1" if native else "0",
+            "FOAMY_TEST_PROBES": "1" if probes else "0",
+            "FOAMY_TEST_ICON": icon,
         }
     )
     if shots:
@@ -388,20 +451,38 @@ with open(path, "w") as f:
     if refused:
         run.ok = False
         result += f"; host commands without a stand-in: {refused!r}"
+    # The hung guard batch runs at start in every run; the hung command scope
+    # only with the probes, so only that run must have listed all four.
     listed = pids.read_text().split()
     left = left_running(listed)
-    if len(listed) < 4 or left:
+    if (probes and len(listed) < 4) or left:
         run.ok = False
         result += f"; hung scope/guard processes: listed {listed!r}, still running {left!r}"
-    # The cancelled paste's wl-paste ignores TERM; closing the launcher
-    # mid-read must still end it.
-    paste_pids = [
-        line.split("FOAMY PASTE PID ", 1)[1].strip() for line in run.log.splitlines() if "FOAMY PASTE PID " in line
-    ]
-    paste_left = left_running(paste_pids) if paste_pids else ["no paste was cancelled"]
-    if paste_left:
+        stop(left)
+    if probes:
+        # The cancelled paste's wl-paste ignores TERM; closing the launcher
+        # mid-read must still end it.
+        paste_pids = [
+            line.split("FOAMY PASTE PID ", 1)[1].strip() for line in run.log.splitlines() if "FOAMY PASTE PID " in line
+        ]
+        paste_left = left_running(paste_pids) if paste_pids else ["no paste was cancelled"]
+        if paste_left:
+            run.ok = False
+            result += f"; a cancelled paste left wl-paste running: {paste_left!r}"
+            stop(paste_left)
+        # The rates and suggestion probes ran curl: 2 rate and 3 suggestion fetches.
+        calls = curl_args.read_text().splitlines()
+        leaked = [line for line in calls if any(part in line for part in ("://", "127.0.0.1", "pasta", "?q="))]
+        if len(calls) < 4 or leaked:
+            run.ok = False
+            result += f"; curl command lines: {len(calls)} calls, with the URL or query: {leaked!r}"
+    if system_log.read_text():
         run.ok = False
-        result += f"; a cancelled paste left wl-paste running: {paste_left!r}"
+        result += f"; a power command ran: {system_log.read_text()!r}"
+    private = private_store_problems(home)
+    if private:
+        run.ok = False
+        result += f"; stores are not private: {private!r}"
     label = "" if native else "/no-native-helper"
     print(f"{'PASS' if run.ok else 'FAIL'} launcher {host}/{theme}/{width}/{language}{label}: {result}")
     if not run.ok:
@@ -416,14 +497,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--shots")
     args = parser.parse_args()
+    # The stores must stay private under a normal umask, not only a strict one.
+    os.umask(0o022)
     host = stock_runtime.HOST
-    # English on the wide dark layout, Norwegian on the narrow light one.
+    # English on the wide dark layout with the default icon (its root.png is
+    # README's preview.png); Norwegian on the narrow light one, with the
+    # probes (their failure toasts are then checked in Norwegian) and another
+    # icon, so the header must show the one shell.json sets.
+    other_icon = "\uf303"
     results = [
-        run_case(host, theme, width, language, args.shots)
-        for theme, width, language in [("dark", 1280, "en"), ("light", 600, "no")]
+        run_case(host, "dark", 1280, "en", args.shots),
+        run_case(host, "light", 600, "no", args.shots, probes=True, icon=other_icon),
     ]
     # The same checks with no bundled helper (JS matcher fallback).
-    results.append(run_case(host, "dark", 1280, "en", None, native=False))
+    results.append(run_case(host, "dark", 1280, "en", None, native=False, icon=other_icon))
     return 0 if all(results) else 1
 
 
