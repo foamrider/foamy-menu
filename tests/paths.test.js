@@ -4,6 +4,7 @@ const fs = require("node:fs")
 const path = require("node:path")
 const vm = require("node:vm")
 const Paths = require("../core/Paths.js")
+const Schema = require("../core/Schema.js")
 
 const envOf = (vars) => (name) => vars[name] || ""
 
@@ -41,6 +42,7 @@ test("missing HOME is an error", () => {
 const backendText = fs.readFileSync(path.join(__dirname, "../Backend.qml"), "utf8")
 
 function qmlBlock(signature, indentation, from) {
+  if (from) assert.ok(backendText.indexOf(from) >= 0, from)
   const start = backendText.indexOf(signature, from ? backendText.indexOf(from) : 0)
   assert.ok(start >= 0, signature)
   const end = backendText.indexOf("\n" + " ".repeat(indentation) + "}", start) + indentation + 2
@@ -50,6 +52,7 @@ function qmlBlock(signature, indentation, from) {
 
 // A handler of one statement: its first line and the deeper lines after it.
 function qmlHandler(name, from) {
+  assert.ok(backendText.indexOf(from) >= 0, from)
   const start = backendText.indexOf(name + ": ", backendText.indexOf(from))
   assert.ok(start >= 0, name)
   const indent = start - (backendText.lastIndexOf("\n", start) + 1)
@@ -99,4 +102,15 @@ test("the launcher becomes ready whatever the directory setup did", () => {
     assert.equal(h.logs.length, errors, name + ": " + JSON.stringify(h.logs))
     for (const entry of h.logs) assert.deepEqual(entry.slice(0, 2), ["error", "paths"], name)
   }
+})
+
+test("the directory setup runs under a deadline, so a stuck filesystem cannot hold the launcher back", () => {
+  // The command binding of the mkdirs Process, evaluated as written.
+  const start = backendText.indexOf("command: ", backendText.indexOf("id: mkdirs"))
+  const end = backendText.indexOf("\n    onExited", start)
+  assert.ok(backendText.indexOf("id: mkdirs") >= 0 && start >= 0 && end > start, "the mkdirs command binding")
+  const paths = Paths.resolve(envOf({ HOME: "/home/u" }))
+  const context = vm.createContext({ Paths, Schema, backend: { paths } })
+  const command = Array.from(vm.runInContext(backendText.slice(start + "command: ".length, end), context))
+  assert.deepEqual(command.slice(0, 6), ["timeout", "--kill-after=1s", "10s", "bash", "-c", Paths.SETUP_SCRIPT])
 })

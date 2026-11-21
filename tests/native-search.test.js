@@ -14,6 +14,7 @@ const source = fs.readFileSync(path.join(__dirname, "../services/NativeSearch.qm
 // The text of `name: ` in the first block after `from`, to the end of the
 // line, or with `block` to the closing brace at that indentation.
 function binding(name, from, block) {
+  assert.ok(source.indexOf(from) >= 0, from)
   const start = source.indexOf(name + ": ", source.indexOf(from))
   assert.ok(start >= 0, name)
   const indent = start - (source.lastIndexOf("\n", start) + 1)

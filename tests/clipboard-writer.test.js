@@ -13,6 +13,7 @@ const FAILED = "Could not copy to the clipboard"
 // The block that starts at `signature` (the first one after `from`) and ends
 // at the closing brace on its own line at `indentation`.
 function block(signature, indentation, from) {
+  if (from) assert.ok(text.indexOf(from) >= 0, from)
   const start = text.indexOf(signature, from ? text.indexOf(from) : 0)
   assert.ok(start >= 0, signature)
   const end = text.indexOf("\n" + " ".repeat(indentation) + "}", start) + indentation + 2
@@ -24,6 +25,7 @@ const body = (source) => source.slice(source.indexOf("{"))
 
 // A handler of one statement: its first line and the deeper lines after it.
 function handler(name, from) {
+  assert.ok(text.indexOf(from) >= 0, from)
   const start = text.indexOf(name + ": ", text.indexOf(from))
   assert.ok(start >= 0, name)
   const indent = start - (text.lastIndexOf("\n", start) + 1)

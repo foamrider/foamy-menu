@@ -18,6 +18,7 @@ const methods = ["createGuardCompiler", "guardItems", "compileGuards", "guardKey
 // QML block sample: "  function refresh() {\n  }". With `from`, the first
 // block after that text.
 function block(signature, indentation, from) {
+  if (from) assert.ok(text.indexOf(from) >= 0, from)
   const start = text.indexOf(signature, from ? text.indexOf(from) : 0)
   assert.ok(start >= 0, signature)
   const open = text.indexOf("{", start)
@@ -34,6 +35,7 @@ function method(name) {
 // next line): from "name: " (after `from`) to the next line indented no
 // deeper than the handler.
 function handler(name, from) {
+  if (from) assert.ok(text.indexOf(from) >= 0, from)
   const start = text.indexOf(name + ": ", from ? text.indexOf(from) : 0)
   assert.ok(start >= 0, name)
   const indent = start - (text.lastIndexOf("\n", start) + 1)
@@ -234,8 +236,9 @@ test("a hung guard batch and its background groups end at the deadline", (t) => 
   const [cmd, ...args] = h.guardProc.command
   assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "2s", "bash", "-lc"])
   const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
-  // 124 means the deadline fired and SIGTERM ended the group; when only the
-  // SIGKILL a second later works, timeout dies by it (signal, no status).
+  // 124: the deadline fired and SIGTERM ended bash (a SIGKILL after
+  // --kill-after kills timeout itself: signal, no status). The pid check
+  // below proves that the background groups ended too.
   assert.ifError(result.error)
   assert.equal(result.signal, null)
   assert.equal(result.status, 124)
