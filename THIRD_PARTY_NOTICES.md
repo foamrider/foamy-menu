@@ -14,7 +14,7 @@ How the lists are made:
 
 - `bin/aarch64/foamy-menu-search`: sha256 `8d54770ddcc51b0393016fef558fe6e4acdf94cd88472912d99aeb6e6c9780c6`
 - `bin/x86_64/foamy-menu-search`: sha256 `958f3c5ca4221843a00f0e0f14dd7be84fcc18475ac687a6a8cdb084af1a4db8`
-- `search/native.pin`: source `22c6a932cbf373b4a1a35ff60be5c3c493d9de1de8641af7fadd74835b616b55`, toolchain 1.99.1
+- `search/native.pin`: source `533cf627d649836c344a253f239204935e8cc009e58818afa7d26ad74f0d6b43`, toolchain 1.99.1
 
 ### Crates linked into `foamy-menu-search`
 

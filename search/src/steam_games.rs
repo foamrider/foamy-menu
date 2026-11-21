@@ -1060,7 +1060,11 @@ mod tests {
         table.extend_from_slice(&0u32.to_le_bytes());
         table.extend_from_slice(&(MAX_STRINGS + 1).to_le_bytes());
         let path = root.write("strings.vdf", table);
-        assert!(read_appinfo(&path, &HashSet::from([7])).is_err());
+        let error = read_appinfo(&path, &HashSet::from([7])).unwrap_err();
+        assert!(
+            error.to_string().contains("string table is too large"),
+            "{error}"
+        );
         // A key index outside the string table drops that entry only.
         let mut indexed = appinfo(APPINFO_V29, &[(7, game), (9, game)]);
         // File header 16, appid and size 8, entry header 60, type byte 1.
@@ -1078,9 +1082,12 @@ mod tests {
         // path, must never become a file name.
         let root = Root::new();
         root.manifest("", 7, "Game");
+        // Both art fields: clienticon (an .ico) and icon (a .jpg).
         let outside = root.write("outside.ico", b"ico");
+        root.write("outside.jpg", b"jpg");
         let named = outside.with_extension("");
-        let fields: &[(&str, &str)] = &[("type", "game"), ("clienticon", named.to_str().unwrap())];
+        let named = named.to_str().unwrap();
+        let fields: &[(&str, &str)] = &[("type", "game"), ("clienticon", named), ("icon", named)];
         root.write("appcache/appinfo.vdf", appinfo(APPINFO_V28, &[(7, fields)]));
         let games = list(&root.0);
         assert_eq!(games.len(), 1);
