@@ -44,7 +44,7 @@ else
   skip "the aarch64 helper: no qemu-aarch64"
 fi
 if ((ci || fast)); then
-  skip "tests/runtime.py, launcher.py, app-focuser.py and the kit's i18n_runtime.py: offscreen Quickshell"
+  skip "tests/runtime.py, launcher.py, app-focuser.py, json-store.py and the kit's i18n_runtime.py: offscreen Quickshell"
 elif [[ ! -f $kit/preview/harness.py ]]; then
   skip "the runtimes: foamy-kit not found at $kit (set FOAMY_KIT)"
   status=1
@@ -52,6 +52,7 @@ else
   run python3 -I tests/runtime.py
   run python3 -I tests/launcher.py
   run python3 -I tests/app-focuser.py
+  run python3 -I tests/json-store.py
   run python3 -I "$kit/preview/i18n_runtime.py" .
 fi
 exit $status
