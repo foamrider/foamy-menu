@@ -470,7 +470,9 @@ pin with the source. The helper tests (`cargo test --test protocol` in `search/`
 a JSON argv prefix with an absolute path, e.g.
 `FOAMY_HELPER="[\"$PWD/bin/aarch64/foamy-menu-search\"]"` (qemu-user binfmt).
 `tests/ssh-hosts.test.js` runs `foamy-menu-search ssh-hosts` over fixture homes
-and requires the exact output for each `ssh_config` rule. `tests/fetch.test.js` runs
+and requires the exact output for each `ssh_config` rule.
+`tests/ssh-connect.test.js` runs `bin/foamy-ssh-connect` against a stand-in
+`ssh`. `tests/fetch.test.js` runs
 the bounded curl fetch (`core/Fetch.js`) against a local HTTPS server with a
 throwaway `openssl` certificate: normal, oversized, endless and stalled replies.
 
