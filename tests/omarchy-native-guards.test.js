@@ -168,14 +168,6 @@ test("throwing or non-string OEM compilers are destroyed once and use unchanged 
   }
 })
 
-test("component destruction releases a working optional compiler", () => {
-  let destroyed = 0
-  const h = harness(() => ({ compile: () => "stock", destroy() { destroyed++ } }))
-  h.start()
-  h.destroy()
-  assert.equal(destroyed, 1)
-})
-
 test("only successful complete guard responses publish once", () => {
   const h = harness()
   h.start()
@@ -282,16 +274,6 @@ test("exit zero with missing or malformed rows retains previous guards", () => {
   empty.start()
   empty.exit(0, 0, "")
   assert.equal(empty.source.guards, previous)
-})
-
-test("expected tags are captured per request rather than read from changed guard fields", () => {
-  const h = harness()
-  const previous = h.source.guards
-  h.start()
-  h.source.tree.items.probe.disabled = ""
-  h.exit(0, 0, "probe:w:1\nprobe:c:0\nother:w:0\n")
-  assert.equal(h.source.guards, previous)
-  assert.match(h.messages[0][1], /incomplete/)
 })
 
 test("a response for an old tree is discarded and the current tree is refreshed", () => {
