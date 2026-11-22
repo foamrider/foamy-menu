@@ -9,7 +9,6 @@ import "../core/Rows.js" as Rows
 import "../core/Scopes.js" as Scopes
 import "../core/QueryEdit.js" as QueryEdit
 import "../kit"
-import "../services"
 
 // The shell's own full-screen overlay (qs.Ui.OverlayWindow, as the stock
 // menu uses): a fresh layer surface on the focused monitor each time it is
@@ -139,7 +138,7 @@ OverlayWindow {
       return [window.t("Loading…"), ""]
     var s = window.scopeState
     if (s && s.failure && !s.loaded)
-      return [window.t("Could not load %1", [window.view.title]), s.failure]
+      return [window.t("Could not load %1", [window.view.title]), window.t(s.failure)]
     if (s && !s.loaded)
       return [window.t("Loading…"), ""]
     if (s && !window.query)
@@ -780,7 +779,7 @@ OverlayWindow {
     return false
   }
 
-  // Paste reads the clipboard out of process (services/ClipboardReader.qml),
+  // Paste reads the clipboard out of process (the kit's FoamyClipboard),
   // never through Qt, so the text arrives later. editRevision counts every
   // change a paste could land in the wrong place after: the query, the
   // cursor, the view, the action panel opening or closing, and a popup
@@ -798,7 +797,7 @@ OverlayWindow {
     if (clipboardReader.busy)
       return
     window.pasteRevision = window.editRevision
-    clipboardReader.start()
+    clipboardReader.start(false)
   }
 
   function cancelPaste() {
@@ -830,9 +829,8 @@ OverlayWindow {
       window.showToast("failure", message)
   }
 
-  ClipboardReader {
+  FoamyClipboard {
     id: clipboardReader
-    pluginDir: window.backend.pluginDir
     onRead: function (text) {
       window.insertPaste(text)
     }
@@ -1608,12 +1606,14 @@ OverlayWindow {
       }
 
       Row {
+        id: footerStatusRow
         anchors.left: parent.left
         anchors.leftMargin: window.px(16)
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(8)
 
         Text {
+          id: footerIcon
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: window.toast ? (window.toast.style === "failure" ? "\uf071" : "\uf00c") : window.brandIcon
@@ -1629,11 +1629,15 @@ OverlayWindow {
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
-          width: Math.min(implicitWidth, footer.width / 2)
+          // Half the footer at most, and it ends (with the Ctrl T hint) a
+          // margin before the actions on the right, which a narrow card
+          // leaves less than half for.
+          width: Math.max(0, Math.min(implicitWidth, footer.width / 2, footerActions.x - footerStatusRow.anchors.leftMargin * 2 - footerIcon.width - footerStatusRow.spacing - (footerCopyHint.visible ? footerCopyHint.width + footerStatusRow.spacing : 0)))
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
         KeyHint {
+          id: footerCopyHint
           visible: !!window.toast && window.toast.actions.length > 0
           anchors.verticalCenter: parent.verticalCenter
           keys: "Ctrl T"

@@ -548,8 +548,9 @@ def main():
         run_case(host, "dark", 1280, "en", args.shots),
         run_case(host, "light", 600, "no", args.shots, probes=True, icon=other_icon, moved_config=True),
     ]
-    # The same checks with no bundled helper (JS matcher fallback).
-    results.append(run_case(host, "dark", 1280, "en", None, native=False, icon=other_icon))
+    # The same checks with no bundled helper (JS matcher fallback), in
+    # Norwegian, so the "helper isn't available" text must be translated.
+    results.append(run_case(host, "dark", 1280, "no", None, native=False, icon=other_icon))
     return 0 if all(results) else 1
 
 

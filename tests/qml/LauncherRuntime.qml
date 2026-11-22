@@ -165,6 +165,35 @@ ShellRoot {
     }
     return null
   }
+  // The visible item under the card for which pick(node) is true.
+  function findItem(pick, item) {
+    var node = item || view.cardItem
+    if (node.visible && pick(node))
+      return node
+    for (var i = 0; i < node.children.length; i++) {
+      var found = test.findItem(pick, node.children[i])
+      if (found)
+        return found
+    }
+    return null
+  }
+  // How far the footer's left row (toast icon, text and its "Ctrl T" hint)
+  // ends before the right row (the primary action and Actions) starts; below
+  // zero when they overlap.
+  function footerGap() {
+    var copyHint = test.findItem(function (node) {
+      return node.keys === "Ctrl T"
+    })
+    var actions = test.findItem(function (node) {
+      return node.primary !== undefined && node.forceLayout !== undefined
+    })
+    if (!copyHint || !actions)
+      return -1
+    // A Row places its children when the window polishes; do it now.
+    copyHint.parent.forceLayout()
+    actions.forceLayout()
+    return actions.mapToItem(view.cardItem, 0, 0).x - copyHint.mapToItem(view.cardItem, copyHint.width, 0).x
+  }
   function type(text) {
     for (var i = 0; i < text.length; i++)
       view.handleKey({
@@ -471,7 +500,7 @@ ShellRoot {
         if (!test.nativeHelper) {
           // The host list comes from the bundled helper too.
           var state = backend.scopeState("ssh")
-          test.check(state.failure === "This plugin's helper isn't available for this CPU." && view.emptyText[1] === state.failure, "without a bundled helper the SSH scope says so")
+          test.check(state.failure === "This plugin's helper isn't available for this CPU." && view.emptyText[1] === test.said(state.failure, "Hjelpeprogrammet til denne utvidelsen er ikke tilgjengelig for denne prosessoren."), "without a bundled helper the SSH scope says so in the user's language")
           view.popToRoot()
           view.setQuery("bookmarks")
           test.stage = 15
@@ -689,6 +718,11 @@ ShellRoot {
         test.check(menu.stockMenu.configuredWidth === 1200, "the bar entry in shell.json holds the settings")
         test.select("setting:width")
         test.check(view.selectedRow.typeLabel === "1200 px", "the row shows the saved value")
+        // The refusal toast of a setting value, with its long hint, next to
+        // the row's primary action and Actions.
+        view.showToast("failure", test.said("A whole number from 0 to 4096. Empty uses the default.", "Et heltall fra 0 til 4096. Tomt bruker standardverdien."))
+        var footerGap = test.footerGap()
+        test.check(footerGap >= 0, "a long failure toast and its Ctrl T end before the footer's actions (gap " + footerGap + " px)")
         key(Qt.Key_K, Qt.ControlModifier)
         test.check(view.actionPanelOpen && view.actions.some(function (a) {
           return a.id === "reset-setting"
