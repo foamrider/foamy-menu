@@ -227,7 +227,10 @@ function shellQuote(value) {
   return "'" + String(value === undefined || value === null ? "" : value).replace(/'/g, "'\\''") + "'"
 }
 
-var PROVIDERS = {
+// The provider lists the launcher runs itself, by the name a menu file
+// gives. No prototype, so a name such as "constructor" or "toString" is no
+// provider here, as any other name without a list (the stock menu gets it).
+var PROVIDERS = Object.assign(Object.create(null), {
   "kernels": {
     script: "current=$(omarchy-kernel get 2>/dev/null); omarchy-kernel list 2>/dev/null | while read -r k; do [[ -z $k ]] && continue; printf '%s\\t%s\\t%s\\n' \"$k\" \"$k\" \"$current\"; done",
     icon: "\uf17c",
@@ -243,7 +246,7 @@ var PROVIDERS = {
     icon: "\u{f040b}",
     actionFor: function(value) { return "omarchy-powerprofiles-set autodetect " + shellQuote(value) }
   }
-}
+})
 
 function slugify(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "item"

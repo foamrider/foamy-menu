@@ -579,15 +579,16 @@ function timedOut(exitCode, exitStatus, elapsedMs, ms) {
   return elapsedMs >= ms && exitStatus !== 0 && exitCode === 9
 }
 
-// The short failure message for a command scope's non-zero exit: the first
-// non-blank stderr line (timeout's own "timeout: " prefix dropped from its
+// The short failure for a command scope's non-zero exit, as [text, values]
+// for the launcher's catalogs: the first non-blank stderr line as the
+// command wrote it (timeout's own "timeout: " prefix dropped from its
 // "failed to run command" report, and the capped() wrapper's
 // "foamy-scope: line 1: " from bash's "command not found"), else the exit
 // code.
 function exitFailure(exitCode, stderr) {
   var line = String(stderr || "").split("\n").filter(function(l) { return l.trim() })[0] || ""
   line = line.replace(/^timeout: (failed to run command)/, "$1").replace(/^foamy-scope: [^:]* [0-9]+: /, "")
-  return (line || ("exited with code " + exitCode)).slice(0, 200)
+  return line ? [line.slice(0, 200), []] : ["exited with code %1", [exitCode]]
 }
 
 // One argv with {value}, {query} and {plugin} substituted inside each argument.

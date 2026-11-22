@@ -123,11 +123,11 @@ const HELPER_TYPOS = [
   ["calculatro", "calc"]
 ]
 
-function builtIn(query, sensitivity) {
-  return R.rank(candidates, query, { nowMs: 0, sensitivity }).map((r) => r.candidate.id).sort()
+function builtIn(query, sensitivity, list = candidates) {
+  return R.rank(list, query, { nowMs: 0, sensitivity }).map((r) => r.candidate.id).sort()
 }
 
-async function start(t) {
+async function start(t, list = candidates) {
   const child = spawn(helper.argv[0], helper.argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
   t.after(() => child.kill())
   const lines = readline.createInterface({ input: child.stdout })[Symbol.asyncIterator]()
@@ -136,8 +136,8 @@ async function start(t) {
     child.stdin.write(JSON.stringify({ id: ++id, ...obj }) + "\n")
     return JSON.parse((await lines.next()).value)
   }
-  assert.equal((await ask({ entries: F.entries(candidates, R.transliterate) })).loaded, candidates.length)
-  const ids = candidates.map((c) => c.id)
+  assert.equal((await ask({ entries: F.entries(list, R.transliterate) })).loaded, list.length)
+  const ids = list.map((c) => c.id)
   // The query as Backend.qml sends it.
   return async (query, sensitivity) => {
     const reply = await ask({ query: R.transliterate(query.toLowerCase()), sensitivity })
@@ -174,4 +174,80 @@ test("edit typos match in the helper below high only", { skip: helper.skip, time
     assert.ok(!(await search(query, "high")).includes(id), `${query} at high`)
     for (const level of LEVELS) assert.ok(!builtIn(query, level).includes(id), `built-in ${query} at ${level}`)
   }
+})
+
+// A seeded generator (mulberry32), so every run checks the same rows.
+function random(seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let x = Math.imul(a ^ (a >>> 15), a | 1)
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61)
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+// Candidates with random words (some capitalised, with Norwegian and other
+// folded letters, separators, a leading "/") in every field, and queries cut
+// from those fields: prefixes, pieces, letters left out, a "/" in front,
+// and random words.
+function randomRound(seed) {
+  const next = random(seed)
+  const pick = (list) => list[Math.floor(next() * list.length)]
+  const word = () => {
+    let w = ""
+    for (let n = 2 + Math.floor(next() * 7); n > 0; n--) w += next() < 0.06 ? pick("æøåéüß") : pick("abcdefghijklmnopqrstuvwxyz")
+    return next() < 0.05 ? w.toUpperCase() : next() < 0.3 ? w.charAt(0).toUpperCase() + w.slice(1) : w
+  }
+  const text = () => {
+    let s = next() < 0.15 ? "/" : ""
+    for (let n = 1 + Math.floor(next() * 3), i = 0; i < n; i++) s += (i ? pick("   -./()") : "") + word()
+    return s
+  }
+  const list = []
+  for (let i = 0; i < 30; i++) {
+    const c = { id: "r" + i, title: text(), type: next() < 0.5 ? "application" : "command" }
+    if (next() < 0.4) c.subtitle = text()
+    if (next() < 0.2) c.keywords = [text()]
+    if (next() < 0.15) c.alternateTitles = [text()]
+    list.push(c)
+  }
+  const queries = []
+  while (queries.length < 40) {
+    const c = pick(list)
+    const field = pick([c.title, c.subtitle, ...(c.keywords || []), ...(c.alternateTitles || [])].filter(Boolean))
+    const kind = next()
+    let q
+    if (kind < 0.3) q = field.slice(0, 1 + Math.floor(next() * field.length))
+    else if (kind < 0.55) {
+      const at = Math.floor(next() * field.length)
+      q = field.slice(at, at + 1 + Math.floor(next() * 6))
+    } else if (kind < 0.85) q = [...field].filter(() => next() < 0.5).join("")
+    else q = word()
+    if (next() < 0.1) q = "/" + q
+    q = (next() < 0.2 ? q.toLowerCase() : q).trim()
+    if (q) queries.push(q)
+  }
+  return { list, queries }
+}
+
+// Below high the helper also takes edit typos, so there the built-in matches
+// must be among the helper's; at high both match the same rows.
+test("random fields and queries: the built-in matches are the helper's, and the same at high", { skip: helper.skip, timeout: 30000 }, async (t) => {
+  const differ = []
+  for (let seed = 1; seed <= 10; seed++) {
+    const { list, queries } = randomRound(seed)
+    const search = await start(t, list)
+    const fields = (id) => JSON.stringify(list.find((c) => c.id === id))
+    for (const query of queries)
+      for (const level of LEVELS) {
+        const native = await search(query, level)
+        const js = builtIn(query, level, list)
+        const extra = js.filter((id) => !native.includes(id))
+        const missing = level === "high" ? native.filter((id) => !js.includes(id)) : []
+        if (extra.length || missing.length)
+          differ.push(`seed ${seed}, ${JSON.stringify(query)} at ${level}: only the built-in matcher ${extra.map(fields)}; only the helper ${missing.map(fields)}`)
+      }
+  }
+  assert.deepEqual(differ, [])
 })

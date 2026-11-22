@@ -277,8 +277,13 @@ function buildRecord(candidate, query, options) {
   function fold(value) { return transliterate(String(value || "")) }
   var folded = fold(c.title)
   var title = folded
-  // A title that is the whole query keeps its "/", so it stays an exact
-  // match at every strictness, as it is in the helper.
+  // For a query that starts with "/", the title's first "/" becomes a space,
+  // as in Raycast's root search: Omacast ported it from its notes on Raycast's
+  // ranker (reference/02-backend.md §4.2, "JYi"), which give no reason. The
+  // helper does not do it. A query separator matches any title separator, so
+  // the matched rows stay the same; only the prefix and whole-word checks,
+  // and so the ranking, see the space. A title that is the whole query keeps
+  // its "/", so it stays an exact match at every strictness, as in the helper.
   if (tq.charAt(0) === "/" && lower(folded) !== tq) title = title.replace("/", " ")
   var titleLower = lower(title)
   var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(fold) : []

@@ -792,11 +792,9 @@ Item {
       throw new Error(backend.tr("%1 is not loaded yet", [file]))
     if (!store.lastError)
       throw new Error(backend.tr("%1 is from a newer version and is read-only", [file]))
-    // The reason without the path, which the file name already gives, so a
-    // short toast still shows it; the log has the whole error.
-    var at = store.lastError.indexOf(store.path + ": ")
-    var reason = at < 0 ? store.lastError : store.lastError.slice(at + store.path.length + 2)
-    throw new Error(backend.tr("%1 is read-only: %2", [file, reason]))
+    // The store's short reason, in the user's language, so a short toast
+    // still shows it; the log has the whole error.
+    throw new Error(backend.tr("%1 is read-only: %2", [file, backend.tr(store.lastReason[0], store.lastReason[1])]))
   }
 
   // A query longer than a listed value (MAX_TEXT) is no search term worth
@@ -1060,6 +1058,7 @@ Item {
         var t0 = Date.now()
         JSON.stringify(settingsStore.doc)
         JSON.stringify(frecencyStore.doc)
+        JSON.stringify(calculatorStore.doc)
         return {
           workMs: Date.now() - t0,
           settings: {
@@ -1071,6 +1070,11 @@ Item {
             loaded: frecencyStore.loaded,
             readOnly: frecencyStore.readOnly,
             error: frecencyStore.lastError
+          },
+          calculator: {
+            loaded: calculatorStore.loaded,
+            readOnly: calculatorStore.readOnly,
+            error: calculatorStore.lastError
           },
           loaded: settingsStore.loaded,
           readOnly: settingsStore.readOnly,
@@ -1103,11 +1107,9 @@ Item {
           uiZoom: settingsStore.doc.general.uiZoom
         })
       },
+      // A store that refuses the change fails it with the same texts as any
+      // other change the user asks for (Backend.change).
       updateGeneralSettings: function (data) {
-        if (!settingsStore.loaded)
-          throw new Error("settings not loaded")
-        if (settingsStore.readOnly)
-          throw new Error("settings are read-only: " + (settingsStore.lastError || "written by a newer build"))
         var patch = data && typeof data === "object" ? data : {}
         for (var key in patch) {
           if (key !== "uiZoom")
@@ -1115,7 +1117,7 @@ Item {
           if (typeof patch.uiZoom !== "number" || !isFinite(patch.uiZoom))
             throw new Error("uiZoom must be a number")
         }
-        settingsStore.update(function (doc) {
+        backend.change(settingsStore, function (doc) {
           if (patch.uiZoom !== undefined)
             doc.general.uiZoom = patch.uiZoom
         })
@@ -1136,12 +1138,14 @@ Item {
           throw new Error("Unknown command " + id)
         if (data.alias !== undefined && data.alias !== null) {
           var alias = String(data.alias).trim().toLowerCase()
+          // Both refusals reach the alias view's toast: AltGr+Space types
+          // U+00A0 on the Norwegian layout, which its Space key lets through.
           if (/\s/.test(alias))
-            throw new Error("An alias cannot contain spaces")
+            throw new Error(backend.tr("An alias cannot contain spaces"))
           var commands = settingsStore.doc.commands
           for (var other in commands) {
             if (other !== id && (commands[other] || {}).alias === alias && alias)
-              throw new Error("Alias “" + alias + "” is already used by " + ((backend.candidatesById[other] || {}).title || other))
+              throw new Error(backend.tr("Alias “%1” is already used by %2", [alias, (backend.candidatesById[other] || {}).title || other]))
           }
         }
         backend.updateCommand(id, function (s) {
@@ -1439,13 +1443,16 @@ Item {
         scopeSource.refresh(scopeSource.scopes[i].id)
   }
 
-  // State of the scope on screen, for its empty and loading text.
+  // State of the scope on screen, for its empty and loading text. The
+  // failure is a catalog text with its values.
   function scopeState(scopeId) {
     var scope = scopeSource.scope(scopeId)
+    var failure = scopeSource.failures[scopeId]
     return {
       loaded: Scopes.isQuery(scope) || !!scopeSource.items[scopeId],
       loading: scopeSource.loading,
-      failure: scopeSource.failures[scopeId] || "",
+      failure: failure ? failure[0] : "",
+      failureValues: failure ? failure[1] : [],
       emptyText: scope ? scope.emptyText : "",
       placeholder: scope ? scope.placeholder : "",
       keyword: scope ? scope.keyword : "",

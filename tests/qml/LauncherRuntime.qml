@@ -209,6 +209,12 @@ ShellRoot {
       text: ""
     })
   }
+  // A picture waits for the search field's caret to light up again: it
+  // blinks (530 ms lit, 530 ms dark) from whenever it last moved, and a
+  // grab in the dark half differs (no caret, and in a list view see-through
+  // corners), as the root picture did once. A hidden caret (the action
+  // panel is open) needs no wait. The harness runs without Hyprland, so
+  // motion is on and the caret blinks.
   function capture(name, next) {
     var folder = Quickshell.env("FOAMY_MENU_SHOTS")
     if (!folder) {
@@ -217,12 +223,25 @@ ShellRoot {
       return
     }
     test.capturing = true
-    view.cardItem.grabToImage(function (result) {
-      test.check(result.saveToFile(folder + "/" + name + ".png"), "save " + name)
-      test.capturing = false
-      if (next)
-        next()
+    var caret = test.findItem(function (node) {
+      return node.atEnd !== undefined
     })
+    var grab = function () {
+      if (caret && caret.opacity !== 1)
+        return
+      if (caret)
+        caret.opacityChanged.disconnect(grab)
+      view.cardItem.grabToImage(function (result) {
+        test.check(result.saveToFile(folder + "/" + name + ".png"), "save " + name)
+        test.capturing = false
+        if (next)
+          next()
+      })
+    }
+    if (caret)
+      caret.opacityChanged.connect(grab)
+    else
+      grab()
   }
   Foamy.Menu {
     id: menu
@@ -276,6 +295,25 @@ ShellRoot {
     blockLoading: true
   }
   property string previousPid: ""
+  // The launcher's settings.json, which stage 65 makes unusable for a
+  // while: another program writes a new owner-only file over it.
+  FileView {
+    id: settingsFile
+    path: test.backend ? test.backend.paths.db + "/settings.json" : ""
+    printErrors: false
+    blockLoading: true
+  }
+  property string savedSettings: ""
+  Process {
+    id: settingsWriter
+  }
+  function writeSettings(text) {
+    settingsWriter.command = ["sh", "-c", 'umask 077; printf "%s" "$2" > "$1.new" && mv -- "$1.new" "$1"', "sh", settingsFile.path, text]
+    settingsWriter.running = true
+  }
+  function settingsHealth() {
+    return backend.callSync("system.healthDatabase", null).data.settings
+  }
   function failureToast(english, norwegian) {
     return !!view.toast && view.toast.style === "failure" && view.toast.title === test.said(english, norwegian)
   }
@@ -388,7 +426,7 @@ ShellRoot {
         test.check(backend.candidatesById["builtin:calculator-history"].title === test.said("Calculator History", "Kalkulatorhistorikk"), "built-in titles are translated")
         test.check(backend.scopes.map(function (s) {
           return s.id
-        }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,shelf" : "ssh,google,duckduckgo,bookmarks,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
+        }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,failing,shelf" : "ssh,google,duckduckgo,bookmarks,failing,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
         test.check(backend.callSync("rootSearch.search", {
           query: "kettle",
           view: {
@@ -903,8 +941,8 @@ ShellRoot {
       case 36:
         if (test.waitFor(!runProbe.loading && !guardProbe.loading && guardProbe.said.length > 0))
           break
-        test.check(/^\/nonexistent\/foamy-no-such-command: /.test(runProbe.failures.broken || "") && !runProbe.items.broken, "a command that can't run fails its scope: " + runProbe.failures.broken)
-        test.check(runProbe.failures.hung === "timed out" && !runProbe.items.hung, "a hung command scope times out at its deadline")
+        test.check(/^\/nonexistent\/foamy-no-such-command: /.test((runProbe.failures.broken || [""])[0]) && !runProbe.items.broken, "a command that can't run fails its scope: " + JSON.stringify(runProbe.failures.broken))
+        test.check(JSON.stringify(runProbe.failures.hung) === JSON.stringify(["timed out", []]) && !runProbe.items.hung, "a hung command scope times out at its deadline: " + JSON.stringify(runProbe.failures.hung))
         test.check(!runProbe.failures.flood && runProbe.items.flood.length === Scopes.MAX_ITEMS && runProbe.items.flood[0].title === "1" && runProbe.said.some(function (t) {
           return t.indexOf("scope flood: output is over") === 0
         }), "a flood of output is stopped at the cap and its first items kept")
@@ -1014,6 +1052,22 @@ ShellRoot {
         test.paste()
         break
       case 51:
+        // A paste with the filter list (Ctrl+P) open goes into its filter,
+        // as typing does, not into the search field behind it.
+        if (test.asked === "filter-paste") {
+          var filterList = test.findItem(function (node) {
+            return node.visibleActions !== undefined && node.placeholder === test.said("Filter…", "Filtrer…")
+          })
+          // As below: press again until a read starts.
+          if (view.pasteRevision === -1 && view.query === "" && filterList && filterList.filter === "")
+            key(Qt.Key_V, Qt.ControlModifier)
+          if (test.waitFor(view.query !== "" || (!!filterList && filterList.filter !== "")))
+            break
+          test.asked = ""
+          test.check(!!filterList && filterList.filter === "folder" && view.query === "", "a paste with the filter list open goes into its filter: filter " + (filterList ? JSON.stringify(filterList.filter) : "not shown") + ", query " + JSON.stringify(view.query))
+          key(Qt.Key_Escape)
+          break
+        }
         // While the stopped read is still ending the reader refuses a new
         // one and Ctrl+V does nothing; press again until a read starts.
         // Without that refusal the paste above ends with the stopped read's
@@ -1027,9 +1081,31 @@ ShellRoot {
         if (test.waitFor(view.query !== ""))
           break
         test.check(view.query === "folder" && !view.toast, "the next paste works: " + view.query)
+        view.setQuery("")
+        key(Qt.Key_P, Qt.ControlModifier)
+        test.paste()
+        test.asked = "filter-paste"
+        test.stage--
         break
       case 52:
-        // Every run comes here, in different states.
+        // Every run comes here, in different states. First a command scope
+        // that fails without stderr: its empty view says how it exited, in
+        // the user's language.
+        if (test.asked === "") {
+          menu.open('{"menu":"root"}')
+          view.popToRoot()
+          view.setQuery("fail")
+          key(Qt.Key_Tab)
+          test.asked = "failing-scope"
+          test.stage--
+          break
+        }
+        if (test.asked === "failing-scope") {
+          if (test.waitFor(view.view.kind === "scope" && !!view.scopeState && view.scopeState.failure !== ""))
+            break
+          test.asked = ""
+          test.check(JSON.stringify(view.emptyText) === JSON.stringify([test.said("Could not load Failing", "Kunne ikke laste Failing"), test.said("exited with code 3", "avsluttet med kode 3")]), "a command scope that fails says how it exited, in the user's language: " + JSON.stringify(view.emptyText))
+        }
         menu.open('{"menu":"root"}')
         view.popToRoot()
         view.setQuery("")
@@ -1077,9 +1153,12 @@ ShellRoot {
           commandId: "builtin:settings"
         }).data.alias === "st", "an alias is saved trimmed and in lower case")
         var taken = alias("builtin:calculator-history", "st")
-        test.check(!taken.ok && taken.error.indexOf("already used") >= 0, "an alias another command uses is refused: " + taken.error)
-        var spaced = alias("builtin:calculator-history", "a b")
-        test.check(!spaced.ok && spaced.error.indexOf("cannot contain spaces") >= 0, "an alias with a space is refused: " + spaced.error)
+        var owner = backend.candidatesById["builtin:settings"].title
+        test.check(!taken.ok && taken.error === test.said("Alias “st” is already used by " + owner, "Aliaset «st» brukes allerede av " + owner), "an alias another command uses is refused, in the user's language: " + taken.error)
+        // AltGr+Space types U+00A0 on the Norwegian layout; the alias view's
+        // Space key lets it through.
+        var spaced = alias("builtin:calculator-history", "a b")
+        test.check(!spaced.ok && spaced.error === test.said("An alias cannot contain spaces", "Et alias kan ikke inneholde mellomrom"), "an alias with a space is refused, in the user's language: " + spaced.error)
         var unknown = alias("builtin:no-such-command", "x")
         test.check(!unknown.ok && unknown.error.indexOf("Unknown command") >= 0, "an alias for an unknown command is refused: " + unknown.error)
         view.popToRoot()
@@ -1154,15 +1233,42 @@ ShellRoot {
         test.setting("windowMode")
         break
       case 59:
+        // A paste that fails at the empty compact root: its toast shows, in
+        // the card, and the card is compact again once the toast is gone.
+        if (test.asked === "compact-clipboard") {
+          if (test.waitFor(clipboardFixture.done))
+            break
+          test.paste()
+          test.asked = "compact-paste"
+          test.stage--
+          break
+        }
+        if (test.asked === "compact-paste") {
+          if (test.waitFor(!!view.toast))
+            break
+          test.asked = ""
+          var toastText = test.findItem(function (node) {
+            return node.text === view.toast.title && node.elide !== undefined
+          })
+          test.check(test.failureToast("Could not paste clipboard text. Copy plain text and try again.", "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.") && !view.compact && !!toastText && toastText.mapToItem(view.cardItem, 0, toastText.height).y <= view.cardItem.height, "a paste that fails at the empty compact root shows its toast: compact " + view.compact + ", toast text " + (toastText ? "shown" : "not shown"))
+          view.toast = null
+          test.check(view.compact, "the window is compact again once the toast is gone")
+          test.setting("windowMode")
+          break
+        }
         if (test.waitFor(backend.settings.windowMode === "compact"))
           break
         view.popToRoot()
         view.setQuery("")
+        // A toast from an earlier stage would show the whole card.
+        view.toast = null
         test.check(view.compact, "compact mode shows only the search field at root")
         view.setQuery("f")
         test.check(!view.compact, "typing expands the compact window")
         view.setQuery("")
-        test.setting("windowMode")
+        test.clipboardMode("failure")
+        test.asked = "compact-clipboard"
+        test.stage--
         break
       case 60:
         if (test.waitFor(backend.settings.windowMode === "expanded"))
@@ -1221,6 +1327,35 @@ ShellRoot {
         test.check(menu.opened && view.view.kind === "settings", "IPC run opens a command")
         break
       case 65:
+        // The zoom keys on a settings.json the launcher cannot use: the zoom
+        // stays and a failure toast says why, in the user's language. Then
+        // the file is put back and the store takes changes again.
+        if (test.asked === "") {
+          settingsFile.reload()
+          test.savedSettings = settingsFile.text()
+          test.check(test.savedSettings.indexOf("schemaVersion") >= 0, "settings.json is read before it is replaced")
+          test.writeSettings("[]")
+          test.asked = "settings-unusable"
+          test.stage--
+          break
+        }
+        if (test.asked === "settings-unusable") {
+          if (test.waitFor(test.settingsHealth().readOnly))
+            break
+          var zoomBefore = view.zoom
+          view.toast = null
+          key(Qt.Key_Plus, Qt.ControlModifier)
+          test.check(view.zoom === zoomBefore && test.failureToast("settings.json is read-only: document is not a JSON object", "settings.json er skrivebeskyttet: dokumentet er ikke et JSON-objekt"), "a zoom key on an unusable settings.json keeps the zoom and says why: " + JSON.stringify(view.toast))
+          test.writeSettings(test.savedSettings)
+          test.asked = "settings-back"
+          test.stage--
+          break
+        }
+        if (test.waitFor(!test.settingsHealth().readOnly))
+          break
+        test.asked = ""
+        break
+      case 66:
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

@@ -15,6 +15,7 @@ const vm = require("node:vm")
 const { spawnSync } = require("node:child_process")
 const Scopes = require("../core/Scopes.js")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
+const FoamyI18nText = require("../kit/node-loader.cjs").load("FoamyI18nText")
 
 const text = fs.readFileSync(path.join(__dirname, "../services/ScopeSource.qml"), "utf8")
 
@@ -56,7 +57,7 @@ function harness(scopes, options = {}) {
     setItems: (id, list, failure) => loads.push({ id, list, failure })
   }
   const context = vm.createContext({
-    source, proc, watchdog, suggestFetch, suggestDelay, Scopes, FoamyNative, Date,
+    source, proc, watchdog, suggestFetch, suggestDelay, Scopes, FoamyNative, FoamyI18nText, Date,
     Qt: { callLater: fn => { if (!later.includes(fn)) later.push(fn) } }
   })
   const names = ["refresh", "next", "finish", "keepLine", "keepStderr", "suggest", "storeSuggestions", "fetchSuggestions"]
@@ -95,6 +96,8 @@ function harness(scopes, options = {}) {
 }
 
 const scope = (id, command, timeout = 10000) => ({ id, source: { type: "command", command, timeout } })
+// A failure ([text, values]) made in the vm, as plain data to compare.
+const plain = (value) => JSON.parse(JSON.stringify(value))
 
 test("a command scope that can't start fails once and the queue goes on", () => {
   const h = harness([scope("broken", ["no-such-command"]), scope("hosts", ["printf", "a\\nb\\n"])])
@@ -104,7 +107,7 @@ test("a command scope that can't start fails once and the queue goes on", () => 
   assert.equal(h.watchdog.interval, 10000 + Scopes.WATCHDOG_GRACE_MS)
   // Quickshell: no started, no exited; only running -> false.
   h.stopped()
-  assert.deepEqual(h.loads, [{ id: "broken", list: null, failure: "couldn't start" }])
+  assert.deepEqual(plain(h.loads), [{ id: "broken", list: null, failure: ["couldn't start", []] }])
   assert.deepEqual(h.messages, ["scope broken: couldn't start"])
   assert.equal(h.proc.scopeId, "")
   assert.equal(h.watchdog.active, false)
@@ -117,7 +120,7 @@ test("a command scope that can't start fails once and the queue goes on", () => 
   h.flush()
   assert.equal(h.loads.length, 2, "exited and running -> false finish the run once")
   assert.deepEqual(h.loads[1].list.map(i => i.title), ["a", "b"])
-  assert.equal(h.loads[1].failure, "")
+  assert.equal(h.loads[1].failure, null)
 })
 
 test("exit failures: deadline, helper missing, stderr, timeout's own report", () => {
@@ -134,13 +137,14 @@ test("exit failures: deadline, helper missing, stderr, timeout's own report", ()
   h.enqueue("bad")
   h.source.keepStderr("\ntimeout: failed to run command 'nope': No such file or directory\n")
   h.exit(127)
-  assert.deepEqual(h.loads.map(l => l.failure), ["timed out", FoamyNative.UNAVAILABLE_TEXT, "failed to run command 'nope': No such file or directory"])
+  assert.deepEqual(plain(h.loads.map(l => l.failure)), [["timed out", []], [FoamyNative.UNAVAILABLE_TEXT, []], ["failed to run command 'nope': No such file or directory", []]])
   // A command's own exit 124 is no timeout, also after the deadline.
   h.flush()
   h.enqueue("bad")
   h.proc.startedAt = Date.now() - 20000
   h.exit(124)
-  assert.equal(h.loads[3].failure, "exited with code 124")
+  assert.deepEqual(plain(h.loads[3].failure), ["exited with code %1", [124]])
+  assert.equal(h.messages[3], "scope bad: exited with code 124", "the log has the English text")
 })
 
 test("the watchdog ends a run whose exit never comes, or whose start was lost", () => {
@@ -149,7 +153,7 @@ test("the watchdog ends a run whose exit never comes, or whose start was lost", 
   h.proc.running = true
   h.fire()
   assert.deepEqual(h.signals, [9])
-  assert.equal(h.loads[0].failure, "timed out")
+  assert.deepEqual(plain(h.loads[0].failure), ["timed out", []])
   h.flush()
   assert.equal(h.proc.scopeId, "", "the next run waits for the killed one to exit")
   h.exit(9, 1)
@@ -160,7 +164,7 @@ test("the watchdog ends a run whose exit never comes, or whose start was lost", 
   // Not running at all when the watchdog fires: the start was lost.
   h.proc._running = false
   h.fire()
-  assert.equal(h.loads[1].failure, "couldn't start")
+  assert.deepEqual(plain(h.loads[1].failure), ["couldn't start", []])
   assert.deepEqual(h.signals, [9])
 })
 
@@ -171,7 +175,7 @@ test("a run cut at MAX_OUTPUT keeps the whole lines before the cut", () => {
   for (const line of ["one", "two", "thr"]) h.source.keepLine(line)
   // head -c closed the pipe; the command died of SIGPIPE (pipefail: 141).
   h.exit(Scopes.CAPPED_EXIT)
-  assert.deepEqual(h.loads.map(l => [l.failure, l.list.map(i => i.title)]), [["", ["one", "two"]]], "the cut line is dropped")
+  assert.deepEqual(h.loads.map(l => [l.failure, l.list.map(i => i.title)]), [[null, ["one", "two"]]], "the cut line is dropped")
   assert.ok(h.messages[0].includes("output is over " + Scopes.MAX_OUTPUT + " bytes"))
   // At most MAX_STDERR of stderr is kept.
   h.flush()
@@ -228,7 +232,7 @@ test("a failed refresh keeps the last list; the same list again keeps its array"
   assert.deepEqual(first.map(i => i.title), ["a", "b"])
   run([], 1)
   assert.equal(h.source.items.hosts, first, "the failed run keeps the list on screen")
-  assert.equal(h.source.failures.hosts, "exited with code 1")
+  assert.deepEqual(plain(h.source.failures.hosts), ["exited with code %1", [1]])
   run(["a", "b"], 0)
   assert.equal(h.source.items.hosts, first, "an unchanged list keeps its array, so nothing rebuilds")
   assert.deepEqual(Object.keys(h.source.failures), [], "a good run clears the failure")
@@ -348,5 +352,5 @@ test("output under the cap and the command's own exit pass through the wrapper",
   assert.equal(missing.status, 127)
   assert.ok(FoamyNative.unavailable(missing.status))
   // bash's report without the wrapper's "foamy-scope: line 1: " (localized).
-  assert.match(Scopes.exitFailure(missing.status, missing.stderr), /^foamy-no-such-command: \S/)
+  assert.match(Scopes.exitFailure(missing.status, missing.stderr)[0], /^foamy-no-such-command: \S/)
 })

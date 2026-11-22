@@ -2,6 +2,7 @@ import QtQuick
 import Qt.labs.folderlistmodel
 import Quickshell.Io
 import "../core/Scopes.js" as Scopes
+import "../kit/FoamyI18nText.js" as FoamyI18nText
 import "../kit/FoamyNative.js" as FoamyNative
 
 // The scopes the launcher offers: built-ins merged with the JSON files in
@@ -30,7 +31,8 @@ Item {
   property var queryScopeIds: []
   // scopeId -> [{ title, value, subtitle }]
   property var items: ({})
-  // scopeId -> a short failure message from its last load
+  // scopeId -> why its last load failed, short: [text, values] for the
+  // launcher's catalogs
   property var failures: ({})
   // scopeId -> { query, items: [strings] }: the engine's last suggestions.
   property var suggestions: ({})
@@ -110,7 +112,7 @@ Item {
     if (!scope || scope.source.type === "query")
       return
     if (scope.source.type === "list") {
-      source.setItems(id, scope.source.items.slice(0, Scopes.MAX_ITEMS), "")
+      source.setItems(id, scope.source.items.slice(0, Scopes.MAX_ITEMS), null)
       return
     }
     // A run for this definition, queued or running, answers this request too;
@@ -174,7 +176,7 @@ Item {
     var current = source.scope(id)
     if (current && JSON.stringify(current) === proc.definition) {
       if (failure)
-        source.message("warning", "scope " + id + ": " + failure, {
+        source.message("warning", "scope " + id + ": " + FoamyI18nText.substitute(failure[0], failure[1]), {
           command: proc.scopeCommand
         })
       source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n")), failure)
@@ -247,11 +249,11 @@ Item {
     id: watchdog
     onTriggered: {
       if (!proc.running) {
-        source.finish("couldn't start")
+        source.finish(["couldn't start", []])
         return
       }
       proc.signal(9)
-      source.finish("timed out")
+      source.finish(["timed out", []])
     }
   }
 
@@ -279,7 +281,7 @@ Item {
       }
     }
     onExited: function (exitCode, exitStatus) {
-      var failure = ""
+      var failure = null
       if (Scopes.wasCapped(exitCode, exitStatus)) {
         // Cut at MAX_OUTPUT bytes, most likely inside a line: the whole lines
         // before it are the list.
@@ -288,11 +290,11 @@ Item {
           command: proc.scopeCommand
         })
       } else if (Scopes.timedOut(exitCode, exitStatus, Date.now() - proc.startedAt, proc.timeoutMs))
-        failure = "timed out"
+        failure = ["timed out", []]
       else
       // The bundled helper (the SSH scope's) has no binary for this CPU.
       if (FoamyNative.unavailable(exitCode) && Scopes.isNativeCommand(proc.scopeCommand))
-        failure = FoamyNative.UNAVAILABLE_TEXT
+        failure = [FoamyNative.UNAVAILABLE_TEXT, []]
       else if (exitCode !== 0)
         failure = Scopes.exitFailure(exitCode, proc.stderrHead)
       source.finish(failure)
@@ -302,7 +304,7 @@ Item {
     onRunningChanged: {
       if (running)
         return
-      source.finish("couldn't start")
+      source.finish(["couldn't start", []])
       Qt.callLater(source.next)
     }
   }
