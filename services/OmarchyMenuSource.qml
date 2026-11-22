@@ -187,7 +187,8 @@ Item {
 
   // The one way a provider list ends: exited or couldn't start. A second call
   // for the same run (running -> false after exited()) finds no menuId. A
-  // list that timed out, was killed or never started keeps the previous one.
+  // list that failed, timed out, was killed or never started keeps the
+  // previous one.
   function finishProvider(ok) {
     var menuId = providerProc.menuId
     if (menuId === "")
@@ -243,9 +244,10 @@ Item {
         providerProc.collected += line + "\n"
       }
     }
-    // timeout exits 124 at the deadline (or is SIGKILLed with what's left).
+    // Only exit 0 is a whole list: timeout exits 124 at the deadline, and
+    // 125-127 or 128 + a signal when bash failed or was killed.
     onExited: function (exitCode, exitStatus) {
-      source.finishProvider(exitStatus === 0 && exitCode !== 124)
+      source.finishProvider(exitStatus === 0 && exitCode === 0)
     }
     onRunningChanged: if (!running)
       source.finishProvider(false)

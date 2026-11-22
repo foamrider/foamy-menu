@@ -384,9 +384,13 @@ test("provider lists run one at a time under the deadline and publish together",
   assert.deepEqual(Object.keys(rows).sort(), ["style.font", "update.kernel"])
 })
 
-test("a list that times out, crashes or cannot start keeps the previous list and the queue goes on", () => {
+test("a list that fails, times out, crashes or cannot start keeps the previous list and the queue goes on", () => {
   for (const [name, fail] of [
     ["exit 124 at the deadline", (h) => h.end(124, 0, "Half Font\tHalf Font\t\n")],
+    ["normal exit with code 1 and no output", (h) => h.end(1, 0, "")],
+    // timeout reports a child that a signal ended as 128 + the signal.
+    ["bash ended by SIGKILL (137)", (h) => h.end(137, 0, "Half Font\tHalf Font\t\n")],
+    ["timeout could not run bash (127)", (h) => h.end(127, 0, "")],
     ["abnormal exit", (h) => h.end(0, 1, "Half Font\tHalf Font\t\n")],
     ["running -> false without exited()", (h) => h.lost()]
   ]) {
