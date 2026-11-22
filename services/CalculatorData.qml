@@ -44,12 +44,16 @@ Item {
   }
 
   function validRates(doc) {
-    if (!doc || typeof doc.base !== "string" || !doc.rates || typeof doc.rates !== "object")
+    if (!doc || typeof doc.base !== "string" || !/^[A-Z]{3}$/.test(doc.base) || !doc.rates || typeof doc.rates !== "object")
       return null
     var out = {}
     for (var code in doc.rates)
-      if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && doc.rates[code] > 0)
+      if (/^[A-Z]{3}$/.test(code) && typeof doc.rates[code] === "number" && isFinite(doc.rates[code]) && doc.rates[code] > 0)
         out[code] = doc.rates[code]
+    // A reply without one usable rate would replace working rates, and hold
+    // off the next download for ratesMaxAgeMs.
+    if (Object.keys(out).length === 0)
+      return null
     return {
       base: doc.base,
       date: String(doc.date || ""),
