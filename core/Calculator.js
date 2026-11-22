@@ -592,6 +592,9 @@ function addDuration(d, v, sign) {
   // "3 work days from now" would mean business days, which we don't model. [D]
   if (unit === WORKDAY || unit === WORKWEEK) throw new CalcError("work days are not calendar days")
   var n = v.n * sign
+  // Nothing moves by zero. Setting the same calendar day again would still
+  // pick one of the two 01:30s of the hour that repeats when summer time ends.
+  if (n === 0) return d
   var t = new Date(d.ms)
   // Calendar units move the calendar; the rest are exact seconds.
   if (calendar) {

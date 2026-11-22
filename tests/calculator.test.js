@@ -271,6 +271,16 @@ test("parts of one calendar unit that cancel do not move the date", () => {
     assert.equal(result(q, march), "Sunday, 1 March 2026 at 3:30 AM", q)
   }
   assert.equal(result("now + (2 weeks - 7 days)", march), "Sunday, 8 March 2026 at 3:30 AM", "the rest of the weeks still moves once")
+  // New York leaves summer time on Sunday 1 November 2026: 01:30 comes
+  // twice. A part that cancels to zero must not move the time from one
+  // 01:30 to the other, so the hour is added to the 01:30 it started from.
+  for (const [first, offset, answer] of [[Date.UTC(2026, 10, 1, 5, 30), -240, "1:30 AM"], [Date.UTC(2026, 10, 1, 6, 30), -300, "2:30 AM"]]) {
+    const autumn = { ...env, nowMs: first, localOffset: offset }
+    assert.equal(result("now + 1 hour", autumn), "Sunday, 1 November 2026 at " + answer)
+    for (const q of ["now + (1 day - 1 day + 1 hour)", "now + (1 week - 7 days + 1 hour)", "now + (1 month - 1 month + 1 hour)"]) {
+      assert.equal(result(q, autumn), "Sunday, 1 November 2026 at " + answer, q + " from the 01:30 at UTC" + offset / 60)
+    }
+  }
 })
 
 test("work time follows workHoursPerDay and remToPxRate is configurable", () => {
