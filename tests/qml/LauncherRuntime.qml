@@ -209,6 +209,12 @@ ShellRoot {
       text: ""
     })
   }
+  // A picture waits for the search field's caret to light up again: it
+  // blinks (530 ms lit, 530 ms dark) from whenever it last moved, and a
+  // grab in the dark half differs (no caret, and in a list view see-through
+  // corners), as the root picture did once. A hidden caret (the action
+  // panel is open) needs no wait. The harness runs without Hyprland, so
+  // motion is on and the caret blinks.
   function capture(name, next) {
     var folder = Quickshell.env("FOAMY_MENU_SHOTS")
     if (!folder) {
@@ -217,12 +223,25 @@ ShellRoot {
       return
     }
     test.capturing = true
-    view.cardItem.grabToImage(function (result) {
-      test.check(result.saveToFile(folder + "/" + name + ".png"), "save " + name)
-      test.capturing = false
-      if (next)
-        next()
+    var caret = test.findItem(function (node) {
+      return node.atEnd !== undefined
     })
+    var grab = function () {
+      if (caret && caret.opacity !== 1)
+        return
+      if (caret)
+        caret.opacityChanged.disconnect(grab)
+      view.cardItem.grabToImage(function (result) {
+        test.check(result.saveToFile(folder + "/" + name + ".png"), "save " + name)
+        test.capturing = false
+        if (next)
+          next()
+      })
+    }
+    if (caret)
+      caret.opacityChanged.connect(grab)
+    else
+      grab()
   }
   Foamy.Menu {
     id: menu
