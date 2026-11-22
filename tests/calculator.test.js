@@ -229,6 +229,24 @@ test("mixed units add up", () => {
   for (const q of ["2 kg 3", "10 usd 5 usd", "100 °F 3 °C"]) assert.equal(C.evaluate(q, env), null, q)
 })
 
+test("a mixed duration moves the calendar by each part across the DST switch", () => {
+  // New York leaves summer time on Sunday 1 November 2026, between now and
+  // these answers, so a calendar day there is 25 hours long.
+  const no = { ...env, decimal: ",", groupSeparator: " ", dayFirst: true }
+  const n = (q) => { const x = C.evaluate(q, no); return x && x.result }
+  assert.equal(result("17 days from now"), "Thursday, 5 November 2026 at 4:06 PM")
+  for (const q of ["2 weeks 3 days from now", "2 weeks + 3 days from now", "(2 weeks 3 days) from now"]) {
+    assert.equal(result(q), "Thursday, 5 November 2026 at 4:06 PM", q)
+  }
+  assert.equal(n("om 2 uker og 3 dager"), "Thursday, 5 November 2026 at 4:06 PM")
+  assert.equal(result("3 weeks - 3 days from now"), "Friday, 6 November 2026 at 4:06 PM", "a subtracted part moves back")
+  assert.equal(result("1 month 3 days from now"), "Sunday, 22 November 2026 at 4:06 PM", "a month part is a calendar month")
+  assert.equal(result("13 days 3 hours from now"), "Sunday, 1 November 2026 at 7:06 PM", "the hours are exact after the calendar days")
+  assert.equal(result("now + 2 weeks 3 days"), "Thursday, 5 November 2026 at 4:06 PM")
+  assert.equal(result("2 weeks 3 days to days"), "17 days", "a converted sum is one quantity")
+  assert.equal(C.evaluate("2 hours 1 workday from now", env), null, "a work-day part is not a calendar day")
+})
+
 test("work time follows workHoursPerDay and remToPxRate is configurable", () => {
   assert.equal(result("40 hours in work days"), "5 work days")
   assert.equal(result("2 work weeks to hours"), "80 hours")

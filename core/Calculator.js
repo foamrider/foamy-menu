@@ -579,6 +579,12 @@ function preferredUnit(d, from) {
 function isDuration(v) { return v.type === "num" && v.unit && dimsKey(v.unit.dims) === "T1" }
 
 function addDuration(d, v, sign) {
+  // A sum of durations moves the date by each part in turn, so the calendar
+  // parts of "2 weeks 3 days" stay calendar days across a DST switch.
+  if (v.parts) {
+    for (var p = 0; p < v.parts.length; p++) d = addDuration(d, v.parts[p], sign)
+    return d
+  }
   var unit = v.unit
   // "3 work days from now" would mean business days, which we don't model. [D]
   if (unit === WORKDAY || unit === WORKWEEK) throw new CalcError("work days are not calendar days")
@@ -598,6 +604,15 @@ function addDuration(d, v, sign) {
   return date(d.ms + seconds * 1000, d.hasTime || seconds % 86400 !== 0)
 }
 
+// The parts a duration was added up from, each with its sign; a value
+// changed in any other way is one part.
+function durationParts(v, sign) {
+  var parts = v.parts || [v]
+  var out = []
+  for (var i = 0; i < parts.length; i++) out.push(num(parts[i].n * sign, parts[i].unit))
+  return out
+}
+
 function add(a, b, sign, state) {
   state.ops++
   if (a.type === "date" && isDuration(b)) { state.kind = "date"; return addDuration(a, b, sign) }
@@ -615,7 +630,9 @@ function add(a, b, sign, state) {
   if (a.unit && b.unit) {
     if (!sameDims(a.unit.dims, b.unit.dims)) throw new CalcError("incompatible units")
     var bn = convert(b, a.unit).n
-    return num(a.n + sign * bn, a.unit)
+    var sum = num(a.n + sign * bn, a.unit)
+    if (isDuration(a)) sum.parts = durationParts(a, 1).concat(durationParts(b, sign))
+    return sum
   }
   return num(a.n + sign * b.n, a.unit || b.unit)
 }
