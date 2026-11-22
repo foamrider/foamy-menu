@@ -44,10 +44,12 @@ var MAX_OUTPUT = 8 * 1024 * 1024
 // line reader keeps a line until its newline arrives, so the cap has to sit
 // in front of it: `head -c` closes the pipe at MAX_OUTPUT bytes and the
 // command dies of SIGPIPE on its next write, which pipefail reports as exit
-// 141 (CAPPED_EXIT). The TERM trap keeps bash, timeout's direct child, alive
-// until the pipeline ends, so a command that ignores SIGTERM still gets
-// timeout's SIGKILL; bash resets the trap in what it runs.
-var CAPPED_SCRIPT = 'trap : TERM; set -o pipefail; "$@" | head -c ' + MAX_OUTPUT
+// 141 (CAPPED_EXIT). timeout sends its SIGKILL only while bash, its direct
+// child, runs, so the TERM trap keeps bash alive until the pipeline ends and
+// KILL_AFTER longer, then SIGKILLs the group itself: a child that ignores
+// SIGTERM ends also when the command died of it. bash resets the trap in what
+// it runs.
+var CAPPED_SCRIPT = 'trap "sleep ' + KILL_AFTER + '; kill -KILL 0" TERM; set -o pipefail; "$@" | head -c ' + MAX_OUTPUT
 var CAPPED_EXIT = 141
 // Characters of a command scope's stderr kept for its failure message.
 var MAX_STDERR = 4096
@@ -570,11 +572,11 @@ function bounded(argv, ms) {
   return ["timeout", "--kill-after=" + KILL_AFTER, String(seconds) + "s"].concat(argv)
 }
 
-// Whether a bounded() command ended at its deadline: timeout exits 124 once
-// the SIGTERM ended it, or is itself SIGKILLed (a crash, code 9) when the
-// command outlived the SIGTERM.
+// Whether a bounded() command ended at its deadline: the SIGKILL KILL_AFTER
+// past it (timeout's or CAPPED_SCRIPT's) ends timeout too, a crash with
+// code 9.
 function timedOut(exitCode, exitStatus, elapsedMs, ms) {
-  return elapsedMs >= ms && (exitStatus === 0 ? exitCode === 124 : exitCode === 9)
+  return elapsedMs >= ms && exitStatus !== 0 && exitCode === 9
 }
 
 // The short failure message for a command scope's non-zero exit: the first
