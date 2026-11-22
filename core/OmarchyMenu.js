@@ -95,13 +95,18 @@ function applyCatalog(items, catalog) {
   })
 }
 
+// The catalog in menu.json: an object keyed by item id. Any other read
+// (empty or cut short while Omarchy writes the file, or another JSON value)
+// gives an error and an empty catalog.
 function parseCatalog(raw) {
+  var parsed
   try {
-    var parsed = JSON.parse(raw || "{}")
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {}
+    parsed = JSON.parse(raw)
   } catch (e) {
-    return {}
+    return { catalog: {}, error: String(e && e.message || e) }
   }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { catalog: {}, error: "catalog is not an object" }
+  return { catalog: parsed, error: "" }
 }
 
 // Maps keyed by item ids have no prototype, so an item named "constructor"

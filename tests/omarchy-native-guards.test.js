@@ -551,6 +551,71 @@ test("a menu file read empty, unreadable or missing keeps its previous rows", ()
   }
 })
 
+// The FileView of Omarchy's menu catalog over a one-row menu, with the
+// source's own functions (refresh() does nothing here), starting on the
+// catalog path `start`: read(path, text) is a loaded() of that path,
+// failed(path) a loadFailed(); a new path runs onCatalogPathChanged first,
+// and english() is the empty path.
+function catalogHarness(start) {
+  const messages = []
+  const source = {
+    catalogPath: start, catalogFrom: "", catalog: {}, revision: 0,
+    defaultItems: OmarchyMenu.parse(JSON.stringify({ apps: { label: "Apps" } })).items, userItems: [],
+    message: (level, text) => messages.push([level, text])
+  }
+  const context = vm.createContext({ source, OmarchyMenu, text: () => "" })
+  for (const [, name] of text.matchAll(/^ {2}function (\w+)\(/gm)) {
+    vm.runInContext(method(name), context)
+    source[name] = context[name]
+  }
+  source.refresh = () => {}
+  const view = "path: source.catalogPath"
+  const body = (name) => {
+    const one = handler(name, view)
+    return one.trimStart().startsWith("{") ? block(name + ": {", 4, view).slice(name.length + 2) : one
+  }
+  const run = (code) => vm.runInContext("(function() { " + code + " })()", context)
+  const to = (path) => {
+    if (source.catalogPath === path) return
+    source.catalogPath = path
+    run(handler("onCatalogPathChanged"))
+  }
+  return {
+    messages,
+    label: () => source.tree.items.apps.label,
+    read(path, value) { to(path); context.text = () => value; run(body("onLoaded")) },
+    failed(path) { to(path); run(body("onLoadFailed")) },
+    english() { to("") }
+  }
+}
+
+test("a catalog read empty or cut short while Omarchy writes it keeps the Omarchy rows translated", () => {
+  const no = "/opt/omarchy/default/i18n/no/menu.json"
+  const sv = "/opt/omarchy/default/i18n/sv/menu.json"
+  const catalog = (label) => JSON.stringify({ apps: { label } })
+  const h = catalogHarness(no)
+  // Each step, the label the Apps row shows after it, and whether it warns.
+  for (const [name, step, label, warns] of [
+    ["a whole read", () => h.read(no, catalog("Apper")), "Apper", false],
+    ["an empty read", () => h.read(no, ""), "Apper", true],
+    ["a read cut short", () => h.read(no, '{ "apps": { "label": "Ap'), "Apper", true],
+    ["a read that is not an object", () => h.read(no, "[]"), "Apper", true],
+    ["the next whole read", () => h.read(no, catalog("Programmer")), "Programmer", false],
+    ["a missing file", () => h.failed(no), "Apps", false],
+    ["the file back", () => h.read(no, catalog("Apper")), "Apper", false],
+    // Another language's file: a first read cut short must not keep the
+    // Norwegian labels.
+    ["another language's file cut short", () => h.read(sv, '{ "apps": '), "Apps", true],
+    ["another language's whole file", () => h.read(sv, catalog("Appar")), "Appar", false],
+    ["English", () => h.english(), "Apps", false]
+  ]) {
+    const count = h.messages.length
+    step()
+    assert.equal(h.label(), label, name)
+    assert.equal(h.messages.length - count, warns ? 1 : 0, name)
+  }
+})
+
 function sandbox(t) {
   const parent = fs.realpathSync("/tmp")
   const root = fs.mkdtempSync(path.join(parent, "foamy-menu-guard-probe-"))

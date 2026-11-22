@@ -13,8 +13,10 @@ Item {
 
   property var defaultItems: []
   property var userItems: []
-  // Omarchy's own menu translations for the picked language (4.5).
+  // Omarchy's own menu translations for the picked language (4.5), and the
+  // catalogPath they were read from.
   property var catalog: ({})
+  property string catalogFrom: ""
   readonly property string catalogPath: FoamyI18n.language !== "en" ? source.omarchyPath + "/default/i18n/" + FoamyI18n.language + "/menu.json" : ""
   property var tree: OmarchyMenu.buildTree([], [])
   property var guards: ({
@@ -255,6 +257,27 @@ Item {
     source.rebuild()
   }
 
+  function setCatalog(catalog) {
+    source.catalog = catalog
+    source.catalogFrom = source.catalogPath
+    source.rebuild()
+  }
+
+  // Omarchy writes its translations again on an update, and a read in the
+  // middle of that can be empty or cut short. Such a read keeps the catalog
+  // read from the same file before, so the Omarchy rows stay translated; a
+  // first read of another language's file leaves no catalog, as a missing
+  // file does.
+  function loadCatalog(text) {
+    var parsed = OmarchyMenu.parseCatalog(text)
+    if (parsed.error) {
+      source.message("warning", "ignoring unreadable " + source.catalogPath + ": " + parsed.error, null)
+      if (source.catalogFrom === source.catalogPath)
+        return
+    }
+    source.setCatalog(parsed.catalog)
+  }
+
   Process {
     id: guardProc
     property string collected: ""
@@ -308,19 +331,11 @@ Item {
     watchChanges: true
     printErrors: false
     onFileChanged: reload()
-    onLoaded: {
-      source.catalog = OmarchyMenu.parseCatalog(text())
-      source.rebuild()
-    }
-    onLoadFailed: {
-      source.catalog = ({})
-      source.rebuild()
-    }
+    onLoaded: source.loadCatalog(text())
+    onLoadFailed: source.setCatalog(({}))
   }
-  onCatalogPathChanged: if (!source.catalogPath) {
-    source.catalog = ({})
-    source.rebuild()
-  }
+  onCatalogPathChanged: if (!source.catalogPath)
+    source.setCatalog(({}))
 
   FileView {
     path: source.userPath

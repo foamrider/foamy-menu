@@ -170,7 +170,9 @@ test("Omarchy's menu catalog translates stock labels and keeps English searchabl
   assert.equal(translated[1].label, "About")
   assert.equal(translated[1].title, "x")
   assert.equal(OmarchyMenu.applyCatalog(items, null)[0].label, "Apps")
-  assert.deepEqual(OmarchyMenu.parseCatalog("{"), {})
+  const cut = OmarchyMenu.parseCatalog("{")
+  assert.deepEqual(cut.catalog, {})
+  assert.ok(cut.error, "a catalog cut short is an error")
 })
 
 const queryScope = (overrides) => Scopes.merge(Scopes.BUILTINS, overrides ? [file("google.json", Object.assign({ id: "google" }, overrides))] : []).scopes.find((s) => s.id === "google")
