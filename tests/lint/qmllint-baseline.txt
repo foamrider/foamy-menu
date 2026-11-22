@@ -253,8 +253,6 @@ ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "Q
 ui/LauncherWindow.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
 ui/LauncherWindow.qml: missing-property: Member "border" not found on type "QObject" | readonly property var borderSpec: Border.surfaceSpec("menu", "border", Commons.Color.menu.border, Math.max(1, Style.space(2)))
 ui/LauncherWindow.qml: missing-property: Member "family" not found on type "QObject" | property string brandFont: Style.font.family
-ui/LauncherWindow.qml: missing-property: Member "filter" not found on type "QObject" | actionPanel.item.filter += text
-ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | actionPanel.item.filter += text
 ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | actionPanel.item.filter = ""
 ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | dropdown.item.filter = ""
 ui/LauncherWindow.qml: missing-property: Member "filter" not found on type QQuickLoader::item with type QObject | toastPanel.item.filter = ""

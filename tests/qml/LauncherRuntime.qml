@@ -1014,6 +1014,22 @@ ShellRoot {
         test.paste()
         break
       case 51:
+        // A paste with the filter list (Ctrl+P) open goes into its filter,
+        // as typing does, not into the search field behind it.
+        if (test.asked === "filter-paste") {
+          var filterList = test.findItem(function (node) {
+            return node.visibleActions !== undefined && node.placeholder === test.said("Filter…", "Filtrer…")
+          })
+          // As below: press again until a read starts.
+          if (view.pasteRevision === -1 && view.query === "" && filterList && filterList.filter === "")
+            key(Qt.Key_V, Qt.ControlModifier)
+          if (test.waitFor(view.query !== "" || (!!filterList && filterList.filter !== "")))
+            break
+          test.asked = ""
+          test.check(!!filterList && filterList.filter === "folder" && view.query === "", "a paste with the filter list open goes into its filter: filter " + (filterList ? JSON.stringify(filterList.filter) : "not shown") + ", query " + JSON.stringify(view.query))
+          key(Qt.Key_Escape)
+          break
+        }
         // While the stopped read is still ending the reader refuses a new
         // one and Ctrl+V does nothing; press again until a read starts.
         // Without that refusal the paste above ends with the stopped read's
@@ -1027,6 +1043,11 @@ ShellRoot {
         if (test.waitFor(view.query !== ""))
           break
         test.check(view.query === "folder" && !view.toast, "the next paste works: " + view.query)
+        view.setQuery("")
+        key(Qt.Key_P, Qt.ControlModifier)
+        test.paste()
+        test.asked = "filter-paste"
+        test.stage--
         break
       case 52:
         // Every run comes here, in different states.

@@ -782,8 +782,9 @@ OverlayWindow {
   // Paste reads the clipboard out of process (the kit's FoamyClipboard),
   // never through Qt, so the text arrives later. editRevision counts every
   // change a paste could land in the wrong place after: the query, the
-  // cursor, the view, the action panel opening or closing, and a popup
-  // filter edit (handlePopupKey).
+  // cursor, the view, a popup (the action panel, the filter list, the toast
+  // actions, About) opening or closing, and a popup filter edit
+  // (handlePopupKey).
   // A paste keeps the revision it started at (pasteRevision, -1 for none);
   // a result that finds another one, or the launcher closed, is dropped, so
   // a slow clipboard never overwrites newer typing, even typing since undone.
@@ -792,6 +793,9 @@ OverlayWindow {
   onCursorPosChanged: window.editRevision++
   onViewChanged: window.editRevision++
   onActionPanelOpenChanged: window.editRevision++
+  onDropdownOpenChanged: window.editRevision++
+  onToastPanelOpenChanged: window.editRevision++
+  onAboutOpenChanged: window.editRevision++
 
   function pasteClipboard() {
     if (clipboardReader.busy)
@@ -812,11 +816,14 @@ OverlayWindow {
     return current
   }
 
+  // The text goes where typed text goes: into the filter of the open popup
+  // list, in handleKey's order, else into the search field.
   function insertPaste(text) {
     if (!window.takePaste() || !text)
       return
-    if (window.actionPanelOpen)
-      actionPanel.item.filter += text
+    var list = (window.dropdownOpen ? dropdown.item : window.toastPanelOpen ? toastPanel.item : window.actionPanelOpen ? actionPanel.item : null) as ActionPanel
+    if (list)
+      list.filter += text
     else {
       if (window.view.kind === "alias")
         text = text.replace(/\s/g, "")
@@ -985,16 +992,16 @@ OverlayWindow {
       window.openSettings()
       return true
     }
-    // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste.
-    var meta = (event.modifiers & Qt.MetaModifier) !== 0
-    if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
-      window.pasteClipboard()
-      return true
-    }
-
     if (window.aboutOpen) {
       if (ctrl && shift && key === Qt.Key_K)
         window.aboutOpen = false
+      return true
+    }
+    // Ctrl+V, Ctrl+Shift+V (the terminal habit) and Shift+Insert paste, into
+    // an open list's filter or the search field (insertPaste).
+    var meta = (event.modifiers & Qt.MetaModifier) !== 0
+    if ((key === Qt.Key_V && ctrl && !alt && !meta) || (key === Qt.Key_Insert && shift && !ctrl && !alt && !meta)) {
+      window.pasteClipboard()
       return true
     }
     if (window.dropdownOpen) {
