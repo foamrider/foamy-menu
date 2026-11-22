@@ -616,6 +616,24 @@ function durationParts(v, sign) {
   return out
 }
 
+// Parts of one unit add up before the date moves, in the place of the first
+// one: month moves do not cancel (31 January + 1 month is 3 March, and
+// 1 month back is 3 February), so "1 month - 1 month + 1 day" moves by the
+// day alone. A whole number of years moves the calendar as 12 months each,
+// so it adds up with months.
+function mergeParts(parts) {
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i]
+    if (p.unit === UNITS.yr && Math.floor(p.n) === p.n) p = num(12 * p.n, UNITS.mo)
+    var j = 0
+    while (j < out.length && out[j].unit !== p.unit) j++
+    if (j < out.length) out[j] = num(out[j].n + p.n, p.unit)
+    else out.push(p)
+  }
+  return out
+}
+
 function add(a, b, sign, state) {
   state.ops++
   if (a.type === "date" && isDuration(b)) { state.kind = "date"; return addDuration(a, b, sign) }
@@ -634,7 +652,7 @@ function add(a, b, sign, state) {
     if (!sameDims(a.unit.dims, b.unit.dims)) throw new CalcError("incompatible units")
     var bn = convert(b, a.unit).n
     var sum = num(a.n + sign * bn, a.unit)
-    if (isDuration(a)) sum.parts = durationParts(a, 1).concat(durationParts(b, sign))
+    if (isDuration(a)) sum.parts = mergeParts(durationParts(a, 1).concat(durationParts(b, sign)))
     return sum
   }
   return num(a.n + sign * b.n, a.unit || b.unit)
