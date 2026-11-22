@@ -374,7 +374,7 @@ Item {
       var prefixes = scopeSource.queryScopeIds.map(function (id) {
         return Scopes.itemId(id, "")
       })
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         for (var key in doc.items)
           for (var i = 0; i < prefixes.length; i++)
             if (key.indexOf(prefixes[i]) === 0)
@@ -555,7 +555,7 @@ Item {
     // A value typed in a freeText scope: its typed row or a saved one.
     var typedValue = !searching && (candidate.kind === "scope-query" || candidate.saved === true)
     if (action === "delete-history" && candidate.saved) {
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         delete doc.items[candidate.id]
       })
       return {
@@ -569,7 +569,7 @@ Item {
       // A freeText scope's prefix holds only typed values: the items keep
       // their ranking.
       const prefix = Scopes.historyPrefix(scope)
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         for (var key in doc.items)
           if (key.indexOf(prefix) === 0)
             delete doc.items[key]
@@ -727,7 +727,7 @@ Item {
         }
       }
     case "delete-entry":
-      calculatorStore.update(function (doc) {
+      backend.change(calculatorStore, function (doc) {
         doc.history = doc.history.filter(function (h) {
           return h.id !== historyId
         })
@@ -740,7 +740,7 @@ Item {
         }
       }
     case "delete-all-entries":
-      calculatorStore.update(function (doc) {
+      backend.change(calculatorStore, function (doc) {
         doc.history = []
       })
       backend.emit("calculator.historyStateChanged", null)
@@ -779,6 +779,16 @@ Item {
       Util.execDetached(command)
   }
 
+  // A change the user asked for. A store that refuses it (its file is from a
+  // newer build or cannot be used) fails the action with the reason, so no
+  // success is shown for a change that was not saved.
+  function change(store, mutator) {
+    if (store.update(mutator))
+      return
+    var file = store.path.slice(store.path.lastIndexOf("/") + 1)
+    throw new Error(store.loaded ? file + " is read-only: " + (store.lastError || "written by a newer build") : file + " is not loaded yet")
+  }
+
   function recordVisit(id, query) {
     if (!frecencyStore.loaded)
       return
@@ -790,7 +800,7 @@ Item {
   }
 
   function updateCommand(id, mutator) {
-    settingsStore.update(function (doc) {
+    backend.change(settingsStore, function (doc) {
       var current = doc.commands[id] || {}
       var next = mutator(JSON.parse(JSON.stringify(current)))
       var empty = true
@@ -942,7 +952,7 @@ Item {
     case "favorite-up":
     case "favorite-down":
       var orders = RootSearch.reorderFavorites(settingsStore.doc.commands, id, action)
-      settingsStore.update(function (doc) {
+      backend.change(settingsStore, function (doc) {
         for (var key in orders) {
           var entry = doc.commands[key] || {}
           if (orders[key] === null)
@@ -988,7 +998,7 @@ Item {
         }
       }
     case "reset-ranking":
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         delete doc.items[id]
       })
       return {

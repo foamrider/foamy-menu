@@ -3,13 +3,20 @@
 the store that holds favorites, aliases, ranking and calculator history.
 
 - a missing file becomes a new store; an update reaches the file;
-- an unreadable file and a file from a newer build are read-only: an update
-  is refused and the file keeps its bytes;
+- an unusable file (not JSON, not an object, a bad schemaVersion, a failed
+  migration, a missing or mistyped part, no read permission) and a file from
+  a newer build are read-only: an update is refused and the file keeps its
+  bytes; the unusable file still gives the store an empty document, and
+  removing it makes a new one;
 - an update made just before the store is destroyed is still written;
 - a file another program replaced (atomically) is read again, and the store
   does not write over it;
 - a file another program empties (to write it again in place) or removes
   keeps its data in the store, and the store writes nothing over it.
+
+Then Backend.qml over such stores: it gets ready with an unreadable
+calculator.json and a settings.json without its general settings, and a
+change either store refuses fails with the reason.
 
   tests/json-store.py
 
@@ -27,11 +34,20 @@ if not os.environ.get("FOAMY_HOST_45"):
     _root = os.environ.get("OMARCHY_TEST_ROOT")
     os.environ["FOAMY_HOST_45"] = str(Path(_root) / "shell") if _root else "/usr/share/omarchy/shell"
 
-BROKEN = "{oops"
 NEWER = '{"schemaVersion": 7, "items": ["from a newer build"]}\n'
 OUTSIDE = '{"schemaVersion":1,"items":["outside"]}'
 MINE = '{"schemaVersion":1,"items":["mine"]}'
 REWRITTEN = '{"schemaVersion":1,"items":["mine","more"]}'
+# Files the store cannot use as they are; each must stay as it is.
+UNUSABLE = {
+    "broken": "{oops",
+    "notobject": "[1, 2]",
+    "badversion": '{"schemaVersion": "x", "items": []}',
+    "throws": '{"explode": true}',
+    "noitems": '{"schemaVersion": 1}',
+    "wronglist": '{"schemaVersion": 1, "items": {"a": 1}}',
+    "denied": MINE,
+}
 
 SHELL = """import QtQuick
 import Quickshell
@@ -42,22 +58,23 @@ import "harness"
 ShellRoot {
   id: test
   readonly property string dir: Quickshell.env("FOAMY_STORE_DIR")
+  readonly property var unusable: JSON.parse(Quickshell.env("FOAMY_UNUSABLE"))
   readonly property var migrations: [{
       version: 1,
       name: "init",
       up: function (d) {
+        if (d.explode)
+          throw new Error("cannot migrate this document")
         d.items = []
         return d
       }
     }]
-  property var errors: ({})
+  property bool started: false
   property var warnings: ({})
   function check(ok, detail) {
     console.log((ok ? "PASS " : "FOAMY FAIL ") + detail)
   }
   function noted(name, level, text) {
-    if (level === "error")
-      test.errors[name] = (test.errors[name] || []).concat([text])
     if (level === "warning")
       test.warnings[name] = (test.warnings[name] || []).concat([text])
   }
@@ -74,12 +91,25 @@ ShellRoot {
     ready: true
     onMessage: (level, text) => test.noted("missing", level, text)
   }
-  Services.JsonStore {
-    id: broken
-    path: test.dir + "/broken.json"
-    migrations: test.migrations
-    ready: true
-    onMessage: (level, text) => test.noted("broken", level, text)
+  Instantiator {
+    id: unusableStores
+    model: test.unusable
+    delegate: Services.JsonStore {
+      required property string modelData
+      // Counted on the store itself: a delegate the Instantiator replaced
+      // may report too.
+      property var reported: []
+      path: test.dir + "/" + modelData + ".json"
+      migrations: test.migrations
+      ready: test.started
+      onMessage: (level, text) => {
+        if (level === "error")
+          reported = reported.concat([text])
+      }
+    }
+  }
+  function store(name) {
+    return unusableStores.objectAt(test.unusable.indexOf(name))
   }
   Services.JsonStore {
     id: newer
@@ -147,6 +177,10 @@ ShellRoot {
     id: remover
     command: ["rm", "--", test.dir + "/removed.json"]
   }
+  Process {
+    id: fixer
+    command: ["rm", "--", test.dir + "/broken.json"]
+  }
   function done() {
     console.log("FOAMY DONE")
     Qt.quit()
@@ -155,8 +189,11 @@ ShellRoot {
     return store.doc && store.doc.items ? store.doc.items[0] : undefined
   }
   Component.onCompleted: {
+    test.started = true
     wait.waitFor(function () {
-      return fresh.loaded && newer.loaded && watched.loaded && emptied.loaded && removed.loaded && !!test.errors.broken && holder.item && holder.item.loaded
+      return fresh.loaded && newer.loaded && watched.loaded && emptied.loaded && removed.loaded && holder.item && holder.item.loaded && test.unusable.every(function (name) {
+        return test.store(name).loaded || test.store(name).reported.length > 0
+      })
     }, 10000, function (ok) {
       test.check(ok, "every store read its file")
       if (!ok)
@@ -164,10 +201,15 @@ ShellRoot {
       test.check(fresh.update(function (d) {
         d.items.push("a")
       }), "a new store takes an update")
-      test.check(broken.readOnly && !broken.update(function (d) {
-        d.items = []
-      }), "an unreadable file is read-only and refuses an update")
-      test.check((test.errors.broken || []).length === 1, "an unreadable file is reported once: " + JSON.stringify(test.errors.broken))
+      for (var i = 0; i < test.unusable.length; i++) {
+        var name = test.unusable[i]
+        var store = test.store(name)
+        test.check(store.readOnly && store.lastError !== "" && !store.update(function (d) {
+          d.items = ["lost"]
+        }), name + ": an unusable file is read-only and refuses an update")
+        test.check(store.loaded && !!store.doc && Array.isArray(store.doc.items) && store.doc.items.length === 0, name + ": an unusable file leaves the store loaded with an empty document: " + JSON.stringify(store.doc))
+        test.check(store.reported.length === 1, name + ": an unusable file is reported once: " + JSON.stringify(store.reported))
+      }
       test.check(newer.readOnly && newer.doc.items[0] === "from a newer build" && !newer.update(function (d) {
         d.items = []
       }), "a file from a newer build is read but refuses an update")
@@ -180,6 +222,7 @@ ShellRoot {
       editor.running = true
       inPlace.running = true
       remover.running = true
+      fixer.running = true
       wait.waitFor(function () {
         var saved = JSON.parse(test.read(freshFile) || "{}")
         return saved.schemaVersion === 1 && saved.items && saved.items[0] === "a"
@@ -223,11 +266,139 @@ ShellRoot {
         d.items.push("after")
       }), "the store takes an update after its file is removed")
       removed.flush()
+      var broken = test.store("broken")
+      wait.waitFor(function () {
+        return broken.loaded && !broken.readOnly
+      }, 10000, function (ok) {
+        test.check(ok && broken.lastError === "" && broken.doc.items.length === 0, "removing an unreadable file makes a new store: " + JSON.stringify(broken.doc) + " " + broken.lastError)
+        test.done()
+      })
+    })
+  }
+}
+"""
+
+BACKEND_SHELL = """import QtQuick
+import Quickshell
+import "plugin" as Foamy
+import "harness"
+
+ShellRoot {
+  id: test
+  function check(ok, detail) {
+    console.log((ok ? "PASS " : "FOAMY FAIL ") + detail)
+  }
+  function call(method, data) {
+    return backend.callSync(method, data === undefined ? null : data)
+  }
+  FoamyWait { id: wait }
+  Foamy.Backend {
+    id: backend
+    version: "0.0.0-store"
+  }
+  function done() {
+    console.log("FOAMY DONE")
+    Qt.quit()
+  }
+  Component.onCompleted: {
+    wait.waitFor(function () {
+      return backend.ready
+    }, 15000, function (ok) {
+      test.check(ok, "the backend is ready with an unreadable calculator.json and no general settings in settings.json")
+      test.stores()
+    })
+  }
+  function stores() {
+    var general = test.call("settings.getGeneralSettings")
+    test.check(general.ok && general.data.uiZoom === 1, "general settings fall back to the defaults: " + JSON.stringify(general))
+    var zoom = test.call("settings.updateGeneralSettings", {
+      uiZoom: 1.5
+    })
+    test.check(!zoom.ok && zoom.error.indexOf("settings are read-only: ") === 0 && zoom.error.indexOf("general") >= 0, "a settings change is refused with the reason: " + JSON.stringify(zoom))
+    var history = test.call("calculator.historyGetAll")
+    test.check(history.ok && Array.isArray(history.data) && history.data.length === 0, "calculator history is empty: " + JSON.stringify(history))
+    var health = test.call("system.healthDatabase")
+    test.check(health.ok && health.data.settings.loaded && health.data.settings.readOnly && health.data.settings.error.indexOf("general") >= 0, "the settings store reports why it is read-only: " + JSON.stringify(health))
+    var cleared = test.call("calculator.historyDeleteAll")
+    test.check(!cleared.ok && cleared.error.indexOf("calculator.json is read-only: unreadable ") === 0, "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
+    // The commands are listed apart from the stores.
+    wait.waitFor(function () {
+      return !!backend.candidatesById["builtin:calculator-history"]
+    }, 10000, function (ok) {
+      test.check(ok, "the commands are listed")
+      var favorite = test.call("rootSearch.performAction", {
+        id: "builtin:calculator-history",
+        action: "favorite-add",
+        query: ""
+      })
+      test.check(!favorite.ok && favorite.error.indexOf("settings.json is read-only: unusable ") === 0, "a favorite that cannot be saved fails with the reason: " + JSON.stringify(favorite))
+      var reset = test.call("rootSearch.performAction", {
+        id: "builtin:calculator-history",
+        action: "reset-ranking",
+        query: ""
+      })
+      test.check(reset.ok && reset.data.toast.style === "success", "a change a usable store takes still succeeds: " + JSON.stringify(reset))
       test.done()
     })
   }
 }
 """
+
+NO_GENERAL = '{"schemaVersion": 1, "commands": {}}\n'
+NOT_A_DOCUMENT = "[]\n"
+
+
+def store_run(harness):
+    run = harness.Run("4.5", SHELL, plugin=PLUGIN, prefix="foamy-menu-store-")
+    stores = run.base / "stores"
+    stores.mkdir()
+    for name, text in UNUSABLE.items():
+        (stores / f"{name}.json").write_text(text)
+    (stores / "denied.json").chmod(0)
+    (stores / "newer.json").write_text(NEWER)
+    (stores / "watched.json").write_text('{"schemaVersion":1,"items":["before"]}')
+    (stores / "emptied.json").write_text(MINE)
+    (stores / "removed.json").write_text(MINE)
+    run.env["FOAMY_STORE_DIR"] = str(stores)
+    run.env["FOAMY_OUTSIDE"] = OUTSIDE
+    run.env["FOAMY_REWRITTEN"] = REWRITTEN
+    run.env["FOAMY_UNUSABLE"] = json.dumps(list(UNUSABLE))
+    run.run(timeout=60)
+    (stores / "denied.json").chmod(0o600)
+    problems = run.failures()
+    # What the files hold once the shell is gone.
+    expected = {name: text for name, text in UNUSABLE.items() if name != "broken"}
+    expected.update({"newer": NEWER, "watched": OUTSIDE, "emptied": REWRITTEN})
+    for name, text in expected.items():
+        found = (stores / f"{name}.json").read_text()
+        if found != text:
+            problems.append(f"{name}.json was written over: {found!r}")
+    for name, items in (("unload", ["kept"]), ("removed", ["mine", "after"]), ("broken", [])):
+        path = stores / f"{name}.json"
+        found = path.read_text() if path.exists() else "missing"
+        try:
+            ok = json.loads(found).get("items") == items
+        except ValueError:
+            ok = False
+        if not ok:
+            problems.append(f"{name}.json should hold the items {items!r}: {found!r}")
+    return run, problems, "unusable, newer, replaced, emptied and removed files, and a save on unload"
+
+
+def backend_run(harness):
+    run = harness.Run("4.5", BACKEND_SHELL, plugin=PLUGIN, prefix="foamy-menu-store-")
+    home = Path(run.env["HOME"])
+    db = Path(run.env.get("XDG_DATA_HOME") or home / ".local/share") / "foamy-menu/db"
+    db.mkdir(parents=True)
+    (db / "settings.json").write_text(NO_GENERAL)
+    (db / "calculator.json").write_text(NOT_A_DOCUMENT)
+    run.run(timeout=60)
+    problems = run.failures()
+    for name, text in (("settings", NO_GENERAL), ("calculator", NOT_A_DOCUMENT)):
+        found = (db / f"{name}.json").read_text()
+        if found != text:
+            problems.append(f"{name}.json was written over: {found!r}")
+    return run, problems, "ready over unusable stores, and a refused change fails"
 
 
 def main():
@@ -237,41 +408,20 @@ def main():
     sys.path.insert(0, str(KIT / "preview"))
     import harness
 
-    run = harness.Run("4.5", SHELL, plugin=PLUGIN, prefix="foamy-menu-store-")
-    stores = run.base / "stores"
-    stores.mkdir()
-    (stores / "broken.json").write_text(BROKEN)
-    (stores / "newer.json").write_text(NEWER)
-    (stores / "watched.json").write_text('{"schemaVersion":1,"items":["before"]}')
-    (stores / "emptied.json").write_text(MINE)
-    (stores / "removed.json").write_text(MINE)
-    run.env["FOAMY_STORE_DIR"] = str(stores)
-    run.env["FOAMY_OUTSIDE"] = OUTSIDE
-    run.env["FOAMY_REWRITTEN"] = REWRITTEN
-    run.run(timeout=60)
-    problems = run.failures()
-    # What the files hold once the shell is gone.
-    for name, expected in (("broken", BROKEN), ("newer", NEWER), ("watched", OUTSIDE), ("emptied", REWRITTEN)):
-        text = (stores / f"{name}.json").read_text()
-        if text != expected:
-            problems.append(f"{name}.json was written over: {text!r}")
-    unload = stores / "unload.json"
-    if not unload.exists() or json.loads(unload.read_text()).get("items") != ["kept"]:
-        problems.append(f"unload.json lost its last update: {unload.read_text() if unload.exists() else 'missing'!r}")
-    removed = stores / "removed.json"
-    if not removed.exists() or json.loads(removed.read_text()).get("items") != ["mine", "after"]:
-        problems.append(f"removed.json lost its data: {removed.read_text() if removed.exists() else 'missing'!r}")
-    if run.host_commands():
-        problems.append(f"host commands without a stand-in: {run.host_commands()!r}")
-    ok = run.ok and not problems
-    summary = "new, unreadable, newer, replaced, emptied and removed files, and a save on unload"
-    print(f"{'PASS' if ok else 'FAIL'} json store: {summary if ok else 'see below'}")
-    if not ok:
-        print("\n".join("    " + line for line in (problems or run.log.splitlines()[-40:])))
-        print(f"    log kept at {run.base}")
-        return 1
-    run.cleanup()
-    return 0
+    status = 0
+    for scene in (store_run, backend_run):
+        run, problems, summary = scene(harness)
+        if run.host_commands():
+            problems.append(f"host commands without a stand-in: {run.host_commands()!r}")
+        ok = run.ok and not problems
+        print(f"{'PASS' if ok else 'FAIL'} json store: {summary if ok else 'see below'}")
+        if not ok:
+            print("\n".join("    " + line for line in (problems or run.log.splitlines()[-40:])))
+            print(f"    log kept at {run.base}")
+            status = 1
+        else:
+            run.cleanup()
+    return status
 
 
 if __name__ == "__main__":

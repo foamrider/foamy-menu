@@ -147,7 +147,10 @@ omarchy bar get foamy.menu webSearchHistory
 font uses Omarchy's). `width` is a minimum: the launcher keeps its 750-unit
 layout and stays inside the screen; stock menus keep their own width rules.
 Zoom (Ctrl +/−), favorites, aliases, ranking and history are not settings:
-they are kept in `~/.local/share/foamy-menu/db/`.
+they are kept in `~/.local/share/foamy-menu/db/`. A file there that Foamy
+cannot use (not JSON, or without a part it needs) is left as it is: the
+launcher starts without that file's data, saves nothing to it and logs why.
+Fix the file and Foamy reads it again; remove it and Foamy starts a new one.
 
 ## Scopes
 
@@ -501,9 +504,11 @@ app focuser against a fake `hyprctl`: quick repeated opens each focus the
 open window, focus waits until the launcher's layer is gone, and a lookup
 that fails (bad output, an error, a hung `hyprctl`) launches the app once.
 `tests/json-store.py` runs the store that holds favorites, aliases, ranking
-and calculator history against real files: a new file, an unreadable one and
+and calculator history against real files: a new file, unusable ones and
 one from a newer build (left as they are), a save just before the store goes,
 and a file another program replaced, empties to save in place, or removes.
+It then starts the backend over an unusable calculator.json and a
+settings.json without its general settings.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

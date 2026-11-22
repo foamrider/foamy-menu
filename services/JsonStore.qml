@@ -50,16 +50,45 @@ Item {
     file.setText(text)
   }
 
+  // A file the store cannot use stays as it is and the store goes
+  // read-only. A store that has no document yet gets the one a new file
+  // would have (held in memory only), so its users can go on. The same error
+  // is reported once: a file without read permission cannot be watched, so
+  // it is read again whenever another file in its directory changes.
+  function fail(error, text) {
+    store.readOnly = true
+    if (error !== store.lastError)
+      store.message("error", text || error, null)
+    store.lastError = error
+    if (store.loaded)
+      return
+    store.doc = Migrate.migrate(null, store.migrations, store.now()).doc
+    store.loaded = true
+    store.changed()
+  }
+
+  // Why a migrated document cannot be used: a part that a new document has
+  // as an object or a list is missing or of another type ("" when none).
+  // Migrate keeps schemaHistory itself, and nothing here reads it.
+  function shapeError(doc) {
+    var kind = function (value) {
+      return Array.isArray(value) ? "list" : value === null ? "null" : typeof value
+    }
+    var empty = Migrate.migrate(null, store.migrations, store.now()).doc
+    for (const key in empty) {
+      const want = kind(empty[key])
+      if (key !== "schemaHistory" && (want === "object" || want === "list") && kind(doc[key]) !== want)
+        return key + " is not " + (want === "list" ? "a list" : "an object")
+    }
+    return ""
+  }
+
   function ingest(text) {
     if (store.loaded && !store.readOnly && text === store._lastWritten)
       return
     var parsed = Migrate.parse(text)
-    if (parsed.error) {
-      store.readOnly = true
-      store.lastError = "unreadable " + store.path + ": " + parsed.error
-      store.message("error", store.lastError + " (left untouched; fix or remove it)", null)
-      return
-    }
+    if (parsed.error)
+      return store.fail("unreadable " + store.path + ": " + parsed.error, "unreadable " + store.path + ": " + parsed.error + " (left untouched; fix or remove it)")
     // An empty or missing file while the store holds what it read from it is
     // another program saving it in place (empty, then write) or removing it,
     // not a new file: writing a new document now would replace the data and
@@ -75,17 +104,13 @@ Item {
     try {
       result = Migrate.migrate(parsed.doc, store.migrations, store.now())
     } catch (e) {
-      store.readOnly = true
-      store.lastError = "migration failed for " + store.path + ": " + e
-      store.message("error", store.lastError, null)
-      return
+      return store.fail("migration failed for " + store.path + ": " + e)
     }
-    if (result.error) {
-      store.readOnly = true
-      store.lastError = result.error
-      store.message("error", store.path + ": " + result.error, null)
-      return
-    }
+    if (result.error)
+      return store.fail(result.error, store.path + ": " + result.error)
+    var shape = store.shapeError(result.doc)
+    if (shape)
+      return store.fail("unusable " + store.path + ": " + shape, "unusable " + store.path + ": " + shape + " (left untouched; fix or remove it)")
 
     store.readOnly = result.readOnly
     store.lastError = ""
@@ -125,11 +150,8 @@ Item {
     onLoadFailed: function (error) {
       if (error === FileViewError.FileNotFound)
         store.ingest("")
-      else {
-        store.readOnly = true
-        store.lastError = "cannot read " + store.path + ": " + FileViewError.toString(error)
-        store.message("error", store.lastError, null)
-      }
+      else
+        store.fail("cannot read " + store.path + ": " + FileViewError.toString(error))
     }
     onSaveFailed: function (error) {
       store.message("error", "cannot write " + store.path + ": " + FileViewError.toString(error), null)
