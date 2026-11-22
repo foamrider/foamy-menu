@@ -276,6 +276,25 @@ ShellRoot {
     blockLoading: true
   }
   property string previousPid: ""
+  // The launcher's settings.json, which stage 65 makes unusable for a
+  // while: another program writes a new owner-only file over it.
+  FileView {
+    id: settingsFile
+    path: test.backend ? test.backend.paths.db + "/settings.json" : ""
+    printErrors: false
+    blockLoading: true
+  }
+  property string savedSettings: ""
+  Process {
+    id: settingsWriter
+  }
+  function writeSettings(text) {
+    settingsWriter.command = ["sh", "-c", 'umask 077; printf "%s" "$2" > "$1.new" && mv -- "$1.new" "$1"', "sh", settingsFile.path, text]
+    settingsWriter.running = true
+  }
+  function settingsHealth() {
+    return backend.callSync("system.healthDatabase", null).data.settings
+  }
   function failureToast(english, norwegian) {
     return !!view.toast && view.toast.style === "failure" && view.toast.title === test.said(english, norwegian)
   }
@@ -1242,6 +1261,35 @@ ShellRoot {
         test.check(menu.opened && view.view.kind === "settings", "IPC run opens a command")
         break
       case 65:
+        // The zoom keys on a settings.json the launcher cannot use: the zoom
+        // stays and a failure toast says why, in the user's language. Then
+        // the file is put back and the store takes changes again.
+        if (test.asked === "") {
+          settingsFile.reload()
+          test.savedSettings = settingsFile.text()
+          test.check(test.savedSettings.indexOf("schemaVersion") >= 0, "settings.json is read before it is replaced")
+          test.writeSettings("[]")
+          test.asked = "settings-unusable"
+          test.stage--
+          break
+        }
+        if (test.asked === "settings-unusable") {
+          if (test.waitFor(test.settingsHealth().readOnly))
+            break
+          var zoomBefore = view.zoom
+          view.toast = null
+          key(Qt.Key_Plus, Qt.ControlModifier)
+          test.check(view.zoom === zoomBefore && test.failureToast("settings.json is read-only: document is not a JSON object", "settings.json er skrivebeskyttet: dokumentet er ikke et JSON-objekt"), "a zoom key on an unusable settings.json keeps the zoom and says why: " + JSON.stringify(view.toast))
+          test.writeSettings(test.savedSettings)
+          test.asked = "settings-back"
+          test.stage--
+          break
+        }
+        if (test.waitFor(!test.settingsHealth().readOnly))
+          break
+        test.asked = ""
+        break
+      case 66:
         menu.close()
         test.check(!menu.opened, "close dismisses either view")
         var rejected = false

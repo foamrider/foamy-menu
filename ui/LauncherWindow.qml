@@ -862,9 +862,11 @@ OverlayWindow {
 
   function setZoom(value) {
     var z = Math.round(Math.max(0.8, Math.min(1.5, value)) * 10) / 10
-    window.backend.callSync("settings.updateGeneralSettings", {
+    var r = window.backend.callSync("settings.updateGeneralSettings", {
       uiZoom: z
     })
+    if (!r.ok)
+      window.showToast("failure", r.error)
   }
 
   function handleEscape(shift) {

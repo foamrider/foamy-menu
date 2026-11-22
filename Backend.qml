@@ -1107,11 +1107,9 @@ Item {
           uiZoom: settingsStore.doc.general.uiZoom
         })
       },
+      // A store that refuses the change fails it with the same texts as any
+      // other change the user asks for (Backend.change).
       updateGeneralSettings: function (data) {
-        if (!settingsStore.loaded)
-          throw new Error("settings not loaded")
-        if (settingsStore.readOnly)
-          throw new Error("settings are read-only: " + (settingsStore.lastError || "written by a newer build"))
         var patch = data && typeof data === "object" ? data : {}
         for (var key in patch) {
           if (key !== "uiZoom")
@@ -1119,7 +1117,7 @@ Item {
           if (typeof patch.uiZoom !== "number" || !isFinite(patch.uiZoom))
             throw new Error("uiZoom must be a number")
         }
-        settingsStore.update(function (doc) {
+        backend.change(settingsStore, function (doc) {
           if (patch.uiZoom !== undefined)
             doc.general.uiZoom = patch.uiZoom
         })
