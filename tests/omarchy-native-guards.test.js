@@ -461,6 +461,65 @@ test("a tree rebuilt while lists run lists the current tree's provider menus", (
   }
 })
 
+// The FileViews of the shipped menu and the user's extension, with load():
+// read(which, text) is a FileView's loaded(), failed(which) its loadFailed().
+function menuFileHarness() {
+  const messages = []
+  const source = {
+    defaultPath: "/opt/omarchy/default/omarchy/omarchy-menu.jsonc", userPath: "/home/u/.config/omarchy/extensions/omarchy-menu.jsonc",
+    defaultItems: [], userItems: [], message: (level, text) => messages.push([level, text]), rebuild() {}
+  }
+  const context = vm.createContext({ source, OmarchyMenu, text: () => "" })
+  vm.runInContext(method("load"), context)
+  source.load = context.load
+  const from = { default: "path: source.defaultPath", user: "path: source.userPath" }
+  // A handler is one statement or a { } block.
+  const body = (name, which) => {
+    const one = handler(name, from[which])
+    return one.trimStart().startsWith("{") ? block(name + ": {", 4, from[which]).slice(name.length + 2) : one
+  }
+  const run = (name, which, value) => {
+    context.text = () => value
+    vm.runInContext("(function() { " + body(name, which) + " })()", context)
+  }
+  const ids = (which) => source[which + "Items"].map((item) => item.id)
+  return { messages, ids, read: (which, value) => run("onLoaded", which, value), failed: (which) => run("onLoadFailed", which) }
+}
+
+test("a menu file read empty, unreadable or missing keeps its previous rows", () => {
+  const good = (id) => JSON.stringify({ [id]: { label: id } })
+  // Each read: the text (null for a failed load), the ids that stay, and
+  // whether it warns.
+  for (const [which, reads] of [
+    ["default", [
+      [good("first"), ["first"], false],
+      ["", ["first"], true],
+      ['{ "half": { "label": ', ["first"], true],
+      ["[]", ["first"], true],
+      [null, ["first"], true],
+      [good("second"), ["second"], false]
+    ]],
+    // An empty or missing extension file is the user's choice.
+    ["user", [
+      [good("mine"), ["mine"], false],
+      ['{ "half": ', ["mine"], true],
+      ["", [], false],
+      [good("again"), ["again"], false],
+      [null, [], false]
+    ]]
+  ]) {
+    const h = menuFileHarness()
+    for (const [value, kept, warns] of reads) {
+      const count = h.messages.length
+      if (value === null) h.failed(which)
+      else h.read(which, value)
+      const name = which + " " + JSON.stringify(value)
+      assert.deepEqual(h.ids(which), kept, name)
+      assert.equal(h.messages.length - count, warns ? 1 : 0, name)
+    }
+  }
+})
+
 function sandbox(t) {
   const parent = fs.realpathSync("/tmp")
   const root = fs.mkdtempSync(path.join(parent, "foamy-menu-guard-probe-"))

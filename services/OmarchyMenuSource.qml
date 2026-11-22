@@ -231,10 +231,21 @@ Item {
     source.startNextProvider()
   }
 
+  // A read in the middle of a write (an update, a checkout, an editor's
+  // save) can be empty or unparseable: such a read keeps the file's previous
+  // rows, as the stock menu does. The shipped menu is never empty, so an
+  // empty read of it counts as one; an empty extension file is the user's.
   function load(which, text) {
+    var path = which === "user" ? source.userPath : source.defaultPath
     var parsed = OmarchyMenu.parse(text)
-    if (parsed.error)
-      source.message("warning", "ignoring unreadable " + (which === "user" ? source.userPath : source.defaultPath) + ": " + parsed.error, null)
+    if (parsed.error) {
+      source.message("warning", "ignoring unreadable " + path + ": " + parsed.error, null)
+      return
+    }
+    if (which !== "user" && parsed.items.length === 0) {
+      source.message("warning", "ignoring empty " + path, null)
+      return
+    }
     if (which === "user")
       source.userItems = parsed.items
     else
@@ -285,10 +296,8 @@ Item {
     printErrors: false
     onFileChanged: reload()
     onLoaded: source.load("default", text())
-    onLoadFailed: {
-      source.message("error", "Omarchy menu not found at " + source.defaultPath, null)
-      source.load("default", "")
-    }
+    // The previous rows stay, as for an empty read.
+    onLoadFailed: source.message("error", "Omarchy menu not found at " + source.defaultPath, null)
   }
 
   FileView {
