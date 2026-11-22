@@ -401,7 +401,8 @@ test("provider lists run one at a time under the deadline and publish together",
 
 test("a list that fails, times out, crashes or cannot start keeps the previous list and the queue goes on", () => {
   for (const [name, fail] of [
-    ["exit 124 at the deadline", (h) => h.end(124, 0, "Half Font\tHalf Font\t\n")],
+    ["the deadline: timeout SIGKILLed with its group (crash, code 9)", (h) => h.end(9, 1, "Half Font\tHalf Font\t\n")],
+    ["exit 124", (h) => h.end(124, 0, "Half Font\tHalf Font\t\n")],
     ["normal exit with code 1 and no output", (h) => h.end(1, 0, "")],
     // timeout reports a child that a signal ended as 128 + the signal.
     ["bash ended by SIGKILL (137)", (h) => h.end(137, 0, "Half Font\tHalf Font\t\n")],

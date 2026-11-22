@@ -283,8 +283,9 @@ Item {
         providerProc.collected += line + "\n"
       }
     }
-    // Only exit 0 is a whole list: timeout exits 124 at the deadline, and
-    // 125-127 or 128 + a signal when bash failed or was killed.
+    // Only exit 0 is a whole list: at the deadline timeout is SIGKILLed with
+    // its group (a crash exit), and it exits 125-127 or 128 + a signal when
+    // bash failed or was killed.
     onExited: function (exitCode, exitStatus) {
       source.finishProvider(exitStatus === 0 && exitCode === 0)
     }
