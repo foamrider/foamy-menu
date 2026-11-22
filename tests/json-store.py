@@ -390,7 +390,8 @@ ShellRoot {
     var health = test.call("system.healthDatabase")
     test.check(health.ok && health.data.settings.loaded && !health.data.settings.readOnly && health.data.settings.error === "", "the settings store is usable: " + JSON.stringify(health))
     var cleared = test.call("calculator.historyDeleteAll")
-    test.check(!cleared.ok && cleared.error.indexOf("calculator.json is read-only: unreadable ") === 0, "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
+    // In the user's language, with the reason before anything a short toast cuts.
+    test.check(!cleared.ok && cleared.error === "calculator.json er skrivebeskyttet: document is not a JSON object", "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
     // The commands and scope files are read apart from the stores.
     wait.waitFor(function () {
       return !!backend.candidatesById["builtin:calculator-history"] && backend.scopes.some(function (s) {
@@ -520,6 +521,7 @@ def backend_run(harness):
         BACKEND_SHELL,
         plugin=PLUGIN,
         prefix="foamy-menu-store-",
+        language="no",
         fakebin={"omarchy-launch-browser": BROWSER, "curl": CURL},
     )
     home = Path(run.env["HOME"])

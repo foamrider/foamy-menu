@@ -788,7 +788,15 @@ Item {
     if (store.update(mutator))
       return
     var file = store.path.slice(store.path.lastIndexOf("/") + 1)
-    throw new Error(store.loaded ? file + " is read-only: " + (store.lastError || "written by a newer build") : file + " is not loaded yet")
+    if (!store.loaded)
+      throw new Error(backend.tr("%1 is not loaded yet", [file]))
+    if (!store.lastError)
+      throw new Error(backend.tr("%1 is from a newer version and is read-only", [file]))
+    // The reason without the path, which the file name already gives, so a
+    // short toast still shows it; the log has the whole error.
+    var at = store.lastError.indexOf(store.path + ": ")
+    var reason = at < 0 ? store.lastError : store.lastError.slice(at + store.path.length + 2)
+    throw new Error(backend.tr("%1 is read-only: %2", [file, reason]))
   }
 
   // A query longer than a listed value (MAX_TEXT) is no search term worth
