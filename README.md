@@ -196,8 +196,12 @@ the host's own blocks, read the way ssh reads them: keywords in any case,
 setting wins; `Include` is read where it stands (globs, relative paths under
 `~/.ssh`, `~/`), each file once, so cycles are harmless. `Match` blocks and
 pattern blocks such as `Host *` are not applied. Files are read with bounds
-(1 MiB each, 256 files, Include depth 16) and only when they resolve to a
-regular file; `FOAMY_SSH_CONFIG` names another config (for tests). Enter opens
+(1 MiB each, a larger file is skipped; Include depth 16) and only when they
+resolve to a regular file. A config past a total (256 files, 8 MiB in all,
+4096 Include arguments, 16384 directory entries for Include globs, 10,000
+hosts) is not listed in part: the scope keeps the hosts it had and logs why,
+or says why it could not load them. `FOAMY_SSH_CONFIG` names another config
+(for tests). Enter opens
 the default terminal through `omarchy-launch-tui --app-id=TUI.tile` and runs
 `ssh <host>`; if ssh fails, the window stays open until a key is pressed.
 Ctrl+K offers **Copy SSH Command**, **Copy Host Name** and **Open in Files

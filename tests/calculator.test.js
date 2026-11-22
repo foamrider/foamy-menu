@@ -253,15 +253,36 @@ test("a mixed duration moves the calendar by each part across the DST switch", (
   assert.equal(C.evaluate("2 hours 1 workday from now", env), null, "a work-day part is not a calendar day")
 })
 
+test("a month or year move to a month without that day lands on the month's last day", () => {
+  for (const [q, answer] of [
+    ["2026-01-31 + 1 month", "Saturday, 28 February 2026"],
+    ["2026-01-29 + 1 month", "Saturday, 28 February 2026"],
+    ["2026-01-30 + 1 month", "Saturday, 28 February 2026"],
+    ["2028-01-31 + 1 month", "Tuesday, 29 February 2028"],
+    ["2026-03-31 - 1 month", "Saturday, 28 February 2026"],
+    ["2026-03-31 + 1 month", "Thursday, 30 April 2026"],
+    ["2026-12-31 + 2 months", "Sunday, 28 February 2027"],
+    ["2028-02-29 + 1 year", "Wednesday, 28 February 2029"],
+    ["2028-02-29 - 1 year", "Sunday, 28 February 2027"],
+    // A month that has the day keeps it.
+    ["2028-02-29 + 4 years", "Sunday, 29 February 2032"],
+    ["2026-01-15 + 1 month", "Sunday, 15 February 2026"]
+  ]) {
+    assert.equal(result(q), answer, q)
+  }
+  const jan31 = { ...env, nowMs: Date.UTC(2026, 0, 31, 21, 6), localOffset: -300 }
+  assert.equal(result("1 month from now", jan31), "Saturday, 28 February 2026 at 4:06 PM", "the time of day stays")
+})
+
 test("parts of one calendar unit that cancel do not move the date", () => {
-  // From 31 January, a month forward lands on 3 March and a month back on
-  // 3 February: the parts must add up before the date moves.
+  // From 31 January, a month forward lands on 28 February and a month back
+  // from there on 28 January: the parts must add up before the date moves.
   for (const q of ["2026-01-31 + (1 month - 1 month + 1 day)", "2026-01-31 + (1 month 1 day - 1 month)",
     "2026-01-31 + (1 year - 12 months + 1 day)"]) {
     assert.equal(result(q), "Sunday, 1 February 2026", q)
   }
   assert.equal(result("2028-02-29 + (1 year - 12 months + 1 day)"), "Wednesday, 1 March 2028", "a whole year is 12 months")
-  assert.equal(result("2026-01-31 + (2 months - 1 month + 1 day)"), "Wednesday, 4 March 2026", "the rest of a unit still moves once")
+  assert.equal(result("2026-01-31 + (2 months - 1 month + 1 day)"), "Sunday, 1 March 2026", "the rest of a unit still moves once")
   assert.equal(result("2026-01-31 + (1 hour - 1 hour + 1 month - 1 month + 1 day)"), "Sunday, 1 February 2026")
   // New York enters summer time on Sunday 8 March 2026, and 02:30 does not
   // exist that night: a week forward lands on 03:30, and 7 days back from

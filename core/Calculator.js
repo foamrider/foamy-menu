@@ -578,6 +578,19 @@ function preferredUnit(d, from) {
 
 function isDuration(v) { return v.type === "num" && v.unit && dimsKey(v.unit.dims) === "T1" }
 
+// Moves t by n months (back when n < 0) to the same day of the month, or to
+// the last day of a month that has fewer days: 31 January + 1 month is
+// 28 February, and 29 February 2028 + 1 year is 28 February 2029. Year,
+// month and day are set in one call, so no step rolls over into the month
+// after.
+function moveMonths(t, n) {
+  var y = t.getFullYear(), m = t.getMonth() + n
+  // Day 0 of the month after the target is the target's last day.
+  var end = new Date(0)
+  end.setUTCFullYear(y, m + 1, 0)
+  t.setFullYear(y, m, Math.min(t.getDate(), end.getUTCDate()))
+}
+
 function addDuration(d, v, sign) {
   var unit = v.unit
   var calendar = unit === UNITS.d || unit === UNITS.wk || unit === UNITS.mo || unit === UNITS.yr
@@ -601,8 +614,8 @@ function addDuration(d, v, sign) {
     if (Math.floor(n) === n) {
       if (unit === UNITS.d) t.setDate(t.getDate() + n)
       else if (unit === UNITS.wk) t.setDate(t.getDate() + 7 * n)
-      else if (unit === UNITS.mo) t.setMonth(t.getMonth() + n)
-      else t.setFullYear(t.getFullYear() + n)
+      else if (unit === UNITS.mo) moveMonths(t, n)
+      else moveMonths(t, 12 * n)
       return date(t.getTime(), d.hasTime)
     }
   }
@@ -620,8 +633,8 @@ function durationParts(v, sign) {
 }
 
 // Parts of one unit add up before the date moves, in the place of the first
-// one: month moves do not cancel (31 January + 1 month is 3 March, and
-// 1 month back is 3 February), so "1 month - 1 month + 1 day" moves by the
+// one: month moves do not cancel (31 January + 1 month is 28 February, and
+// 1 month back is 28 January), so "1 month - 1 month + 1 day" moves by the
 // day alone. A whole number of years moves the calendar as 12 months each,
 // and a whole number of weeks as 7 days each, so they add up with months
 // and days: "1 week - 7 days" must not step over a DST switch and back.

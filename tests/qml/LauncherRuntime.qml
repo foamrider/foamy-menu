@@ -426,7 +426,7 @@ ShellRoot {
         test.check(backend.candidatesById["builtin:calculator-history"].title === test.said("Calculator History", "Kalkulatorhistorikk"), "built-in titles are translated")
         test.check(backend.scopes.map(function (s) {
           return s.id
-        }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,failing,shelf" : "ssh,google,duckduckgo,bookmarks,failing,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
+        }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,failing,long-failure,shelf" : "ssh,google,duckduckgo,bookmarks,failing,long-failure,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
         test.check(backend.callSync("rootSearch.search", {
           query: "kettle",
           view: {
@@ -1103,8 +1103,24 @@ ShellRoot {
         if (test.asked === "failing-scope") {
           if (test.waitFor(view.view.kind === "scope" && !!view.scopeState && view.scopeState.failure !== ""))
             break
-          test.asked = ""
           test.check(JSON.stringify(view.emptyText) === JSON.stringify([test.said("Could not load Failing", "Kunne ikke laste Failing"), test.said("exited with code 3", "avsluttet med kode 3")]), "a command scope that fails says how it exited, in the user's language: " + JSON.stringify(view.emptyText))
+          // Then one whose reason is wider than the card.
+          view.popToRoot()
+          view.setQuery("longfail")
+          key(Qt.Key_Tab)
+          test.asked = "long-failure"
+          test.stage--
+          break
+        }
+        if (test.asked === "long-failure") {
+          if (test.waitFor(view.view.scopeId === "long-failure" && !!view.scopeState && view.scopeState.failure !== ""))
+            break
+          test.asked = ""
+          var reason = test.findItem(function (node) {
+            return node.text === view.emptyText[1]
+          })
+          var at = reason ? reason.mapToItem(view.cardItem, 0, 0) : null
+          test.check(!!at && view.emptyText[1].indexOf("long-failure: ") === 0 && reason.lineCount > 1 && at.x >= 0 && at.x + reason.width <= view.cardItem.width, "a failure's long reason wraps inside the card: " + JSON.stringify(at) + " " + (reason ? reason.width + " of " + view.cardItem.width : "not shown"))
         }
         menu.open('{"menu":"root"}')
         view.popToRoot()

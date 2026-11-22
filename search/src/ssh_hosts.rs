@@ -33,14 +33,17 @@
 //!   Include cycles; ssh would instead fail on them at depth 16. A file that
 //!   is refused (too large, not a regular file) counts as read.
 //!
-//! Bounds: Include depth [`MAX_DEPTH`] (ssh's own limit), [`MAX_FILES`] files
-//! of at most [`MAX_FILE_BYTES`] each and [`MAX_TOTAL_BYTES`] read in all
-//! (the bytes read from a file over its limit included),
-//! [`MAX_INCLUDE_PATTERNS`] Include arguments, [`MAX_DIR_ENTRIES`] directory
-//! entries examined by globs, [`MAX_HOSTS`] hosts. Symlinks are resolved
-//! once (`realpath`, as ssh and the old script follow them) and the result
-//! must be a regular file, read with `foamy_helper::fs::read_file_limited`
-//! (no symlinks, FIFOs, devices or directories, so nothing can block the read).
+//! Bounds: Include depth [`MAX_DEPTH`] (ssh's own limit) and
+//! [`MAX_FILE_BYTES`] per file (a larger file is skipped); in all,
+//! [`MAX_FILES`] files, [`MAX_TOTAL_BYTES`] read (the bytes read from a file
+//! over its limit included), [`MAX_INCLUDE_PATTERNS`] Include arguments,
+//! [`MAX_DIR_ENTRIES`] directory entries examined by globs and [`MAX_HOSTS`]
+//! hosts. A config past one of these totals fails the listing: exit 1 with
+//! the reason ([`Limit`]) on stderr and nothing printed, as the list would
+//! miss the hosts after it. Symlinks are resolved once (`realpath`, as ssh
+//! and the old script follow them) and the result must be a regular file,
+//! read with `foamy_helper::fs::read_file_limited` (no symlinks, FIFOs,
+//! devices or directories, so nothing can block the read).
 
 use foamy_helper::fs::read_file_limited;
 use std::collections::{HashMap, HashSet};
@@ -62,8 +65,45 @@ pub(crate) const MAX_TOTAL_BYTES: u64 = 8 * 1024 * 1024;
 pub(crate) const MAX_INCLUDE_PATTERNS: usize = 4_096;
 /// Directory entries Include globs may examine in one listing.
 pub(crate) const MAX_DIR_ENTRIES: usize = 16_384;
-/// Distinct hosts kept; later names are ignored.
+/// Distinct hosts in one listing.
 pub(crate) const MAX_HOSTS: usize = 10_000;
+
+/// The total a config goes past: the hosts after it would be missing, so
+/// the listing fails with this reason instead of printing part of them.
+#[derive(Debug, PartialEq)]
+pub(crate) enum Limit {
+    Files,
+    Bytes,
+    Includes,
+    Entries,
+    Hosts,
+}
+
+impl std::fmt::Display for Limit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Limit::Files => write!(
+                f,
+                "the SSH config and its Includes are more than {MAX_FILES} files"
+            ),
+            Limit::Bytes => write!(
+                f,
+                "the SSH config and its Includes hold more than {} MiB",
+                MAX_TOTAL_BYTES / (1024 * 1024)
+            ),
+            Limit::Includes => write!(
+                f,
+                "the SSH config has more than {MAX_INCLUDE_PATTERNS} Include arguments"
+            ),
+            Limit::Entries => write!(
+                f,
+                "the SSH config's Include patterns look at more than {MAX_DIR_ENTRIES} directory entries"
+            ),
+            Limit::Hosts => write!(f, "the SSH config names more than {MAX_HOSTS} hosts"),
+        }?;
+        f.write_str("; not listing part of the hosts")
+    }
+}
 
 #[derive(Default)]
 struct Settings {
@@ -83,7 +123,7 @@ struct Walker<'a> {
 }
 
 /// The listing for `config`, with `home` for `~` and relative Includes.
-pub(crate) fn list(config: &Path, home: Option<&Path>) -> Vec<u8> {
+pub(crate) fn list(config: &Path, home: Option<&Path>) -> Result<Vec<u8>, Limit> {
     let mut walker = Walker {
         home: home.map(|h| h.as_os_str().as_bytes()),
         visited: HashSet::new(),
@@ -93,8 +133,8 @@ pub(crate) fn list(config: &Path, home: Option<&Path>) -> Vec<u8> {
         order: Vec::new(),
         hosts: HashMap::new(),
     };
-    walker.walk(config, 0, &[]);
-    walker.render()
+    walker.walk(config, 0, &[])?;
+    Ok(walker.render())
 }
 
 /// The `ssh-hosts` subcommand: `$FOAMY_SSH_CONFIG`, else `$HOME/.ssh/config`.
@@ -109,7 +149,13 @@ pub(crate) fn main() -> ExitCode {
             None => return ExitCode::SUCCESS,
         },
     };
-    let output = list(&config, home.as_deref());
+    let output = match list(&config, home.as_deref()) {
+        Ok(output) => output,
+        Err(limit) => {
+            eprintln!("foamy-menu-search: ssh-hosts: {limit}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut stdout = io::stdout().lock();
     match stdout.write_all(&output).and_then(|()| stdout.flush()) {
         Ok(()) => ExitCode::SUCCESS,
@@ -121,19 +167,25 @@ pub(crate) fn main() -> ExitCode {
 }
 
 impl Walker<'_> {
-    fn walk(&mut self, path: &Path, depth: usize, inherited: &[Vec<u8>]) {
-        // With no bytes left, a read could only find the file over its limit.
-        if self.visited.len() >= MAX_FILES || self.bytes_left == 0 {
-            return;
-        }
+    fn walk(&mut self, path: &Path, depth: usize, inherited: &[Vec<u8>]) -> Result<(), Limit> {
         let Ok(real) = std::fs::canonicalize(path) else {
-            return;
+            return Ok(());
         };
+        // Only a file not read yet can hold more hosts, so only it meets the
+        // totals; one read before (an Include cycle) is not a new file.
+        if self.visited.contains(&real) {
+            return Ok(());
+        }
+        if self.visited.len() >= MAX_FILES {
+            return Err(Limit::Files);
+        }
+        // With no bytes left, a read could only find the file over its limit.
+        if self.bytes_left == 0 {
+            return Err(Limit::Bytes);
+        }
         // Remembered before the read, so a file that is refused (too large,
         // not a regular file) is not read again for every Include naming it.
-        if !self.visited.insert(real.clone()) {
-            return;
-        }
+        self.visited.insert(real.clone());
         let limit = MAX_FILE_BYTES.min(self.bytes_left);
         let data = match read_file_limited(&real, limit) {
             Ok(data) => data,
@@ -142,8 +194,13 @@ impl Walker<'_> {
                 // bytes were read: they count toward MAX_TOTAL_BYTES too.
                 if error.kind() == io::ErrorKind::InvalidData {
                     self.bytes_left = self.bytes_left.saturating_sub(limit + 1);
+                    // Under MAX_FILE_BYTES the limit was the bytes left, so
+                    // the file may be one to read: the total stopped it.
+                    if limit < MAX_FILE_BYTES {
+                        return Err(Limit::Bytes);
+                    }
                 }
-                return;
+                return Ok(());
             }
         };
         self.bytes_left -= data.len() as u64;
@@ -158,7 +215,8 @@ impl Walker<'_> {
                 b"host" => {
                     block.clear();
                     for name in args {
-                        if is_concrete(&name) && self.add_host(&name) {
+                        if is_concrete(&name) {
+                            self.add_host(&name)?;
                             block.push(name);
                         }
                     }
@@ -183,56 +241,57 @@ impl Walker<'_> {
                 }
                 b"include" if depth < MAX_DEPTH => {
                     for arg in args {
-                        if self.patterns_left == 0 || self.visited.len() >= MAX_FILES {
-                            break;
+                        if self.patterns_left == 0 {
+                            return Err(Limit::Includes);
                         }
                         self.patterns_left -= 1;
-                        for file in self.expand(&arg) {
-                            self.walk(&file, depth + 1, &block);
+                        for file in self.expand(&arg)? {
+                            self.walk(&file, depth + 1, &block)?;
                         }
                     }
                 }
                 _ => {}
             }
         }
+        Ok(())
     }
 
-    fn add_host(&mut self, name: &[u8]) -> bool {
+    fn add_host(&mut self, name: &[u8]) -> Result<(), Limit> {
         if self.hosts.contains_key(name) {
-            return true;
+            return Ok(());
         }
         if self.hosts.len() >= MAX_HOSTS {
-            return false;
+            return Err(Limit::Hosts);
         }
         self.order.push(name.to_vec());
         self.hosts.insert(name.to_vec(), Settings::default());
-        true
+        Ok(())
     }
 
     /// The files an Include argument names, as ssh's glob(3) call finds them.
-    fn expand(&mut self, arg: &[u8]) -> Vec<PathBuf> {
+    fn expand(&mut self, arg: &[u8]) -> Result<Vec<PathBuf>, Limit> {
         let pattern = match arg {
-            [] => return Vec::new(),
+            [] => return Ok(Vec::new()),
             [b'/', ..] => arg.to_vec(),
             [b'~'] => match self.home {
                 Some(home) => home.to_vec(),
-                None => return Vec::new(),
+                None => return Ok(Vec::new()),
             },
             [b'~', b'/', rest @ ..] => match self.home {
                 Some(home) => [home, b"/".as_slice(), rest].concat(),
-                None => return Vec::new(),
+                None => return Ok(Vec::new()),
             },
             // ~user: glob's GLOB_TILDE would ask the user database.
-            [b'~', ..] => return Vec::new(),
+            [b'~', ..] => return Ok(Vec::new()),
             _ => match self.home {
                 Some(home) => [home, b"/.ssh/".as_slice(), arg].concat(),
-                None => return Vec::new(),
+                None => return Ok(Vec::new()),
             },
         };
         self.glob(&pattern)
     }
 
-    fn glob(&mut self, pattern: &[u8]) -> Vec<PathBuf> {
+    fn glob(&mut self, pattern: &[u8]) -> Result<Vec<PathBuf>, Limit> {
         let mut paths: Vec<Vec<u8>> = vec![if pattern.starts_with(b"/") {
             b"/".to_vec()
         } else {
@@ -243,7 +302,7 @@ impl Walker<'_> {
             .filter(|component| !component.is_empty())
             .collect();
         if components.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         for component in components {
             let mut next = Vec::new();
@@ -260,7 +319,7 @@ impl Walker<'_> {
                     };
                     for entry in entries {
                         if self.entries_left == 0 {
-                            break;
+                            return Err(Limit::Entries);
                         }
                         self.entries_left -= 1;
                         let Ok(entry) = entry else { continue };
@@ -278,16 +337,16 @@ impl Walker<'_> {
             }
             paths = next;
             if paths.is_empty() {
-                return Vec::new();
+                return Ok(Vec::new());
             }
         }
         paths.retain(|path| std::fs::symlink_metadata(OsStr::from_bytes(path)).is_ok());
         paths.sort();
         paths.dedup();
-        paths
+        Ok(paths
             .into_iter()
             .map(|path| PathBuf::from(OsStr::from_bytes(&path)))
-            .collect()
+            .collect())
     }
 
     fn render(&self) -> Vec<u8> {
@@ -631,8 +690,13 @@ mod tests {
             path
         }
 
+        fn listing(&self) -> Result<String, Limit> {
+            list(&self.0.join(".ssh/config"), Some(&self.0))
+                .map(|bytes| String::from_utf8(bytes).unwrap())
+        }
+
         fn list(&self) -> String {
-            String::from_utf8(list(&self.0.join(".ssh/config"), Some(&self.0))).unwrap()
+            self.listing().unwrap()
         }
     }
 
@@ -732,27 +796,82 @@ mod tests {
         home.write(".ssh/config", "Include big\nHost small\n");
         home.write(".ssh/big", &big);
         assert_eq!(home.list(), "small\tsmall\t\n");
-        // File count.
-        let names: Vec<String> = (0..MAX_FILES + 10)
-            .map(|i| format!("many/{i:04}"))
-            .collect();
-        for name in &names {
-            home.write(
-                &format!(".ssh/{name}"),
-                &format!("Host {}\n", name.replace('/', "-")),
-            );
+    }
+
+    #[test]
+    fn a_config_past_a_total_fails_the_listing() {
+        // Files: the config and MAX_FILES - 1 Includes are all read. Past
+        // the bound, a file read before or a missing one is no new file.
+        let home = Home::new();
+        for i in 0..MAX_FILES - 1 {
+            home.write(&format!(".ssh/many/{i:04}"), &format!("Host many-{i:04}\n"));
         }
-        home.write(".ssh/config", "Include many/*\n");
+        home.write(
+            ".ssh/config",
+            "Include many/*\nInclude config\nInclude missing\n",
+        );
         assert_eq!(home.list().lines().count(), MAX_FILES - 1);
+        home.write(".ssh/config", "Include many/*\nInclude one-more\n");
+        home.write(".ssh/one-more", "Host one-more\n");
+        assert_eq!(home.listing(), Err(Limit::Files));
+        // Bytes: files that hold exactly MAX_TOTAL_BYTES in all are read
+        // whole (each padded with a hole of zeros). A byte more in the last
+        // one, which is under MAX_FILE_BYTES, or one more file, is past it.
+        let home = Home::new();
+        let resize = |path: &Path, size: u64| {
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_len(size)
+                .unwrap()
+        };
+        let config = home.write(".ssh/config", "Include part?\n");
+        let mut left = MAX_TOTAL_BYTES - fs::metadata(&config).unwrap().len();
+        let mut parts = 0;
+        let mut last = (PathBuf::new(), 0);
+        while left > 0 {
+            let size = left.min(MAX_FILE_BYTES);
+            let part = home.write(&format!(".ssh/part{parts}"), &format!("Host part{parts}\n"));
+            resize(&part, size);
+            last = (part, size);
+            left -= size;
+            parts += 1;
+        }
+        assert_eq!(home.list().lines().count(), parts);
+        assert!(last.1 < MAX_FILE_BYTES);
+        resize(&last.0, last.1 + 1);
+        assert_eq!(home.listing(), Err(Limit::Bytes));
+        resize(&last.0, last.1);
+        home.write(&format!(".ssh/part{parts}"), "Host late\n");
+        assert_eq!(home.listing(), Err(Limit::Bytes));
         // Include arguments: one file naming the same missing file over and over.
-        let many = "Include nothing-here\n".repeat(MAX_INCLUDE_PATTERNS + 10);
-        home.write(".ssh/config", &format!("{many}Include late\nHost early\n"));
-        home.write(".ssh/late", "Host late\n");
+        let home = Home::new();
+        let many = "Include nothing-here\n".repeat(MAX_INCLUDE_PATTERNS);
+        home.write(".ssh/config", &format!("{many}Host early\n"));
         assert_eq!(home.list(), "early\tearly\t\n");
-        // Host count.
-        let hosts: Vec<String> = (0..MAX_HOSTS + 5).map(|i| format!("h{i}")).collect();
-        home.write(".ssh/config", &format!("Host {}\n", hosts.join(" ")));
+        home.write(".ssh/config", &format!("{many}Include late\nHost early\n"));
+        assert_eq!(home.listing(), Err(Limit::Includes));
+        // Directory entries a glob looks at, whether they match or not.
+        let home = Home::new();
+        for i in 0..MAX_DIR_ENTRIES - 1 {
+            home.write(&format!(".ssh/many/{i:05}"), "");
+        }
+        home.write(".ssh/many/x", "Host x\n");
+        home.write(".ssh/config", "Include many/x*\n");
+        assert_eq!(home.list(), "x\tx\t\n");
+        home.write(".ssh/many/one-more", "");
+        assert_eq!(home.listing(), Err(Limit::Entries));
+        // Hosts: a name seen before is no new host.
+        let home = Home::new();
+        let hosts = (0..MAX_HOSTS)
+            .map(|i| format!("h{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        home.write(".ssh/config", &format!("Host {hosts}\nHost h0\n"));
         assert_eq!(home.list().lines().count(), MAX_HOSTS);
+        home.write(".ssh/config", &format!("Host {hosts} one-more\n"));
+        assert_eq!(home.listing(), Err(Limit::Hosts));
     }
 
     #[test]
@@ -760,8 +879,9 @@ mod tests {
         let home = Home::new();
         let big = "#".repeat(MAX_FILE_BYTES as usize + 1);
         home.write(".ssh/big", &big);
-        // However many Includes name it, it is one of the MAX_FILES files.
-        for i in 0..MAX_FILES {
+        // However many Includes name it, it is one of the MAX_FILES files:
+        // with the config, it leaves room for MAX_FILES - 2 more.
+        for i in 0..MAX_FILES - 2 {
             home.write(&format!(".ssh/many/{i:04}"), &format!("Host many-{i:04}\n"));
         }
         home.write(
@@ -770,7 +890,8 @@ mod tests {
         );
         assert_eq!(home.list().lines().count(), MAX_FILES - 2);
         // The bytes read from rejected files count toward MAX_TOTAL_BYTES:
-        // eight of them use it up, so the file after them is not read.
+        // eight of them use it up, so the listing fails and the file after
+        // them is not read.
         let mut config = String::new();
         for i in 0..MAX_TOTAL_BYTES / MAX_FILE_BYTES {
             home.write(&format!(".ssh/big{i}"), &big);
@@ -792,7 +913,7 @@ mod tests {
                 .set_times(fs::FileTimes::new().set_accessed(epoch))
                 .unwrap();
         }
-        assert_eq!(home.list(), "early\tearly\t\n");
+        assert_eq!(home.listing(), Err(Limit::Bytes));
         let read = |path: &Path| fs::metadata(path).unwrap().accessed().unwrap() != epoch;
         assert!(
             read(&top),
