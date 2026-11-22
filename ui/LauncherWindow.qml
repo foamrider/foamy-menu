@@ -9,7 +9,6 @@ import "../core/Rows.js" as Rows
 import "../core/Scopes.js" as Scopes
 import "../core/QueryEdit.js" as QueryEdit
 import "../kit"
-import "../services"
 
 // The shell's own full-screen overlay (qs.Ui.OverlayWindow, as the stock
 // menu uses): a fresh layer surface on the focused monitor each time it is
