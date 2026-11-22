@@ -275,7 +275,8 @@ omarchy bar set foamy.menu webSearchSuggestions true --json
   **Recent Searches**, ranked by use and narrowed by what you type. They stay
   in Foamy's own data (`~/.local/share/foamy-menu/db/frecency.json`), at most
   100 per scope. Ctrl+D deletes one; Ctrl+Shift+D clears the scope's history.
-  With history off nothing is saved.
+  A search longer than 512 characters runs but is not saved. With history
+  off nothing is saved.
 - `webSearchSuggestions`: the engine's autocomplete is listed under **Suggestions** as you
   type. This sends what you type to the engine (after a short pause, one
   request at a time); nothing is sent while it is off.
@@ -508,7 +509,8 @@ and calculator history against real files: a new file, unusable ones and
 one from a newer build (left as they are), a save just before the store goes,
 and a file another program replaced, empties to save in place, or removes.
 It then starts the backend over an unusable calculator.json and a
-settings.json without its general settings.
+settings.json without its general settings, and checks that long searches
+are not saved.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

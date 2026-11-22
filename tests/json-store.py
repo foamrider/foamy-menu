@@ -15,8 +15,9 @@ the store that holds favorites, aliases, ranking and calculator history.
   keeps its data in the store, and the store writes nothing over it.
 
 Then Backend.qml over such stores: it gets ready with an unreadable
-calculator.json and a settings.json without its general settings, and a
-change either store refuses fails with the reason.
+calculator.json and a settings.json without its general settings, a change
+either store refuses fails with the reason, and long searches and long
+search terms stay out of frecency.json.
 
   tests/json-store.py
 
@@ -280,11 +281,15 @@ ShellRoot {
 
 BACKEND_SHELL = """import QtQuick
 import Quickshell
+import Quickshell.Io
 import "plugin" as Foamy
 import "harness"
 
 ShellRoot {
   id: test
+  // Longer than any listed value (Scopes.MAX_TEXT, 512), shorter than
+  // what a search engine takes.
+  readonly property string longText: Array(121).join("rust async ")
   function check(ok, detail) {
     console.log((ok ? "PASS " : "FOAMY FAIL ") + detail)
   }
@@ -295,6 +300,12 @@ ShellRoot {
   Foamy.Backend {
     id: backend
     version: "0.0.0-store"
+  }
+  FileView {
+    id: browsed
+    path: Quickshell.env("FOAMY_BROWSER_FILE")
+    blockLoading: true
+    printErrors: false
   }
   function done() {
     console.log("FOAMY DONE")
@@ -321,11 +332,13 @@ ShellRoot {
     test.check(health.ok && health.data.settings.loaded && health.data.settings.readOnly && health.data.settings.error.indexOf("general") >= 0, "the settings store reports why it is read-only: " + JSON.stringify(health))
     var cleared = test.call("calculator.historyDeleteAll")
     test.check(!cleared.ok && cleared.error.indexOf("calculator.json is read-only: unreadable ") === 0, "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
-    // The commands are listed apart from the stores.
+    // The commands and scope files are read apart from the stores.
     wait.waitFor(function () {
-      return !!backend.candidatesById["builtin:calculator-history"]
+      return !!backend.candidatesById["builtin:calculator-history"] && backend.scopes.some(function (s) {
+        return s.id === "duckduckgo" && s.history === true
+      })
     }, 10000, function (ok) {
-      test.check(ok, "the commands are listed")
+      test.check(ok, "the commands are listed and DuckDuckGo keeps its searches")
       var favorite = test.call("rootSearch.performAction", {
         id: "builtin:calculator-history",
         action: "favorite-add",
@@ -338,12 +351,63 @@ ShellRoot {
         query: ""
       })
       test.check(reset.ok && reset.data.toast.style === "success", "a change a usable store takes still succeeds: " + JSON.stringify(reset))
+      test.searches()
+    })
+  }
+  function searches() {
+    var long = test.call("rootSearch.performAction", {
+      id: "scope-query:duckduckgo",
+      action: "open",
+      query: test.longText
+    })
+    test.check(long.ok && long.data.close === true, "a long search runs: " + JSON.stringify(long).slice(0, 200))
+    var short = test.call("rootSearch.performAction", {
+      id: "scope-query:duckduckgo",
+      action: "open",
+      query: "pasta"
+    })
+    test.check(short.ok && short.data.close === true, "a short search runs: " + JSON.stringify(short))
+    var longSaved = test.call("frecency.get", {
+      id: "scope-item:duckduckgo:" + test.longText.trim()
+    })
+    test.check(longSaved.ok && longSaved.data === null, "a search longer than 512 characters is not saved")
+    var shortSaved = test.call("frecency.get", {
+      id: "scope-item:duckduckgo:pasta"
+    })
+    test.check(shortSaved.ok && !!shortSaved.data, "a short search is saved")
+    test.call("frecency.visit", {
+      id: "builtin:calculator-history",
+      query: test.longText
+    })
+    test.call("frecency.visit", {
+      id: "builtin:calculator-history",
+      query: "calc"
+    })
+    var visited = test.call("frecency.get", {
+      id: "builtin:calculator-history"
+    })
+    test.check(visited.ok && !!visited.data && JSON.stringify(visited.data.searchTerms.map(function (t) {
+      return t.term
+    })) === '["calc"]', "a visit keeps a short search term and drops a long one: " + JSON.stringify(visited.data).slice(0, 200))
+    var recent = test.call("rootSearch.getSearchHistory")
+    test.check(recent.ok && JSON.stringify(recent.data) === '["calc"]', "search history keeps a short query and drops a long one: " + JSON.stringify(recent.data).slice(0, 200))
+    // The searches run detached; both reach the browser stand-in.
+    wait.waitFor(function () {
+      browsed.reload()
+      return browsed.text().split("\\n").length >= 3
+    }, 10000, function (ok) {
+      // In either order: each stand-in appends when it gets to run.
+      var urls = browsed.text().split("\\n")
+      test.check(ok && urls.some(function (url) {
+        return url.indexOf(encodeURIComponent(test.longText.trim())) >= 0
+      }) && urls.indexOf("https://duckduckgo.com/?q=pasta") >= 0, "both searches open in the browser: " + browsed.text().slice(0, 200))
       test.done()
     })
   }
 }
 """
 
+BROWSER = '#!/bin/sh\nprintf "%s\\n" "$@" >> "$FOAMY_BROWSER_FILE"\n'
 NO_GENERAL = '{"schemaVersion": 1, "commands": {}}\n'
 NOT_A_DOCUMENT = "[]\n"
 
@@ -386,19 +450,28 @@ def store_run(harness):
 
 
 def backend_run(harness):
-    run = harness.Run("4.5", BACKEND_SHELL, plugin=PLUGIN, prefix="foamy-menu-store-")
+    run = harness.Run(
+        "4.5", BACKEND_SHELL, plugin=PLUGIN, prefix="foamy-menu-store-", fakebin={"omarchy-launch-browser": BROWSER}
+    )
     home = Path(run.env["HOME"])
     db = Path(run.env.get("XDG_DATA_HOME") or home / ".local/share") / "foamy-menu/db"
     db.mkdir(parents=True)
     (db / "settings.json").write_text(NO_GENERAL)
     (db / "calculator.json").write_text(NOT_A_DOCUMENT)
+    scopes = Path(run.env.get("XDG_CONFIG_HOME") or home / ".config") / "foamy-menu/scopes"
+    scopes.mkdir(parents=True)
+    (scopes / "duckduckgo.json").write_text(json.dumps({"id": "duckduckgo", "history": True}))
+    run.env["FOAMY_BROWSER_FILE"] = str(run.base / "browsed")
     run.run(timeout=60)
     problems = run.failures()
     for name, text in (("settings", NO_GENERAL), ("calculator", NOT_A_DOCUMENT)):
         found = (db / f"{name}.json").read_text()
         if found != text:
             problems.append(f"{name}.json was written over: {found!r}")
-    return run, problems, "ready over unusable stores, and a refused change fails"
+    frecency = db / "frecency.json"
+    if not frecency.exists() or "rust async" in frecency.read_text():
+        problems.append("frecency.json is missing or holds the long search")
+    return run, problems, "ready over unusable stores, a refused change fails, long searches are not saved"
 
 
 def main():

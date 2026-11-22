@@ -531,9 +531,11 @@ Item {
   }
 
   // A search run in a query scope, or a value typed in a freeText scope,
-  // saved when the scope keeps history.
+  // saved when the scope keeps history. A search longer than a listed value
+  // (MAX_TEXT) still runs, but is not saved: frecency.json would hold every
+  // pasted text whole.
   function rememberSearch(scope, value) {
-    if (!scope.history || !frecencyStore.loaded)
+    if (!scope.history || !frecencyStore.loaded || value.length > Scopes.MAX_TEXT)
       return
     backend.recordVisit(Scopes.historyPrefix(scope) + value, "")
     var overflow = Scopes.historyOverflow(scope, frecencyStore.doc.items)
@@ -789,9 +791,13 @@ Item {
     throw new Error(store.loaded ? file + " is read-only: " + (store.lastError || "written by a newer build") : file + " is not loaded yet")
   }
 
+  // A query longer than a listed value (MAX_TEXT) is no search term worth
+  // keeping: the visit counts without it.
   function recordVisit(id, query) {
     if (!frecencyStore.loaded)
       return
+    if (String(query || "").length > Scopes.MAX_TEXT)
+      query = ""
     frecencyStore.update(function (doc) {
       doc.items[id] = Frecency.recordVisit(doc.items[id] || null, Date.now(), query || "")
       if (query)
