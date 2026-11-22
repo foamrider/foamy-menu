@@ -636,7 +636,11 @@ function actionsFor(candidate) {
 
 function reorderFavorites(commands, id, action) {
   var favs = []
-  for (var key in commands) if (typeof commands[key].favoriteOrder === "number") favs.push({ id: key, order: commands[key].favoriteOrder })
+  for (var key in commands) {
+    // An entry edited to null in settings.json counts as no settings.
+    var order = (commands[key] || {}).favoriteOrder
+    if (typeof order === "number") favs.push({ id: key, order: order })
+  }
   favs.sort(function(a, b) { return a.order - b.order })
   var ids = favs.map(function(f) { return f.id })
   var at = ids.indexOf(id)

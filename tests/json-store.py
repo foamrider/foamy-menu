@@ -405,6 +405,17 @@ ShellRoot {
         query: ""
       })
       test.check(reset.ok && reset.data.toast.style === "success", "a change a usable store takes still succeeds: " + JSON.stringify(reset))
+      var alias = test.call("settings.updateCommandSettings", {
+        commandId: "builtin:calculator-history",
+        alias: "ch"
+      })
+      test.check(alias.ok, "an alias is saved beside a command entry that is null: " + JSON.stringify(alias))
+      var favorite = test.call("rootSearch.performAction", {
+        id: "builtin:calculator-history",
+        action: "favorite-add",
+        query: ""
+      })
+      test.check(favorite.ok && favorite.data.toast.style === "success", "a favorite is added beside a command entry that is null: " + JSON.stringify(favorite))
       test.searches()
     })
   }
@@ -465,7 +476,8 @@ BROWSER = '#!/bin/sh\nprintf "%s\\n" "$@" >> "$FOAMY_BROWSER_FILE"\n'
 # Every fetch the backend starts: the first line of its request is logged and
 # none goes out, so a download fails the run.
 CURL = '#!/bin/sh\nhead -n 1 >> "$FOAMY_CURL_FILE"\nexit 7\n'
-NO_GENERAL = '{"schemaVersion": 1, "commands": {}}\n'
+# No general settings, and a command entry edited to null.
+NO_GENERAL = '{"schemaVersion": 1, "commands": {"gone": null}}\n'
 NOT_A_DOCUMENT = "[]\n"
 
 
@@ -543,7 +555,8 @@ def backend_run(harness):
     if found != NOT_A_DOCUMENT:
         problems.append(f"calculator.json was written over: {found!r}")
     settings = json.loads((db / "settings.json").read_text())
-    if settings.get("commands") != {} or settings.get("general", {}).get("uiZoom") != 1.5:
+    commands = {"gone": None, "builtin:calculator-history": {"alias": "ch", "favoriteOrder": 0}}
+    if settings.get("commands") != commands or settings.get("general", {}).get("uiZoom") != 1.5:
         problems.append(f"settings.json does not hold the zoom and its commands: {settings!r}")
     frecency = db / "frecency.json"
     if not frecency.exists() or "rust async" in frecency.read_text():

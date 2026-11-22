@@ -515,8 +515,9 @@ without a part, a save just before the store goes, a file another program
 replaced, empties to save in place, or removes, and an unusable file fixed
 in place.
 It then starts the backend over an unusable calculator.json and a
-settings.json without its general settings, saves the zoom, and checks that
-long searches are not saved.
+settings.json without its general settings and with a command entry edited
+to null, saves the zoom, an alias and a favorite, and checks that long
+searches are not saved.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

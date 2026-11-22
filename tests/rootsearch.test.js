@@ -171,6 +171,8 @@ test("favourite reordering", () => {
   assert.deepEqual(RS.reorderFavorites(cmds, "c", "favorite-add"), { a: 0, b: 1, c: 2 })
   assert.deepEqual(RS.reorderFavorites(cmds, "b", "favorite-up"), { b: 0, a: 1 })
   assert.deepEqual(RS.reorderFavorites(cmds, "a", "favorite-remove"), { a: null, b: 0 })
+  // An entry edited to null in settings.json is no favorite.
+  assert.deepEqual(RS.reorderFavorites({ x: null, a: { favoriteOrder: 0 } }, "c", "favorite-add"), { a: 0, c: 1 })
 })
 
 test("a web search opens the engine's URL with the query encoded", () => {

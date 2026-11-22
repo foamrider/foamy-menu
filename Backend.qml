@@ -1140,7 +1140,7 @@ Item {
             throw new Error("An alias cannot contain spaces")
           var commands = settingsStore.doc.commands
           for (var other in commands) {
-            if (other !== id && commands[other].alias === alias && alias)
+            if (other !== id && (commands[other] || {}).alias === alias && alias)
               throw new Error("Alias “" + alias + "” is already used by " + ((backend.candidatesById[other] || {}).title || other))
           }
         }
