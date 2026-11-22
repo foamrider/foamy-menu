@@ -122,7 +122,8 @@ pub(crate) fn main() -> ExitCode {
 
 impl Walker<'_> {
     fn walk(&mut self, path: &Path, depth: usize, inherited: &[Vec<u8>]) {
-        if self.visited.len() >= MAX_FILES {
+        // With no bytes left, a read could only find the file over its limit.
+        if self.visited.len() >= MAX_FILES || self.bytes_left == 0 {
             return;
         }
         let Ok(real) = std::fs::canonicalize(path) else {
@@ -775,12 +776,29 @@ mod tests {
             home.write(&format!(".ssh/big{i}"), &big);
             config.push_str(&format!("Include big{i}\n"));
         }
-        home.write(".ssh/late", "Host late\n");
-        home.write(
+        let late = home.write(".ssh/late", "Host late\n");
+        let top = home.write(
             ".ssh/config",
             &format!("Host early\n{config}Include late\n"),
         );
+        // Reading a file moves its access time on from the epoch (relatime
+        // still updates an access time older than the modification time).
+        let epoch = std::time::SystemTime::UNIX_EPOCH;
+        for path in [&top, &late] {
+            fs::File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_accessed(epoch))
+                .unwrap();
+        }
         assert_eq!(home.list(), "early\tearly\t\n");
+        let read = |path: &Path| fs::metadata(path).unwrap().accessed().unwrap() != epoch;
+        assert!(
+            read(&top),
+            "the temporary file system must record access times"
+        );
+        assert!(!read(&late), "no byte of the file after the budget is read");
     }
 
     #[test]
