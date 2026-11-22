@@ -503,7 +503,7 @@ that fails (bad output, an error, a hung `hyprctl`) launches the app once.
 `tests/json-store.py` runs the store that holds favorites, aliases, ranking
 and calculator history against real files: a new file, an unreadable one and
 one from a newer build (left as they are), a save just before the store goes,
-and a file another program replaced.
+and a file another program replaced, empties to save in place, or removes.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

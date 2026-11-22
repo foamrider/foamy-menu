@@ -60,6 +60,16 @@ Item {
       store.message("error", store.lastError + " (left untouched; fix or remove it)", null)
       return
     }
+    // An empty or missing file while the store holds what it read from it is
+    // another program saving it in place (empty, then write) or removing it,
+    // not a new file: writing a new document now would replace the data and
+    // the save in progress. The data stays in memory and is written with the
+    // next change.
+    if (!parsed.doc && store.loaded && !store.lastError) {
+      store._lastWritten = ""
+      store.message("warning", store.path + " is empty or gone; keeping its data until the next change", null)
+      return
+    }
 
     var result
     try {
