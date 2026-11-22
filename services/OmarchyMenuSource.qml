@@ -147,6 +147,7 @@ Item {
       }
     }
     if (!providerProc.running) {
+      source.providerTree = source.tree
       source.providerQueue = source.providerMenus()
       source.startNextProvider()
     }
@@ -168,8 +169,33 @@ Item {
 
   property var providerQueue: []
   property var pendingProviderItems: ({})
+  // The tree the queue and the pending lists were made for.
+  property var providerTree: null
+
+  // A menu file or catalog read again while lists run gives a new tree,
+  // which can drop, add or change provider menus. Queue the current tree's
+  // provider menus again, but keep a list this run already has for a menu
+  // whose provider is unchanged: a list depends only on its provider.
+  function requeueProviders() {
+    var menus = source.providerMenus()
+    var kept = ({})
+    var queue = []
+    for (let i = 0; i < menus.length; i++) {
+      let id = menus[i]
+      let before = source.providerTree.items[id]
+      if (before && before.provider === source.tree.items[id].provider && Object.prototype.hasOwnProperty.call(source.pendingProviderItems, id))
+        kept[id] = source.pendingProviderItems[id]
+      else
+        queue.push(id)
+    }
+    source.providerTree = source.tree
+    source.providerQueue = queue
+    source.pendingProviderItems = kept
+  }
 
   function startNextProvider() {
+    if (source.providerTree !== source.tree)
+      source.requeueProviders()
     if (source.providerQueue.length === 0) {
       source.providerItems = source.pendingProviderItems
       source.pendingProviderItems = ({})

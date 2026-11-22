@@ -310,22 +310,25 @@ test("empty guard scripts do not launch a process", () => {
 
 // The provider lists (fonts, kernels) run one at a time in providerProc.
 // Guards are left out: guardProc counts as busy, so refresh() starts none.
+const providerMenu = {
+  style: { label: "Style" },
+  "style.font": { label: "Font", provider: "fonts" },
+  update: { label: "Update" },
+  "update.kernel": { label: "Kernel", provider: "kernels" },
+  setup: { label: "Setup" },
+  "setup.language": { label: "Language", provider: "languages" }
+}
+const providerTree = (menu, extension = {}) => OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, OmarchyMenu.parse(JSON.stringify(extension)).items)
+
 function providerHarness() {
   const source = {
     commandTimeout: "10s", revision: 3, providerQueue: [], pendingProviderItems: {},
-    tree: OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify({
-      style: { label: "Style" },
-      "style.font": { label: "Font", provider: "fonts" },
-      update: { label: "Update" },
-      "update.kernel": { label: "Kernel", provider: "kernels" },
-      setup: { label: "Setup" },
-      "setup.language": { label: "Language", provider: "languages" }
-    })).items, []),
+    tree: providerTree(providerMenu),
     providerItems: { "style.font": [{ id: "style.font.old", label: "Old Font" }], "update.kernel": [{ id: "update.kernel.old", label: "old" }] }
   }
   const providerProc = { running: false, menuId: "", collected: "", command: [], starts: [] }
   const context = vm.createContext({ source, guardProc: { running: true }, providerProc, OmarchyMenu })
-  for (const name of ["providerMenus", "startNextProvider", "finishProvider", "bounded", "refresh"]) {
+  for (const name of ["providerMenus", "requeueProviders", "startNextProvider", "finishProvider", "bounded", "refresh"]) {
     vm.runInContext(method(name), context)
     source[name] = context[name]
   }
@@ -418,6 +421,44 @@ test("running -> false after the last exit changes nothing", () => {
   assert.equal(h.source.providerItems, published)
   assert.equal(h.source.revision, 4)
   assert.equal(h.providerProc.starts.length, 2)
+})
+
+// A menu file or catalog read again while the font list runs: rebuild()
+// sets a new tree and calls refresh(). Each row gives the new tree, the
+// lists started after the font list, and the published menus.
+test("a tree rebuilt while lists run lists the current tree's provider menus", () => {
+  const { fonts, kernels } = OmarchyMenu.PROVIDERS
+  const power = OmarchyMenu.PROVIDERS["power-profiles"]
+  const withoutKernel = { ...providerMenu }
+  delete withoutKernel["update.kernel"]
+  const withoutFont = { ...providerMenu }
+  delete withoutFont["style.font"]
+  const outputs = { [fonts.script]: "Hack\tHack\tHack\n", [kernels.script]: "linux\tlinux\tlinux\n", [power.script]: "balanced\tbalanced\tbalanced\n" }
+  for (const [name, tree, later, published] of [
+    ["the same menus", providerTree(providerMenu), [kernels], { "style.font": "omarchy-font-set 'Hack'", "update.kernel": "omarchy-kernel set 'linux'" }],
+    ["a queued menu removed", providerTree(withoutKernel), [], { "style.font": "omarchy-font-set 'Hack'" }],
+    ["the running menu removed", providerTree(withoutFont), [kernels], { "update.kernel": "omarchy-kernel set 'linux'" }],
+    ["a provider menu added", providerTree({ ...providerMenu, "setup.power": { label: "Power", provider: "power-profiles" } }), [kernels, power],
+      { "style.font": "omarchy-font-set 'Hack'", "update.kernel": "omarchy-kernel set 'linux'", "setup.power": "omarchy-powerprofiles-set autodetect 'balanced'" }],
+    // An extension can give an existing menu another provider.
+    ["the running menu's provider changed", providerTree(providerMenu, { "style.font": { provider: "power-profiles" } }), [power, kernels],
+      { "style.font": "omarchy-powerprofiles-set autodetect 'balanced'", "update.kernel": "omarchy-kernel set 'linux'" }]
+  ]) {
+    const h = providerHarness()
+    h.source.refresh()
+    h.source.tree = tree
+    h.source.refresh()
+    assert.equal(h.providerProc.starts.length, 1, name)
+    for (const start of h.providerProc.starts) {
+      if (!h.providerProc.running) break
+      h.end(0, 0, outputs[start[5]])
+    }
+    assert.deepEqual(h.providerProc.starts.slice(1), later.map((spec) => bash(spec.script)), name)
+    assert.equal(h.providerProc.running, false, name)
+    assert.equal(h.source.revision, 4, name + ": one publish")
+    const rows = h.source.providerItems
+    assert.deepEqual(Object.fromEntries(Object.keys(rows).map((id) => [id, rows[id].map((r) => r.action).join()])), published, name)
+  }
 })
 
 function sandbox(t) {
