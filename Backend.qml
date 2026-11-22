@@ -374,7 +374,7 @@ Item {
       var prefixes = scopeSource.queryScopeIds.map(function (id) {
         return Scopes.itemId(id, "")
       })
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         for (var key in doc.items)
           for (var i = 0; i < prefixes.length; i++)
             if (key.indexOf(prefixes[i]) === 0)
@@ -531,9 +531,11 @@ Item {
   }
 
   // A search run in a query scope, or a value typed in a freeText scope,
-  // saved when the scope keeps history.
+  // saved when the scope keeps history. A search longer than a listed value
+  // (MAX_TEXT) still runs, but is not saved: frecency.json would hold every
+  // pasted text whole.
   function rememberSearch(scope, value) {
-    if (!scope.history || !frecencyStore.loaded)
+    if (!scope.history || !frecencyStore.loaded || value.length > Scopes.MAX_TEXT)
       return
     backend.recordVisit(Scopes.historyPrefix(scope) + value, "")
     var overflow = Scopes.historyOverflow(scope, frecencyStore.doc.items)
@@ -555,7 +557,7 @@ Item {
     // A value typed in a freeText scope: its typed row or a saved one.
     var typedValue = !searching && (candidate.kind === "scope-query" || candidate.saved === true)
     if (action === "delete-history" && candidate.saved) {
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         delete doc.items[candidate.id]
       })
       return {
@@ -569,7 +571,7 @@ Item {
       // A freeText scope's prefix holds only typed values: the items keep
       // their ranking.
       const prefix = Scopes.historyPrefix(scope)
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         for (var key in doc.items)
           if (key.indexOf(prefix) === 0)
             delete doc.items[key]
@@ -727,8 +729,8 @@ Item {
         }
       }
     case "delete-entry":
-      calculatorStore.update(function (doc) {
-        doc.history = doc.history.filter(function (h) {
+      backend.change(calculatorStore, function (doc) {
+        doc.history = Calculator.filterHistory(doc.history, "").filter(function (h) {
           return h.id !== historyId
         })
       })
@@ -740,7 +742,7 @@ Item {
         }
       }
     case "delete-all-entries":
-      calculatorStore.update(function (doc) {
+      backend.change(calculatorStore, function (doc) {
         doc.history = []
       })
       backend.emit("calculator.historyStateChanged", null)
@@ -756,7 +758,7 @@ Item {
 
   function historyEntry(id) {
     var key = String(id).slice("calculator-history:".length)
-    var list = calculatorStore.loaded ? calculatorStore.doc.history : []
+    var list = calculatorStore.loaded ? Calculator.filterHistory(calculatorStore.doc.history, "") : []
     for (var i = 0; i < list.length; i++)
       if (list[i].id === key)
         return list[i]
@@ -779,9 +781,31 @@ Item {
       Util.execDetached(command)
   }
 
+  // A change the user asked for. A store that refuses it (its file is from a
+  // newer build or cannot be used) fails the action with the reason, so no
+  // success is shown for a change that was not saved.
+  function change(store, mutator) {
+    if (store.update(mutator))
+      return
+    var file = store.path.slice(store.path.lastIndexOf("/") + 1)
+    if (!store.loaded)
+      throw new Error(backend.tr("%1 is not loaded yet", [file]))
+    if (!store.lastError)
+      throw new Error(backend.tr("%1 is from a newer version and is read-only", [file]))
+    // The reason without the path, which the file name already gives, so a
+    // short toast still shows it; the log has the whole error.
+    var at = store.lastError.indexOf(store.path + ": ")
+    var reason = at < 0 ? store.lastError : store.lastError.slice(at + store.path.length + 2)
+    throw new Error(backend.tr("%1 is read-only: %2", [file, reason]))
+  }
+
+  // A query longer than a listed value (MAX_TEXT) is no search term worth
+  // keeping: the visit counts without it.
   function recordVisit(id, query) {
     if (!frecencyStore.loaded)
       return
+    if (String(query || "").length > Scopes.MAX_TEXT)
+      query = ""
     frecencyStore.update(function (doc) {
       doc.items[id] = Frecency.recordVisit(doc.items[id] || null, Date.now(), query || "")
       if (query)
@@ -790,7 +814,7 @@ Item {
   }
 
   function updateCommand(id, mutator) {
-    settingsStore.update(function (doc) {
+    backend.change(settingsStore, function (doc) {
       var current = doc.commands[id] || {}
       var next = mutator(JSON.parse(JSON.stringify(current)))
       var empty = true
@@ -942,7 +966,7 @@ Item {
     case "favorite-up":
     case "favorite-down":
       var orders = RootSearch.reorderFavorites(settingsStore.doc.commands, id, action)
-      settingsStore.update(function (doc) {
+      backend.change(settingsStore, function (doc) {
         for (var key in orders) {
           var entry = doc.commands[key] || {}
           if (orders[key] === null)
@@ -988,7 +1012,7 @@ Item {
         }
       }
     case "reset-ranking":
-      frecencyStore.update(function (doc) {
+      backend.change(frecencyStore, function (doc) {
         delete doc.items[id]
       })
       return {
@@ -1116,7 +1140,7 @@ Item {
             throw new Error("An alias cannot contain spaces")
           var commands = settingsStore.doc.commands
           for (var other in commands) {
-            if (other !== id && commands[other].alias === alias && alias)
+            if (other !== id && (commands[other] || {}).alias === alias && alias)
               throw new Error("Alias “" + alias + "” is already used by " + ((backend.candidatesById[other] || {}).title || other))
           }
         }

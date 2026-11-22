@@ -110,7 +110,7 @@ test("startup can use the legacy fallback, then imports OEM once and compiles ev
   assert.equal(fileURLToPath(url), source.omarchyPath + "/shell/plugins/menu/MenuModel.js")
   assert.equal(parent, source)
   assert.equal(name, "OmarchyGuardCompiler")
-  assert.deepEqual(Array.from(guardProc.command), ["timeout", "--kill-after=1s", "10s", "bash", "-lc", "stock-1"])
+  assert.deepEqual(Array.from(guardProc.command), ["timeout", "--signal=KILL", "10s", "bash", "-lc", "stock-1"])
   assert.equal(guardProc.requestTree, source.tree)
   assert.deepEqual(Array.from(guardProc.expectedGuards), ["probe:w", "probe:c", "probe:d", "other:w"])
   h.exit(0)
@@ -221,45 +221,57 @@ test("running -> false after exited() changes nothing; alone it fails the batch 
 })
 
 test("a hung guard batch and its background groups end at the deadline", (t) => {
-  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foamy-menu-guard-hang-"))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  const pids = path.join(dir, "pids")
-  const menu = {}
-  // Twelve hung guards over the batch's eight background groups.
-  for (let i = 0; i < 12; i++) menu["hung" + i] = { when: 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
-  const h = harness(() => { throw new Error("fallback script") })
-  h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
-  // Long enough for bash -lc and all eight groups to start on a busy machine
-  // (at 0.3 s some were killed before they recorded their pids).
-  h.source.commandTimeout = "2s"
-  h.start()
-  const [cmd, ...args] = h.guardProc.command
-  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "2s", "bash", "-lc"])
-  const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
-  // 124: the deadline fired and SIGTERM ended bash (a SIGKILL after
-  // --kill-after kills timeout itself: signal, no status). The pid check
-  // below proves that the background groups ended too.
-  assert.ifError(result.error)
-  assert.equal(result.signal, null)
-  assert.equal(result.status, 124)
-  const listed = fs.readFileSync(pids, "utf8").trim().split(/\s+/)
-  // Each group runs its guards in turn: its first one hangs (two pids each).
-  assert.equal(listed.length, 16)
   // A killed orphan is a zombie until its new parent reaps it: that's gone.
   const running = pid => {
     try { return !/^\d+ \(.*\) Z /.test(fs.readFileSync("/proc/" + pid + "/stat", "utf8")) } catch (e) { return false }
   }
-  let alive = listed.filter(running)
-  for (let i = 0; i < 20 && alive.length; i++) {
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
-    alive = alive.filter(running)
+  // A group that ignores SIGTERM passes that on to its guard's sleep.
+  for (const [name, prefix] of [["guards that end on SIGTERM", ""], ["guards that ignore SIGTERM", "trap '' TERM; "]]) {
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foamy-menu-guard-hang-"))
+    const pids = path.join(dir, "pids")
+    const recorded = () => fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").trim().split(/\s+/).filter(Boolean) : []
+    // A failed run must not leave its 300 s sleeps behind: kill this run's
+    // own bash and sleep processes that still run.
+    t.after(() => {
+      for (const pid of recorded().filter(running)) {
+        try { if (/^\d+ \((bash|sleep)\) /.test(fs.readFileSync("/proc/" + pid + "/stat", "utf8"))) process.kill(Number(pid), "SIGKILL") } catch (e) {}
+      }
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+    const menu = {}
+    // Twelve hung guards over the batch's eight background groups.
+    for (let i = 0; i < 12; i++) menu["hung" + i] = { when: prefix + 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
+    const h = harness(() => { throw new Error("fallback script") })
+    h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
+    // Long enough for bash -lc and all eight groups to start on a busy machine
+    // (at 0.3 s some were killed before they recorded their pids).
+    h.source.commandTimeout = "2s"
+    h.start()
+    const [cmd, ...args] = h.guardProc.command
+    assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--signal=KILL", "2s", "bash", "-lc"], name)
+    // A group still running holds stdout open, so spawnSync would wait for
+    // it until its own 15 s limit.
+    const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
+    assert.ifError(result.error)
+    // SIGKILL to the whole process group kills timeout itself too.
+    assert.equal(result.signal, "SIGKILL", name)
+    assert.equal(result.status, null, name)
+    const listed = recorded()
+    // Each group runs its guards in turn: its first one hangs (two pids each).
+    assert.equal(listed.length, 16, name)
+    let alive = listed.filter(running)
+    for (let i = 0; i < 20 && alive.length; i++) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+      alive = alive.filter(running)
+    }
+    assert.deepEqual(alive, [], name)
+    // Quickshell reports a process killed by a signal as a crash: the
+    // previous results stay.
+    const previous = h.source.guards
+    h.exit(9, 1, result.stdout)
+    assert.equal(h.source.guards, previous, name)
+    assert.match(h.messages[0][1], /refresh failed/, name)
   }
-  assert.deepEqual(alive, [])
-  // The batch's exit (124) keeps the previous results.
-  const previous = h.source.guards
-  h.exit(result.status, 0, result.stdout)
-  assert.equal(h.source.guards, previous)
-  assert.match(h.messages[0][1], /refresh failed/)
 })
 
 test("exit zero with missing or malformed rows retains previous guards", () => {
@@ -310,22 +322,25 @@ test("empty guard scripts do not launch a process", () => {
 
 // The provider lists (fonts, kernels) run one at a time in providerProc.
 // Guards are left out: guardProc counts as busy, so refresh() starts none.
+const providerMenu = {
+  style: { label: "Style" },
+  "style.font": { label: "Font", provider: "fonts" },
+  update: { label: "Update" },
+  "update.kernel": { label: "Kernel", provider: "kernels" },
+  setup: { label: "Setup" },
+  "setup.language": { label: "Language", provider: "languages" }
+}
+const providerTree = (menu, extension = {}) => OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, OmarchyMenu.parse(JSON.stringify(extension)).items)
+
 function providerHarness() {
   const source = {
     commandTimeout: "10s", revision: 3, providerQueue: [], pendingProviderItems: {},
-    tree: OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify({
-      style: { label: "Style" },
-      "style.font": { label: "Font", provider: "fonts" },
-      update: { label: "Update" },
-      "update.kernel": { label: "Kernel", provider: "kernels" },
-      setup: { label: "Setup" },
-      "setup.language": { label: "Language", provider: "languages" }
-    })).items, []),
+    tree: providerTree(providerMenu),
     providerItems: { "style.font": [{ id: "style.font.old", label: "Old Font" }], "update.kernel": [{ id: "update.kernel.old", label: "old" }] }
   }
   const providerProc = { running: false, menuId: "", collected: "", command: [], starts: [] }
   const context = vm.createContext({ source, guardProc: { running: true }, providerProc, OmarchyMenu })
-  for (const name of ["providerMenus", "startNextProvider", "finishProvider", "bounded", "refresh"]) {
+  for (const name of ["providerMenus", "requeueProviders", "startNextProvider", "finishProvider", "bounded", "refresh"]) {
     vm.runInContext(method(name), context)
     source[name] = context[name]
   }
@@ -356,7 +371,7 @@ function providerHarness() {
   }
 }
 
-const bash = (script) => ["timeout", "--kill-after=1s", "10s", "bash", "-lc", script]
+const bash = (script) => ["timeout", "--signal=KILL", "10s", "bash", "-lc", script]
 
 test("provider lists run one at a time under the deadline and publish together", () => {
   const h = providerHarness()
@@ -384,9 +399,14 @@ test("provider lists run one at a time under the deadline and publish together",
   assert.deepEqual(Object.keys(rows).sort(), ["style.font", "update.kernel"])
 })
 
-test("a list that times out, crashes or cannot start keeps the previous list and the queue goes on", () => {
+test("a list that fails, times out, crashes or cannot start keeps the previous list and the queue goes on", () => {
   for (const [name, fail] of [
-    ["exit 124 at the deadline", (h) => h.end(124, 0, "Half Font\tHalf Font\t\n")],
+    ["the deadline: timeout SIGKILLed with its group (crash, code 9)", (h) => h.end(9, 1, "Half Font\tHalf Font\t\n")],
+    ["exit 124", (h) => h.end(124, 0, "Half Font\tHalf Font\t\n")],
+    ["normal exit with code 1 and no output", (h) => h.end(1, 0, "")],
+    // timeout reports a child that a signal ended as 128 + the signal.
+    ["bash ended by SIGKILL (137)", (h) => h.end(137, 0, "Half Font\tHalf Font\t\n")],
+    ["timeout could not run bash (127)", (h) => h.end(127, 0, "")],
     ["abnormal exit", (h) => h.end(0, 1, "Half Font\tHalf Font\t\n")],
     ["running -> false without exited()", (h) => h.lost()]
   ]) {
@@ -414,6 +434,103 @@ test("running -> false after the last exit changes nothing", () => {
   assert.equal(h.source.providerItems, published)
   assert.equal(h.source.revision, 4)
   assert.equal(h.providerProc.starts.length, 2)
+})
+
+// A menu file or catalog read again while the font list runs: rebuild()
+// sets a new tree and calls refresh(). Each row gives the new tree, the
+// lists started after the font list, and the published menus.
+test("a tree rebuilt while lists run lists the current tree's provider menus", () => {
+  const { fonts, kernels } = OmarchyMenu.PROVIDERS
+  const power = OmarchyMenu.PROVIDERS["power-profiles"]
+  const withoutKernel = { ...providerMenu }
+  delete withoutKernel["update.kernel"]
+  const withoutFont = { ...providerMenu }
+  delete withoutFont["style.font"]
+  const outputs = { [fonts.script]: "Hack\tHack\tHack\n", [kernels.script]: "linux\tlinux\tlinux\n", [power.script]: "balanced\tbalanced\tbalanced\n" }
+  for (const [name, tree, later, published] of [
+    ["the same menus", providerTree(providerMenu), [kernels], { "style.font": "omarchy-font-set 'Hack'", "update.kernel": "omarchy-kernel set 'linux'" }],
+    ["a queued menu removed", providerTree(withoutKernel), [], { "style.font": "omarchy-font-set 'Hack'" }],
+    ["the running menu removed", providerTree(withoutFont), [kernels], { "update.kernel": "omarchy-kernel set 'linux'" }],
+    ["a provider menu added", providerTree({ ...providerMenu, "setup.power": { label: "Power", provider: "power-profiles" } }), [kernels, power],
+      { "style.font": "omarchy-font-set 'Hack'", "update.kernel": "omarchy-kernel set 'linux'", "setup.power": "omarchy-powerprofiles-set autodetect 'balanced'" }],
+    // An extension can give an existing menu another provider.
+    ["the running menu's provider changed", providerTree(providerMenu, { "style.font": { provider: "power-profiles" } }), [power, kernels],
+      { "style.font": "omarchy-powerprofiles-set autodetect 'balanced'", "update.kernel": "omarchy-kernel set 'linux'" }]
+  ]) {
+    const h = providerHarness()
+    h.source.refresh()
+    h.source.tree = tree
+    h.source.refresh()
+    assert.equal(h.providerProc.starts.length, 1, name)
+    for (const start of h.providerProc.starts) {
+      if (!h.providerProc.running) break
+      h.end(0, 0, outputs[start[5]])
+    }
+    assert.deepEqual(h.providerProc.starts.slice(1), later.map((spec) => bash(spec.script)), name)
+    assert.equal(h.providerProc.running, false, name)
+    assert.equal(h.source.revision, 4, name + ": one publish")
+    const rows = h.source.providerItems
+    assert.deepEqual(Object.fromEntries(Object.keys(rows).map((id) => [id, rows[id].map((r) => r.action).join()])), published, name)
+  }
+})
+
+// The FileViews of the shipped menu and the user's extension, with load():
+// read(which, text) is a FileView's loaded(), failed(which) its loadFailed().
+function menuFileHarness() {
+  const messages = []
+  const source = {
+    defaultPath: "/opt/omarchy/default/omarchy/omarchy-menu.jsonc", userPath: "/home/u/.config/omarchy/extensions/omarchy-menu.jsonc",
+    defaultItems: [], userItems: [], message: (level, text) => messages.push([level, text]), rebuild() {}
+  }
+  const context = vm.createContext({ source, OmarchyMenu, text: () => "" })
+  vm.runInContext(method("load"), context)
+  source.load = context.load
+  const from = { default: "path: source.defaultPath", user: "path: source.userPath" }
+  // A handler is one statement or a { } block.
+  const body = (name, which) => {
+    const one = handler(name, from[which])
+    return one.trimStart().startsWith("{") ? block(name + ": {", 4, from[which]).slice(name.length + 2) : one
+  }
+  const run = (name, which, value) => {
+    context.text = () => value
+    vm.runInContext("(function() { " + body(name, which) + " })()", context)
+  }
+  const ids = (which) => source[which + "Items"].map((item) => item.id)
+  return { messages, ids, read: (which, value) => run("onLoaded", which, value), failed: (which) => run("onLoadFailed", which) }
+}
+
+test("a menu file read empty, unreadable or missing keeps its previous rows", () => {
+  const good = (id) => JSON.stringify({ [id]: { label: id } })
+  // Each read: the text (null for a failed load), the ids that stay, and
+  // whether it warns.
+  for (const [which, reads] of [
+    ["default", [
+      [good("first"), ["first"], false],
+      ["", ["first"], true],
+      ['{ "half": { "label": ', ["first"], true],
+      ["[]", ["first"], true],
+      [null, ["first"], true],
+      [good("second"), ["second"], false]
+    ]],
+    // An empty or missing extension file is the user's choice.
+    ["user", [
+      [good("mine"), ["mine"], false],
+      ['{ "half": ', ["mine"], true],
+      ["", [], false],
+      [good("again"), ["again"], false],
+      [null, [], false]
+    ]]
+  ]) {
+    const h = menuFileHarness()
+    for (const [value, kept, warns] of reads) {
+      const count = h.messages.length
+      if (value === null) h.failed(which)
+      else h.read(which, value)
+      const name = which + " " + JSON.stringify(value)
+      assert.deepEqual(h.ids(which), kept, name)
+      assert.equal(h.messages.length - count, warns ? 1 : 0, name)
+    }
+  }
 })
 
 function sandbox(t) {

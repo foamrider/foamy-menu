@@ -229,6 +229,60 @@ test("mixed units add up", () => {
   for (const q of ["2 kg 3", "10 usd 5 usd", "100 °F 3 °C"]) assert.equal(C.evaluate(q, env), null, q)
 })
 
+test("a mixed duration moves the calendar by each part across the DST switch", () => {
+  // New York leaves summer time on Sunday 1 November 2026, between now and
+  // these answers, so a calendar day there is 25 hours long.
+  const no = { ...env, decimal: ",", groupSeparator: " ", dayFirst: true }
+  const n = (q) => { const x = C.evaluate(q, no); return x && x.result }
+  assert.equal(result("17 days from now"), "Thursday, 5 November 2026 at 4:06 PM")
+  for (const q of ["2 weeks 3 days from now", "2 weeks + 3 days from now", "(2 weeks 3 days) from now"]) {
+    assert.equal(result(q), "Thursday, 5 November 2026 at 4:06 PM", q)
+  }
+  assert.equal(n("om 2 uker og 3 dager"), "Thursday, 5 November 2026 at 4:06 PM")
+  assert.equal(result("3 weeks - 3 days from now"), "Friday, 6 November 2026 at 4:06 PM", "a subtracted part moves back")
+  assert.equal(result("1 month 3 days from now"), "Sunday, 22 November 2026 at 4:06 PM", "a month part is a calendar month")
+  assert.equal(result("13 days 3 hours from now"), "Sunday, 1 November 2026 at 7:06 PM", "the hours are exact after the calendar days")
+  assert.equal(result("now + 2 weeks 3 days"), "Thursday, 5 November 2026 at 4:06 PM")
+  for (const q of ["now - -(2 weeks 3 days)", "-(2 weeks 3 days) ago"]) {
+    assert.equal(result(q), "Thursday, 5 November 2026 at 4:06 PM", "a negated sum keeps its parts: " + q)
+  }
+  for (const q of ["13.5 days 12 hours from now", "1.5 weeks 3.5 days from now"]) {
+    assert.equal(result(q), "Monday, 2 November 2026 at 4:06 PM", "a sum of whole calendar units moves the calendar: " + q)
+  }
+  assert.equal(result("2 weeks 3 days to days"), "17 days", "a converted sum is one quantity")
+  assert.equal(C.evaluate("2 hours 1 workday from now", env), null, "a work-day part is not a calendar day")
+})
+
+test("parts of one calendar unit that cancel do not move the date", () => {
+  // From 31 January, a month forward lands on 3 March and a month back on
+  // 3 February: the parts must add up before the date moves.
+  for (const q of ["2026-01-31 + (1 month - 1 month + 1 day)", "2026-01-31 + (1 month 1 day - 1 month)",
+    "2026-01-31 + (1 year - 12 months + 1 day)"]) {
+    assert.equal(result(q), "Sunday, 1 February 2026", q)
+  }
+  assert.equal(result("2028-02-29 + (1 year - 12 months + 1 day)"), "Wednesday, 1 March 2028", "a whole year is 12 months")
+  assert.equal(result("2026-01-31 + (2 months - 1 month + 1 day)"), "Wednesday, 4 March 2026", "the rest of a unit still moves once")
+  assert.equal(result("2026-01-31 + (1 hour - 1 hour + 1 month - 1 month + 1 day)"), "Sunday, 1 February 2026")
+  // New York enters summer time on Sunday 8 March 2026, and 02:30 does not
+  // exist that night: a week forward lands on 03:30, and 7 days back from
+  // there keeps 03:30. A whole week is 7 days, so the two cancel first.
+  const march = { ...env, nowMs: Date.UTC(2026, 2, 1, 7, 30), localOffset: -300 }
+  for (const q of ["now + (1 week - 7 days + 1 hour)", "now + (7 days - 1 week + 1 hour)", "now + (1 week + 1 hour - 7 days)"]) {
+    assert.equal(result(q, march), "Sunday, 1 March 2026 at 3:30 AM", q)
+  }
+  assert.equal(result("now + (2 weeks - 7 days)", march), "Sunday, 8 March 2026 at 3:30 AM", "the rest of the weeks still moves once")
+  // New York leaves summer time on Sunday 1 November 2026: 01:30 comes
+  // twice. A part that cancels to zero must not move the time from one
+  // 01:30 to the other, so the hour is added to the 01:30 it started from.
+  for (const [first, offset, answer] of [[Date.UTC(2026, 10, 1, 5, 30), -240, "1:30 AM"], [Date.UTC(2026, 10, 1, 6, 30), -300, "2:30 AM"]]) {
+    const autumn = { ...env, nowMs: first, localOffset: offset }
+    assert.equal(result("now + 1 hour", autumn), "Sunday, 1 November 2026 at " + answer)
+    for (const q of ["now + (1 day - 1 day + 1 hour)", "now + (1 week - 7 days + 1 hour)", "now + (1 month - 1 month + 1 hour)"]) {
+      assert.equal(result(q, autumn), "Sunday, 1 November 2026 at " + answer, q + " from the 01:30 at UTC" + offset / 60)
+    }
+  }
+})
+
 test("work time follows workHoursPerDay and remToPxRate is configurable", () => {
   assert.equal(result("40 hours in work days"), "5 work days")
   assert.equal(result("2 work weeks to hours"), "80 hours")
@@ -264,6 +318,15 @@ test("history is newest first, unique, pruned after 90 days and capped", () => {
   let big = []
   for (let i = 0; i < C.HISTORY_LIMIT + 5; i++) big = C.pushHistory(big, { id: String(i), query: "q" + i, result: "", copy: "", kind: "math" }, NOW)
   assert.equal(big.length, C.HISTORY_LIMIT)
+})
+
+test("history entries edited to something other than an object are left out", () => {
+  const kept = { id: "1", query: "2+2", result: "4", copy: "4", kind: "math", createdAt: NOW }
+  const edited = [null, 5, "x", kept]
+  assert.deepEqual(C.filterHistory(edited, ""), [kept])
+  assert.deepEqual(C.filterHistory(edited, "4"), [kept])
+  const pushed = C.pushHistory(edited, { id: "2", query: "3*3", result: "9", copy: "9", kind: "math" }, NOW)
+  assert.deepEqual(pushed.map((e) => e.id), ["2", "1"])
 })
 
 test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes", () => {

@@ -238,6 +238,9 @@ test("saved searches are capped per scope, least recent first", () => {
   const google = queryScope()
   assert.deepEqual(Scopes.historyOverflow(google, visits, 3), [Scopes.itemId("google", "q0"), Scopes.itemId("google", "q1")])
   assert.deepEqual(Scopes.historyOverflow(google, visits), [])
+  // A visit edited to null in frecency.json counts as the least recent.
+  visits[Scopes.itemId("google", "q5")] = null
+  assert.deepEqual(Scopes.historyOverflow(google, visits, 3), [Scopes.itemId("google", "q5"), Scopes.itemId("google", "q0"), Scopes.itemId("google", "q1")])
 })
 
 const sshScope = () => Scopes.merge(Scopes.BUILTINS, []).scopes[0]

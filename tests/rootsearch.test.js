@@ -171,6 +171,8 @@ test("favourite reordering", () => {
   assert.deepEqual(RS.reorderFavorites(cmds, "c", "favorite-add"), { a: 0, b: 1, c: 2 })
   assert.deepEqual(RS.reorderFavorites(cmds, "b", "favorite-up"), { b: 0, a: 1 })
   assert.deepEqual(RS.reorderFavorites(cmds, "a", "favorite-remove"), { a: null, b: 0 })
+  // An entry edited to null in settings.json is no favorite.
+  assert.deepEqual(RS.reorderFavorites({ x: null, a: { favoriteOrder: 0 } }, "c", "favorite-add"), { a: 0, c: 1 })
 })
 
 test("a web search opens the engine's URL with the query encoded", () => {
@@ -273,6 +275,27 @@ function withSections() {
 }
 const sectionCtx = (extra) => ctx(Object.assign({ sectionScopes }, extra || {}))
 const ids = (section) => section.rows.map((r) => r.candidate.id)
+
+test("a candidate that is never in the root search shows in no root section", () => {
+  // A game as the Games grid lists it, not as the root search does: as a
+  // favorite, with visits, in a section scope and found by the query, it
+  // would show in every part of the root list.
+  const steam = sectionMerge.find((s) => s.id === "steam")
+  const never = Scopes.itemCandidate(steam, { title: "Celeste", value: "504230", subtitle: "" })
+  assert.equal(never.rootSearch.when, "never")
+  const all = withSections().concat([never])
+  const c = sectionCtx({
+    commands: { [never.id]: { favoriteOrder: 0 } },
+    frecency: { [never.id]: Frecency.recordVisit(null, NOW - 1000, "celeste") }
+  })
+  for (const query of ["", "celeste", "cel"]) {
+    const sections = RS.rootSections(all, query, c, deps)
+    assert.ok(!sections.some((s) => ids(s).includes(never.id)), `"${query}"`)
+  }
+  const shown = RS.rootSections(all, "", c, deps)
+  assert.deepEqual(shown.map((s) => s.id), ["commands", "apps", "scope-section:notes"], "the other rows still show")
+  assert.ok(ids(shown[1]).includes("scope-item:steam:620"), "the root search's own games still show")
+})
 
 test("rootSection: the empty root lists untitled scopes' items among Applications, titled ones after it", () => {
   const sections = RS.rootSections(withSections(), "", sectionCtx(), deps)

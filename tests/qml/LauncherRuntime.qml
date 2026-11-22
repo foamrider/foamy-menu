@@ -309,11 +309,14 @@ ShellRoot {
     }
   }
   // A guard batch that hangs (its menu's one guard sleeps) ends at the
-  // deadline, keeps the previous results and stops loading.
+  // deadline, keeps the previous results and stops loading. Not 2s: the
+  // kit's clipboard stand-in for timeout turns `timeout --signal=KILL 2s`
+  // (clipboard.sh's read) into 60s, until foamy-kit's preview/hostenv.py
+  // matches only clipboard.sh's read.
   FoamyServices.OmarchyMenuSource {
     id: guardProbe
     omarchyPath: Quickshell.env("FOAMY_GUARD_OMARCHY")
-    commandTimeout: "2s"
+    commandTimeout: "3s"
     property var said: []
     onMessage: function (level, text, metadata) {
       guardProbe.said = guardProbe.said.concat([text])

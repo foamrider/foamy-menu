@@ -113,3 +113,19 @@ test("a rates reply keeps only three-letter codes with positive numbers", () => 
   for (const bad of [null, "rates", {}, { base: 1, rates: { USD: 1 } }, { base: "EUR" }, { base: "EUR", rates: "USD" }])
     assert.equal(validRates(bad), null, JSON.stringify(bad))
 })
+
+test("a rates reply with no usable rate, an infinite rate or a bad base is not exchange rates", () => {
+  const { validRates } = policy({})
+  // JSON reads 1e999 as Infinity, which is a positive number.
+  const infinite = JSON.parse('{"base": "EUR", "date": "2026-10-19", "rates": {"USD": 1e999, "SEK": 11.4}}')
+  const kept = validRates(infinite)
+  assert.deepEqual(Object.keys(kept.rates), ["SEK"], "the infinite rate is dropped")
+  const cases = [
+    ["no rates", { base: "EUR", rates: {} }],
+    ["no rate left", { base: "EUR", rates: { usd: 1.1, GBP: "0.8", JPY: 0 } }],
+    ["only an infinite rate", JSON.parse('{"base": "EUR", "rates": {"USD": 1e999}}')],
+    ["a base that is no currency code", { base: "eur", rates: { USD: 1.1 } }],
+    ["an empty base", { base: "", rates: { USD: 1.1 } }]
+  ]
+  for (const [name, reply] of cases) assert.equal(validRates(reply), null, name)
+})

@@ -147,7 +147,14 @@ omarchy bar get foamy.menu webSearchHistory
 font uses Omarchy's). `width` is a minimum: the launcher keeps its 750-unit
 layout and stays inside the screen; stock menus keep their own width rules.
 Zoom (Ctrl +/−), favorites, aliases, ranking and history are not settings:
-they are kept in `~/.local/share/foamy-menu/db/`.
+they are kept in `~/.local/share/foamy-menu/db/`. A file there that Foamy
+cannot use (not JSON, or a part of the wrong type) is left as it is: the
+launcher starts without that file's data, saves nothing to it and logs why.
+Fix the file and Foamy reads it again; remove it and Foamy starts a new one.
+The same holds for a file from a newer build. A usable file that is removed
+or emptied while the shell runs keeps its data in the launcher, which writes
+it again with the next change: to start over, remove it while the shell is
+stopped.
 
 ## Scopes
 
@@ -272,7 +279,8 @@ omarchy bar set foamy.menu webSearchSuggestions true --json
   **Recent Searches**, ranked by use and narrowed by what you type. They stay
   in Foamy's own data (`~/.local/share/foamy-menu/db/frecency.json`), at most
   100 per scope. Ctrl+D deletes one; Ctrl+Shift+D clears the scope's history.
-  With history off nothing is saved.
+  A search longer than 512 characters runs but is not saved. With history
+  off nothing is saved.
 - `webSearchSuggestions`: the engine's autocomplete is listed under **Suggestions** as you
   type. This sends what you type to the engine (after a short pause, one
   request at a time); nothing is sent while it is off.
@@ -501,9 +509,16 @@ app focuser against a fake `hyprctl`: quick repeated opens each focus the
 open window, focus waits until the launcher's layer is gone, and a lookup
 that fails (bad output, an error, a hung `hyprctl`) launches the app once.
 `tests/json-store.py` runs the store that holds favorites, aliases, ranking
-and calculator history against real files: a new file, an unreadable one and
-one from a newer build (left as they are), a save just before the store goes,
-and a file another program replaced.
+and calculator history against real files: a new file, unusable ones and
+one from a newer build (left as they are, and new stores once removed), one
+without a part, a save just before the store goes, a file another program
+replaced, empties to save in place, or removes, and an unusable file fixed
+in place.
+It then starts the backend over an unusable calculator.json and a
+settings.json without its general settings and with a command entry edited
+to null, saves the zoom, an alias and a favorite, and checks that long
+searches are not saved; last it replaces calculator.json with a history
+that holds a null entry and deletes the calculation after it.
 The tests use the foamy-kit harness (`FOAMY_KIT`, default `~/GitHub/Personal/foamy-kit`).
 They run on Omarchy 4.5: `FOAMY_HOST_45` (a shell directory), else
 `$OMARCHY_TEST_ROOT/shell`, else the installed `/usr/share/omarchy/shell`.

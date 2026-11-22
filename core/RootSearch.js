@@ -314,6 +314,9 @@ function rootSections(candidates, query, ctx, deps) {
   var decorated = []
   for (var i = 0; i < candidates.length; i++) {
     if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
+    // "never" rows belong to their own view (a scope's items, the settings),
+    // not to any part of the root list.
+    if (candidates[i].rootSearch.when === "never") continue
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
@@ -633,7 +636,11 @@ function actionsFor(candidate) {
 
 function reorderFavorites(commands, id, action) {
   var favs = []
-  for (var key in commands) if (typeof commands[key].favoriteOrder === "number") favs.push({ id: key, order: commands[key].favoriteOrder })
+  for (var key in commands) {
+    // An entry edited to null in settings.json counts as no settings.
+    var order = (commands[key] || {}).favoriteOrder
+    if (typeof order === "number") favs.push({ id: key, order: order })
+  }
   favs.sort(function(a, b) { return a.order - b.order })
   var ids = favs.map(function(f) { return f.id })
   var at = ids.indexOf(id)

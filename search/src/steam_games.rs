@@ -38,6 +38,10 @@
 //!
 //! Bounds: [`MAX_VDF_BYTES`] per text file (read with
 //! `foamy_helper::fs::read_file_limited`: no symlinks, FIFOs or devices),
+//! [`MAX_MANIFEST_BYTES`] read from app manifests in all (the bytes read
+//! from one over its limit included; reaching it fails the listing: exit 1
+//! with the reason on stderr and nothing printed, as the list would miss
+//! the games after it),
 //! [`MAX_LIBRARIES`] libraries, [`MAX_DIR_ENTRIES`] directory entries per
 //! folder, [`MAX_GAMES`] games, [`MAX_APPINFO_ENTRY`] bytes per appinfo entry,
 //! [`MAX_STRING_TABLE`] bytes and [`MAX_STRINGS`] strings in its string table,
@@ -54,11 +58,17 @@ use std::time::SystemTime;
 
 /// Bytes per text KeyValues file (libraryfolders.vdf, app manifests).
 pub(crate) const MAX_VDF_BYTES: u64 = 1024 * 1024;
+/// Bytes read from app manifests across all libraries. Manifests that give
+/// no installed app do not count toward [`MAX_GAMES`], so this bounds the
+/// reads of a folder full of them; a real manifest is a few KiB. A listing
+/// that reaches it is an error, not a shorter list.
+pub(crate) const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
 /// Library folders read, the root included.
 pub(crate) const MAX_LIBRARIES: usize = 64;
 /// Directory entries examined in one folder (steamapps, an art folder).
 pub(crate) const MAX_DIR_ENTRIES: usize = 65_536;
-/// Games listed (the scope keeps at most this many items).
+/// Games listed (the scope keeps at most this many items); no manifest is
+/// read after this many installed apps are found.
 pub(crate) const MAX_GAMES: usize = 5_000;
 /// Bytes of one appinfo.vdf entry; a larger size ends the scan.
 pub(crate) const MAX_APPINFO_ENTRY: u32 = 16 * 1024 * 1024;
@@ -145,7 +155,13 @@ pub(crate) fn main() -> ExitCode {
         Some(root) => Some(PathBuf::from(root)),
         None => home.as_deref().and_then(find_root),
     };
-    let output = root.map(|root| format(&list(&root))).unwrap_or_default();
+    let output = match root.map(|root| list(&root)).transpose() {
+        Ok(games) => games.map(|games| format(&games)).unwrap_or_default(),
+        Err(error) => {
+            eprintln!("foamy-menu-search: steam-games: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
     let mut stdout = io::stdout().lock();
     match stdout.write_all(&output).and_then(|()| stdout.flush()) {
         Ok(()) => ExitCode::SUCCESS,
@@ -169,18 +185,27 @@ pub(crate) fn find_root(home: &Path) -> Option<PathBuf> {
     .map(|root| fs::canonicalize(&root).unwrap_or(root))
 }
 
-/// Every installed game under a Steam root, sorted by name.
-pub(crate) fn list(root: &Path) -> Vec<Game> {
+/// Every installed game under a Steam root, sorted by name; an error once
+/// [`MAX_MANIFEST_BYTES`] are read, since manifests after it are not read.
+pub(crate) fn list(root: &Path) -> io::Result<Vec<Game>> {
     let mut seen = HashSet::new();
     let mut installed = Vec::new();
-    for library in libraries(root) {
-        for (appid, name) in manifests(&library) {
-            if installed.len() >= MAX_GAMES {
-                break;
-            }
+    let mut budget = MAX_MANIFEST_BYTES;
+    // Manifests are read one at a time, so none is read past either limit.
+    'libraries: for library in libraries(root) {
+        for (appid, name) in manifests(&library, &mut budget) {
             if seen.insert(appid) {
                 installed.push((appid, name));
+                if installed.len() >= MAX_GAMES {
+                    break 'libraries;
+                }
             }
+        }
+        if budget == 0 {
+            return Err(io::Error::other(format!(
+                "app manifests hold more than {} MiB; not listing part of the games",
+                MAX_MANIFEST_BYTES / (1024 * 1024)
+            )));
         }
     }
     let wanted: HashSet<u32> = installed.iter().map(|(appid, _)| *appid).collect();
@@ -205,7 +230,7 @@ pub(crate) fn list(root: &Path) -> Vec<Game> {
             .cmp(&b.name.to_lowercase())
             .then(a.appid.cmp(&b.appid))
     });
-    games
+    Ok(games)
 }
 
 pub(crate) fn format(games: &[Game]) -> Vec<u8> {
@@ -271,12 +296,13 @@ pub(crate) fn libraries(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// `(appid, name)` of each app manifest in a library, by file name.
-pub(crate) fn manifests(library: &Path) -> Vec<(u32, String)> {
-    let Ok(dir) = fs::read_dir(library.join("steamapps")) else {
-        return Vec::new();
-    };
-    let mut files: Vec<(u32, PathBuf)> = dir
+/// `(appid, name)` of each app manifest in a library, by file name; each
+/// manifest is read when the iterator reaches it, and none once `budget`
+/// (bytes, charged for every read) is used up.
+pub(crate) fn manifests(library: &Path, budget: &mut u64) -> impl Iterator<Item = (u32, String)> {
+    let mut files: Vec<(u32, PathBuf)> = fs::read_dir(library.join("steamapps"))
+        .into_iter()
+        .flatten()
         .take(MAX_DIR_ENTRIES)
         .filter_map(Result::ok)
         .filter_map(|entry| {
@@ -289,19 +315,34 @@ pub(crate) fn manifests(library: &Path) -> Vec<(u32, String)> {
     files.sort();
     files
         .into_iter()
-        .filter_map(|(appid, path)| {
-            let data = read_file_limited(&path, MAX_VDF_BYTES).ok()?;
-            let state = parse_text(&data)?;
-            let state = state.get("AppState")?;
-            if state.str("appid").and_then(parse_appid) != Some(appid) {
-                return None;
+        .map_while(move |(appid, path)| (*budget > 0).then(|| manifest(appid, &path, budget)))
+        .flatten()
+}
+
+/// `(appid, name)` of one app manifest when it gives an installed app.
+fn manifest(appid: u32, path: &Path, budget: &mut u64) -> Option<(u32, String)> {
+    let limit = MAX_VDF_BYTES.min(*budget);
+    let data = match read_file_limited(path, limit) {
+        Ok(data) => data,
+        Err(error) => {
+            // InvalidData is the over-limit refusal, after limit + 1 bytes
+            // were read: they count toward the budget too.
+            if error.kind() == io::ErrorKind::InvalidData {
+                *budget = budget.saturating_sub(limit + 1);
             }
-            if matches!(state.str("StateFlags"), Some("0" | "1")) {
-                return None;
-            }
-            Some((appid, clean_name(state.str("name")?)?))
-        })
-        .collect()
+            return None;
+        }
+    };
+    *budget -= data.len() as u64;
+    let state = parse_text(&data)?;
+    let state = state.get("AppState")?;
+    if state.str("appid").and_then(parse_appid) != Some(appid) {
+        return None;
+    }
+    if matches!(state.str("StateFlags"), Some("0" | "1")) {
+        return None;
+    }
+    Some((appid, clean_name(state.str("name")?)?))
 }
 
 fn parse_appid(text: &str) -> Option<u32> {
@@ -980,7 +1021,7 @@ mod tests {
             .unwrap();
         let flat = root.write("appcache/librarycache/9_library_600x900.jpg", b"flat");
 
-        let games = list(&root.0);
+        let games = list(&root.0).unwrap();
         assert_eq!(
             games,
             vec![
@@ -1004,10 +1045,112 @@ mod tests {
     }
 
     #[test]
+    fn no_manifest_is_read_once_max_games_apps_are_found() {
+        let root = Root::new();
+        let lib = root.0.join("lib2");
+        root.write(
+            "steamapps/libraryfolders.vdf",
+            format!(
+                "\"libraryfolders\" {{ \"1\" {{ \"path\" \"{}\" }} }}",
+                lib.display()
+            ),
+        );
+        let last = MAX_GAMES as u32;
+        for appid in 1..=last + 1 {
+            root.manifest("", appid, "Game");
+        }
+        root.manifest("lib2", last + 2, "Later");
+        // Reading a file moves its access time on from the epoch (relatime
+        // still updates an access time older than the modification time);
+        // listing the folder does not.
+        let manifest = |dir: &str, appid: u32| {
+            root.0
+                .join(format!("{dir}steamapps/appmanifest_{appid}.acf"))
+        };
+        let watched = [
+            manifest("", last),
+            manifest("", last + 1),
+            manifest("lib2/", last + 2),
+        ];
+        for path in &watched {
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_accessed(SystemTime::UNIX_EPOCH))
+                .unwrap();
+        }
+        let games = list(&root.0).unwrap();
+        assert_eq!(games.len(), MAX_GAMES);
+        let read =
+            |path: &Path| fs::metadata(path).unwrap().accessed().unwrap() != SystemTime::UNIX_EPOCH;
+        assert!(
+            read(&watched[0]),
+            "the temporary file system must record access times"
+        );
+        assert!(!read(&watched[1]), "the manifest after the limit");
+        assert!(!read(&watched[2]), "a manifest of the next library");
+    }
+
+    #[test]
+    fn no_manifest_is_read_once_the_manifest_bytes_are_read() {
+        let root = Root::new();
+        let lib = root.0.join("lib2");
+        root.write(
+            "steamapps/libraryfolders.vdf",
+            format!(
+                "\"libraryfolders\" {{ \"1\" {{ \"path\" \"{}\" }} }}",
+                lib.display()
+            ),
+        );
+        root.manifest("", 1, "First");
+        // Manifests that give no app: in turn one over its limit (its read
+        // counts limit + 1 bytes) and one of zeros read whole, together a
+        // little over the budget. Sparse, so they take no space.
+        let rejected = (MAX_MANIFEST_BYTES / MAX_VDF_BYTES) as u32;
+        for i in 0..rejected {
+            File::create(root.0.join(format!("steamapps/appmanifest_{}.acf", 2 + i)))
+                .unwrap()
+                .set_len(MAX_VDF_BYTES + u64::from(i % 2 == 0))
+                .unwrap();
+        }
+        let later = 2 + rejected;
+        root.manifest("", later, "Later");
+        root.manifest("lib2", later + 1, "Next library");
+        let watched = [
+            root.0.join("steamapps/appmanifest_1.acf"),
+            root.0.join(format!("steamapps/appmanifest_{later}.acf")),
+            lib.join(format!("steamapps/appmanifest_{}.acf", later + 1)),
+        ];
+        for path in &watched {
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_accessed(SystemTime::UNIX_EPOCH))
+                .unwrap();
+        }
+        let result = list(&root.0);
+        let read =
+            |path: &Path| fs::metadata(path).unwrap().accessed().unwrap() != SystemTime::UNIX_EPOCH;
+        assert!(
+            read(&watched[0]),
+            "the temporary file system must record access times"
+        );
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "app manifests hold more than 64 MiB; not listing part of the games",
+            "a listing that reaches the budget fails"
+        );
+        assert!(!read(&watched[1]), "the manifest after the budget");
+        assert!(!read(&watched[2]), "a manifest of the next library");
+    }
+
+    #[test]
     fn the_steam_root_is_the_first_candidate_with_steamapps() {
         let home = Root::new();
         fs::remove_dir_all(home.0.join("steamapps")).unwrap();
-        assert!(list(&home.0).is_empty());
+        assert!(list(&home.0).unwrap().is_empty());
         assert_eq!(find_root(&home.0), None);
         let real = |rel: &str| {
             fs::create_dir_all(home.0.join(rel).join("steamapps")).unwrap();
@@ -1089,7 +1232,7 @@ mod tests {
         let named = named.to_str().unwrap();
         let fields: &[(&str, &str)] = &[("type", "game"), ("clienticon", named), ("icon", named)];
         root.write("appcache/appinfo.vdf", appinfo(APPINFO_V28, &[(7, fields)]));
-        let games = list(&root.0);
+        let games = list(&root.0).unwrap();
         assert_eq!(games.len(), 1);
         assert_eq!(games[0].icon, None);
     }

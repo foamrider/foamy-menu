@@ -580,12 +580,24 @@ function isDuration(v) { return v.type === "num" && v.unit && dimsKey(v.unit.dim
 
 function addDuration(d, v, sign) {
   var unit = v.unit
+  var calendar = unit === UNITS.d || unit === UNITS.wk || unit === UNITS.mo || unit === UNITS.yr
+  // A sum of durations moves the date by each part in turn, so the calendar
+  // parts of "2 weeks 3 days" stay calendar days across a DST switch. A sum
+  // that is a whole number of its calendar unit ("1.5 days 12 hours") moves
+  // the calendar as that unit, since its parts alone are exact seconds.
+  if (v.parts && !(calendar && Math.floor(v.n) === v.n)) {
+    for (var p = 0; p < v.parts.length; p++) d = addDuration(d, v.parts[p], sign)
+    return d
+  }
   // "3 work days from now" would mean business days, which we don't model. [D]
   if (unit === WORKDAY || unit === WORKWEEK) throw new CalcError("work days are not calendar days")
   var n = v.n * sign
+  // Nothing moves by zero. Setting the same calendar day again would still
+  // pick one of the two 01:30s of the hour that repeats when summer time ends.
+  if (n === 0) return d
   var t = new Date(d.ms)
   // Calendar units move the calendar; the rest are exact seconds.
-  if (unit === UNITS.d || unit === UNITS.wk || unit === UNITS.mo || unit === UNITS.yr) {
+  if (calendar) {
     if (Math.floor(n) === n) {
       if (unit === UNITS.d) t.setDate(t.getDate() + n)
       else if (unit === UNITS.wk) t.setDate(t.getDate() + 7 * n)
@@ -596,6 +608,35 @@ function addDuration(d, v, sign) {
   }
   var seconds = toBase(n, unit)
   return date(d.ms + seconds * 1000, d.hasTime || seconds % 86400 !== 0)
+}
+
+// The parts a duration was added up from, each with its sign; a value
+// changed in any other way is one part.
+function durationParts(v, sign) {
+  var parts = v.parts || [v]
+  var out = []
+  for (var i = 0; i < parts.length; i++) out.push(num(parts[i].n * sign, parts[i].unit))
+  return out
+}
+
+// Parts of one unit add up before the date moves, in the place of the first
+// one: month moves do not cancel (31 January + 1 month is 3 March, and
+// 1 month back is 3 February), so "1 month - 1 month + 1 day" moves by the
+// day alone. A whole number of years moves the calendar as 12 months each,
+// and a whole number of weeks as 7 days each, so they add up with months
+// and days: "1 week - 7 days" must not step over a DST switch and back.
+function mergeParts(parts) {
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var p = parts[i]
+    if (p.unit === UNITS.yr && Math.floor(p.n) === p.n) p = num(12 * p.n, UNITS.mo)
+    else if (p.unit === UNITS.wk && Math.floor(p.n) === p.n) p = num(7 * p.n, UNITS.d)
+    var j = 0
+    while (j < out.length && out[j].unit !== p.unit) j++
+    if (j < out.length) out[j] = num(out[j].n + p.n, p.unit)
+    else out.push(p)
+  }
+  return out
 }
 
 function add(a, b, sign, state) {
@@ -615,7 +656,9 @@ function add(a, b, sign, state) {
   if (a.unit && b.unit) {
     if (!sameDims(a.unit.dims, b.unit.dims)) throw new CalcError("incompatible units")
     var bn = convert(b, a.unit).n
-    return num(a.n + sign * bn, a.unit)
+    var sum = num(a.n + sign * bn, a.unit)
+    if (isDuration(a)) sum.parts = mergeParts(durationParts(a, 1).concat(durationParts(b, sign)))
+    return sum
   }
   return num(a.n + sign * b.n, a.unit || b.unit)
 }
@@ -984,7 +1027,7 @@ Parser.prototype.parseMul = function() {
 }
 
 Parser.prototype.parseUnary = function() {
-  if (this.isOp("-")) { this.i++; var v = this.parseUnary(); if (v.type !== "num") throw new CalcError("cannot negate"); var out = num(-v.n, v.unit); out.pct = v.pct; return out }
+  if (this.isOp("-")) { this.i++; var v = this.parseUnary(); if (v.type !== "num") throw new CalcError("cannot negate"); var out = num(-v.n, v.unit); out.pct = v.pct; if (v.parts) out.parts = durationParts(v, -1); return out }
   if (this.isOp("+")) { this.i++; return this.parseUnary() }
   return this.parsePower()
 }
@@ -1517,9 +1560,15 @@ function evaluate(query, env) {
 var HISTORY_LIMIT = 4096
 var HISTORY_MAX_AGE_MS = 90 * 864e5
 
+// An entry that is not an object (calculator.json edited by hand) holds no
+// calculation: the history leaves it out.
+function isHistoryEntry(h) {
+  return !!h && typeof h === "object"
+}
+
 function pushHistory(history, entry, nowMs) {
   var list = (Array.isArray(history) ? history : []).filter(function(h) {
-    return h.query !== entry.query && (h.pinned || nowMs - h.createdAt < HISTORY_MAX_AGE_MS)
+    return isHistoryEntry(h) && h.query !== entry.query && (h.pinned || nowMs - h.createdAt < HISTORY_MAX_AGE_MS)
   })
   list.unshift({ id: entry.id, query: entry.query, result: entry.result, copy: entry.copy, plain: entry.plain || entry.copy, kind: entry.kind, createdAt: nowMs })
   return list.slice(0, HISTORY_LIMIT)
@@ -1527,7 +1576,7 @@ function pushHistory(history, entry, nowMs) {
 
 function filterHistory(history, query) {
   var q = String(query || "").trim().toLowerCase()
-  var list = Array.isArray(history) ? history : []
+  var list = (Array.isArray(history) ? history : []).filter(isHistoryEntry)
   if (!q) return list
   return list.filter(function(h) { return (h.query + " " + h.result).toLowerCase().indexOf(q) >= 0 })
 }

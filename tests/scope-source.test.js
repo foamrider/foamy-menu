@@ -125,7 +125,7 @@ test("exit failures: deadline, helper missing, stderr, timeout's own report", ()
   const h = harness([scope("slow", ["sleep", "60"], 500), { id: "ssh", source: native.source }, scope("bad", ["false"])])
   h.enqueue("slow")
   h.proc.startedAt = Date.now() - 600
-  h.exit(124)
+  h.exit(9, 1)
   h.flush()
   h.enqueue("ssh")
   assert.ok(Scopes.isNativeCommand(h.proc.scopeCommand))
@@ -135,9 +135,10 @@ test("exit failures: deadline, helper missing, stderr, timeout's own report", ()
   h.source.keepStderr("\ntimeout: failed to run command 'nope': No such file or directory\n")
   h.exit(127)
   assert.deepEqual(h.loads.map(l => l.failure), ["timed out", FoamyNative.UNAVAILABLE_TEXT, "failed to run command 'nope': No such file or directory"])
-  // A command's own early exit 124 is no timeout.
+  // A command's own exit 124 is no timeout, also after the deadline.
   h.flush()
   h.enqueue("bad")
+  h.proc.startedAt = Date.now() - 20000
   h.exit(124)
   assert.equal(h.loads[3].failure, "exited with code 124")
 })
@@ -292,8 +293,19 @@ function runBounded(t, script, ms) {
 test("a hung sh -c and its children end at the deadline", (t) => {
   const r = runBounded(t, 'sleep 20 & echo $! >> "$1"; echo $$ >> "$1"; sleep 20', 300)
   assert.ok(r.elapsed >= 300, "not before the deadline: " + r.elapsed)
-  assert.equal(r.result.status, 124)
-  assert.ok(Scopes.timedOut(r.result.status, 0, r.elapsed, 300))
+  // The group gets its SIGKILL a second later, timeout included.
+  assert.equal(r.result.signal, "SIGKILL")
+  assert.ok(Scopes.timedOut(9, 1, r.elapsed, 300))
+  assert.deepEqual(r.alive, [])
+})
+
+test("a child that ignores SIGTERM is SIGKILLed a second later when the command died of it", (t) => {
+  // The child holds no output, so the pipeline ends with the command.
+  const r = runBounded(t, '(trap "" TERM; exec sleep 20) >/dev/null 2>&1 & echo $! >> "$1"; echo $$ >> "$1"; sleep 20', 300)
+  for (const pid of r.alive) process.kill(Number(pid), "SIGKILL")
+  assert.ok(r.elapsed >= 1300, "not before the kill-after second: " + r.elapsed)
+  assert.equal(r.result.signal, "SIGKILL")
+  assert.ok(Scopes.timedOut(9, 1, r.elapsed, 300))
   assert.deepEqual(r.alive, [])
 })
 

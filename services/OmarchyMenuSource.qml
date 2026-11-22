@@ -28,7 +28,9 @@ Item {
   property var guardCompiler: null
   // Each guard batch and provider list runs under coreutils timeout: at this
   // deadline its whole process group (the batch's background groups too)
-  // gets SIGTERM, then SIGKILL a second later. A batch that ends that way
+  // gets SIGKILL, which ends timeout as well. SIGTERM first would not do:
+  // timeout exits as soon as bash dies of it, and never sends its later
+  // SIGKILL to a group that ignores SIGTERM. A batch that ends that way
   // fails and keeps the previous results; so does a provider list.
   property string commandTimeout: "10s"
 
@@ -147,13 +149,14 @@ Item {
       }
     }
     if (!providerProc.running) {
+      source.providerTree = source.tree
       source.providerQueue = source.providerMenus()
       source.startNextProvider()
     }
   }
 
   function bounded(argv) {
-    return ["timeout", "--kill-after=1s", source.commandTimeout].concat(argv)
+    return ["timeout", "--signal=KILL", source.commandTimeout].concat(argv)
   }
 
   function providerMenus() {
@@ -168,8 +171,33 @@ Item {
 
   property var providerQueue: []
   property var pendingProviderItems: ({})
+  // The tree the queue and the pending lists were made for.
+  property var providerTree: null
+
+  // A menu file or catalog read again while lists run gives a new tree,
+  // which can drop, add or change provider menus. Queue the current tree's
+  // provider menus again, but keep a list this run already has for a menu
+  // whose provider is unchanged: a list depends only on its provider.
+  function requeueProviders() {
+    var menus = source.providerMenus()
+    var kept = ({})
+    var queue = []
+    for (let i = 0; i < menus.length; i++) {
+      let id = menus[i]
+      let before = source.providerTree.items[id]
+      if (before && before.provider === source.tree.items[id].provider && Object.prototype.hasOwnProperty.call(source.pendingProviderItems, id))
+        kept[id] = source.pendingProviderItems[id]
+      else
+        queue.push(id)
+    }
+    source.providerTree = source.tree
+    source.providerQueue = queue
+    source.pendingProviderItems = kept
+  }
 
   function startNextProvider() {
+    if (source.providerTree !== source.tree)
+      source.requeueProviders()
     if (source.providerQueue.length === 0) {
       source.providerItems = source.pendingProviderItems
       source.pendingProviderItems = ({})
@@ -187,7 +215,8 @@ Item {
 
   // The one way a provider list ends: exited or couldn't start. A second call
   // for the same run (running -> false after exited()) finds no menuId. A
-  // list that timed out, was killed or never started keeps the previous one.
+  // list that failed, timed out, was killed or never started keeps the
+  // previous one.
   function finishProvider(ok) {
     var menuId = providerProc.menuId
     if (menuId === "")
@@ -204,10 +233,21 @@ Item {
     source.startNextProvider()
   }
 
+  // A read in the middle of a write (an update, a checkout, an editor's
+  // save) can be empty or unparseable: such a read keeps the file's previous
+  // rows, as the stock menu does. The shipped menu is never empty, so an
+  // empty read of it counts as one; an empty extension file is the user's.
   function load(which, text) {
+    var path = which === "user" ? source.userPath : source.defaultPath
     var parsed = OmarchyMenu.parse(text)
-    if (parsed.error)
-      source.message("warning", "ignoring unreadable " + (which === "user" ? source.userPath : source.defaultPath) + ": " + parsed.error, null)
+    if (parsed.error) {
+      source.message("warning", "ignoring unreadable " + path + ": " + parsed.error, null)
+      return
+    }
+    if (which !== "user" && parsed.items.length === 0) {
+      source.message("warning", "ignoring empty " + path, null)
+      return
+    }
     if (which === "user")
       source.userItems = parsed.items
     else
@@ -243,9 +283,11 @@ Item {
         providerProc.collected += line + "\n"
       }
     }
-    // timeout exits 124 at the deadline (or is SIGKILLed with what's left).
+    // Only exit 0 is a whole list: at the deadline timeout is SIGKILLed with
+    // its group (a crash exit), and it exits 125-127 or 128 + a signal when
+    // bash failed or was killed.
     onExited: function (exitCode, exitStatus) {
-      source.finishProvider(exitStatus === 0 && exitCode !== 124)
+      source.finishProvider(exitStatus === 0 && exitCode === 0)
     }
     onRunningChanged: if (!running)
       source.finishProvider(false)
@@ -257,10 +299,8 @@ Item {
     printErrors: false
     onFileChanged: reload()
     onLoaded: source.load("default", text())
-    onLoadFailed: {
-      source.message("error", "Omarchy menu not found at " + source.defaultPath, null)
-      source.load("default", "")
-    }
+    // The previous rows stay, as for an empty read.
+    onLoadFailed: source.message("error", "Omarchy menu not found at " + source.defaultPath, null)
   }
 
   FileView {
