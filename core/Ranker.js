@@ -277,7 +277,9 @@ function buildRecord(candidate, query, options) {
   function fold(value) { return transliterate(String(value || "")) }
   var folded = fold(c.title)
   var title = folded
-  if (tq.charAt(0) === "/") title = title.replace("/", " ")
+  // A title that is the whole query keeps its "/", so it stays an exact
+  // match at every strictness, as it is in the helper.
+  if (tq.charAt(0) === "/" && lower(folded) !== tq) title = title.replace("/", " ")
   var titleLower = lower(title)
   var alternates = Array.isArray(c.alternateTitles) ? c.alternateTitles.map(fold) : []
   record.title = fuzzyMatch(title, tq, { literalQueryDots: literalDots })

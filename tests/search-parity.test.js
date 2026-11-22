@@ -33,7 +33,9 @@ const candidates = [
   { id: "skjaer", title: "Skjærgård", type: "command", alternateTitles: ["Øyrike"] },
   { id: "os", title: "ΟΣ", type: "command" },
   { id: "odysseus", title: "Οδυσσεύς", type: "command" },
-  { id: "kas", title: "ΚΑΣ ΒΓ", type: "command" }
+  { id: "kas", title: "ΚΑΣ ΒΓ", type: "command" },
+  { id: "slash", title: "/x", type: "command" },
+  { id: "root", title: "/", type: "command" }
 ]
 
 // [query, {level: matched ids}]; every row runs through both matchers.
@@ -106,7 +108,11 @@ const SHARED = [
   ["οσ", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
   ["ος", { low: ["odysseus", "os"], medium: ["odysseus", "os"], high: ["odysseus", "os"] }],
   // A word-final capital sigma inside a title, found as a prefix.
-  ["κασ", { low: ["kas"], medium: ["kas"], high: ["kas"] }]
+  ["κασ", { low: ["kas"], medium: ["kas"], high: ["kas"] }],
+  // A title that starts with "/" and is the whole query matches at every level.
+  // The loosest level also takes a separator and an "x" anywhere.
+  ["/x", { low: ["firefox", "slash"], medium: ["slash"], high: ["slash"] }],
+  ["/", { low: ["bt", "code", "dragon", "firefox", "font", "gt", "kas", "living", "root", "slash", "sok", "ssh", "ssh-en", "wifi", "writer"], medium: ["root"], high: ["root"] }]
 ]
 
 // Edit typos (swapped or wrong letters) are the helper's own: the built-in
