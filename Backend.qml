@@ -792,11 +792,9 @@ Item {
       throw new Error(backend.tr("%1 is not loaded yet", [file]))
     if (!store.lastError)
       throw new Error(backend.tr("%1 is from a newer version and is read-only", [file]))
-    // The reason without the path, which the file name already gives, so a
-    // short toast still shows it; the log has the whole error.
-    var at = store.lastError.indexOf(store.path + ": ")
-    var reason = at < 0 ? store.lastError : store.lastError.slice(at + store.path.length + 2)
-    throw new Error(backend.tr("%1 is read-only: %2", [file, reason]))
+    // The store's short reason, in the user's language, so a short toast
+    // still shows it; the log has the whole error.
+    throw new Error(backend.tr("%1 is read-only: %2", [file, backend.tr(store.lastReason[0], store.lastReason[1])]))
   }
 
   // A query longer than a listed value (MAX_TEXT) is no search term worth

@@ -16,6 +16,9 @@ Item {
   property bool loaded: false
   property bool readOnly: false
   property string lastError: ""
+  // Why the file cannot be used, for the user: [text, values] for the
+  // launcher's catalogs, or null. lastError has the whole error.
+  property var lastReason: null
 
   signal changed
   signal message(string level, string text, var metadata)
@@ -55,11 +58,12 @@ Item {
   // would have (held in memory only), so its users can go on. The same error
   // is reported once: a file without read permission cannot be watched, so
   // it is read again whenever another file in its directory changes.
-  function fail(error, text) {
+  function fail(error, reason, text) {
     store.readOnly = true
     if (error !== store.lastError)
       store.message("error", text || error, null)
     store.lastError = error
+    store.lastReason = reason
     if (store.loaded)
       return
     store.doc = Migrate.migrate(null, store.migrations, store.now()).doc
@@ -70,7 +74,8 @@ Item {
   // The parts a new document has as an object or a list, in a migrated
   // document: a missing one is added as a new document has it (there is no
   // data to lose; the file gets it with the next change), and one of another
-  // type makes the document unusable. Returns why, or "".
+  // type makes the document unusable. Returns why ({why, reason}, as fail()
+  // takes them), or null.
   // Migrate keeps schemaHistory itself, and nothing here reads it.
   function fillParts(doc) {
     var kind = function (value) {
@@ -86,12 +91,18 @@ Item {
         doc[key] = empty[key]
         added.push(key)
       } else if (kind(doc[key]) !== want) {
-        return key + " is not " + (want === "list" ? "a list" : "an object")
+        return want === "list" ? {
+          why: key + " is not a list",
+          reason: ["%1 is not a list", [key]]
+        } : {
+          why: key + " is not an object",
+          reason: ["%1 is not an object", [key]]
+        }
       }
     }
     if (added.length > 0)
       store.message("warning", store.path + " has no " + added.join(", ") + "; using what a new file has", null)
-    return ""
+    return null
   }
 
   // missing: the file is gone, not only empty.
@@ -100,7 +111,7 @@ Item {
       return
     var parsed = Migrate.parse(text)
     if (parsed.error)
-      return store.fail("unreadable " + store.path + ": " + parsed.error, "unreadable " + store.path + ": " + parsed.error + " (left untouched; fix or remove it)")
+      return store.fail("unreadable " + store.path + ": " + parsed.error, parsed.reason, "unreadable " + store.path + ": " + parsed.error + " (left untouched; fix or remove it)")
     // An empty or missing file while the store holds what it read from it is
     // another program saving it in place (empty, then write) or removing it,
     // not a new file: writing a new document now would replace the data and
@@ -123,16 +134,17 @@ Item {
     try {
       result = Migrate.migrate(parsed.doc, store.migrations, store.now())
     } catch (e) {
-      return store.fail("migration failed for " + store.path + ": " + e)
+      return store.fail("migration failed for " + store.path + ": " + e, ["migration failed", []])
     }
     if (result.error)
-      return store.fail(result.error, store.path + ": " + result.error)
+      return store.fail(result.error, result.reason, store.path + ": " + result.error)
     var shape = store.fillParts(result.doc)
     if (shape)
-      return store.fail("unusable " + store.path + ": " + shape, "unusable " + store.path + ": " + shape + " (left untouched; fix or remove it)")
+      return store.fail("unusable " + store.path + ": " + shape.why, shape.reason, "unusable " + store.path + ": " + shape.why + " (left untouched; fix or remove it)")
 
     store.readOnly = result.readOnly
     store.lastError = ""
+    store.lastReason = null
     if (result.readOnly)
       store.message("warning", store.path + " has schemaVersion " + result.from + ", newer than this build; not writing it", null)
     if (result.applied.length > 0)
@@ -170,7 +182,7 @@ Item {
       if (error === FileViewError.FileNotFound)
         store.ingest("", true)
       else
-        store.fail("cannot read " + store.path + ": " + FileViewError.toString(error))
+        store.fail("cannot read " + store.path + ": " + FileViewError.toString(error), ["file cannot be read", []])
     }
     onSaveFailed: function (error) {
       store.message("error", "cannot write " + store.path + ": " + FileViewError.toString(error), null)

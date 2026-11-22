@@ -25,6 +25,8 @@ test("English is keyed by itself; Norwegian has every key with the same holes", 
 function usedKeys() {
   const keys = new Set()
   const units = new Set()
+  // Lowercase keys that are UI text all the same, for the check below.
+  const fragments = new Set()
   const qml = ["Backend.qml", "ui/LauncherWindow.qml", "ui/ActionPanel.qml", "ui/Alert.qml"].map(read).join("\n")
   for (const [, key] of qml.matchAll(/(?:FoamyI18n\.t|window\.t|backend\.tr)\("((?:[^"\\]|\\.)*)"/g)) keys.add(key)
   for (const [, key] of qml.matchAll(/showToast\("\w+", (?:saved \? )?"([^"]+)"(?: : "([^"]+)")?/g)) keys.add(key)
@@ -69,12 +71,17 @@ function usedKeys() {
   keys.add(require("../kit/node-loader.cjs").load("FoamyNative").UNAVAILABLE_TEXT)
   keys.add("That value isn't allowed.")
   keys.add("Couldn't save the setting.")
-  return { keys, units }
+  // Why a store refuses a change, as [text, values] the read-only toast
+  // translates after "%1 is read-only: ".
+  for (const file of ["services/JsonStore.qml", "core/Migrate.js"])
+    for (const [, key] of read(file).matchAll(/\["([^"]+)", \[/g)) { keys.add(key); fragments.add(key) }
+  return { keys, units, fragments }
 }
 
 test("every string the launcher translates has a catalog entry", () => {
-  // Identifiers (lowercase) are not UI text; the long unit names are.
-  const { keys, units } = usedKeys()
-  const missing = [...keys].filter((key) => (/^[A-Z%“]/.test(key) || units.has(key)) && !Object.hasOwn(en, key) && key !== "Foamy Menu")
+  // Identifiers (lowercase) are not UI text; the long unit names and the
+  // fragments are.
+  const { keys, units, fragments } = usedKeys()
+  const missing = [...keys].filter((key) => (/^[A-Z%“]/.test(key) || units.has(key) || fragments.has(key)) && !Object.hasOwn(en, key) && key !== "Foamy Menu")
   assert.deepEqual(missing, [])
 })

@@ -55,6 +55,16 @@ UNUSABLE = {
     "wronglist": '{"schemaVersion": 1, "items": {"a": 1}}',
     "denied": MINE,
 }
+# Why each one is refused, as the toast says it (a catalog text and its
+# values); the log keeps the whole error.
+REASONS = {
+    "broken": ["document is not valid JSON", []],
+    "notobject": ["document is not a JSON object", []],
+    "badversion": ["invalid schemaVersion %1", ["x"]],
+    "throws": ["migration failed", []],
+    "wronglist": ["%1 is not a list", ["items"]],
+    "denied": ["file cannot be read", []],
+}
 
 SHELL = """import QtQuick
 import Quickshell
@@ -66,6 +76,7 @@ ShellRoot {
   id: test
   readonly property string dir: Quickshell.env("FOAMY_STORE_DIR")
   readonly property var unusable: JSON.parse(Quickshell.env("FOAMY_UNUSABLE"))
+  readonly property var reasons: JSON.parse(Quickshell.env("FOAMY_REASONS"))
   readonly property var migrations: [{
       version: 1,
       name: "init",
@@ -237,6 +248,7 @@ ShellRoot {
         }), name + ": an unusable file is read-only and refuses an update")
         test.check(store.loaded && !!store.doc && Array.isArray(store.doc.items) && store.doc.items.length === 0, name + ": an unusable file leaves the store loaded with an empty document: " + JSON.stringify(store.doc))
         test.check(store.reported.length === 1, name + ": an unusable file is reported once: " + JSON.stringify(store.reported))
+        test.check(JSON.stringify(store.lastReason) === JSON.stringify(test.reasons[name]), name + ": the store says why for the user: " + JSON.stringify(store.lastReason))
       }
       test.check(newer.readOnly && newer.doc.items[0] === "from a newer build" && !newer.update(function (d) {
         d.items = []
@@ -409,8 +421,8 @@ ShellRoot {
     var calculatorHealth = health.ok ? health.data.calculator : null
     test.check(!!calculatorHealth && calculatorHealth.loaded && calculatorHealth.readOnly && calculatorHealth.error.indexOf("calculator.json: document is not a JSON object") >= 0, "the health reply says calculator.json is unusable: " + JSON.stringify(health))
     var cleared = test.call("calculator.historyDeleteAll")
-    // In the user's language, with the reason before anything a short toast cuts.
-    test.check(!cleared.ok && cleared.error === "calculator.json er skrivebeskyttet: document is not a JSON object", "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
+    // In the user's language, the reason too, before anything a short toast cuts.
+    test.check(!cleared.ok && cleared.error === "calculator.json er skrivebeskyttet: dokumentet er ikke et JSON-objekt", "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
     // The commands and scope files are read apart from the stores.
     wait.waitFor(function () {
       return !!backend.candidatesById["builtin:calculator-history"] && backend.scopes.some(function (s) {
@@ -576,6 +588,7 @@ def store_run(harness):
     run.env["FOAMY_REWRITTEN"] = REWRITTEN
     run.env["FOAMY_MENDED"] = MENDED
     run.env["FOAMY_UNUSABLE"] = json.dumps(list(UNUSABLE))
+    run.env["FOAMY_REASONS"] = json.dumps(REASONS)
     run.run(timeout=60)
     (stores / "denied.json").chmod(0o600)
     problems = run.failures()

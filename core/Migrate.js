@@ -16,16 +16,18 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value))
 }
 
+// A failure has an error, for the log, and a reason, the short text for the
+// user ([text, values], for the launcher's catalogs).
 function parse(text) {
   var raw = String(text || "").trim()
   if (!raw) return { doc: null, error: "" }
   try {
     var value = JSON.parse(raw)
     if (!value || typeof value !== "object" || Array.isArray(value))
-      return { doc: null, error: "document is not a JSON object" }
+      return { doc: null, error: "document is not a JSON object", reason: ["document is not a JSON object", []] }
     return { doc: value, error: "" }
   } catch (e) {
-    return { doc: null, error: String(e && e.message || e) }
+    return { doc: null, error: String(e && e.message || e), reason: ["document is not valid JSON", []] }
   }
 }
 
@@ -37,7 +39,7 @@ function migrate(doc, migrations, now) {
   var from = doc ? Number(current.schemaVersion || 0) : 0
 
   if (!isFinite(from) || from < 0 || Math.floor(from) !== from)
-    return { doc: null, from: from, to: from, applied: [], changed: false, readOnly: true, error: "invalid schemaVersion " + current.schemaVersion }
+    return { doc: null, from: from, to: from, applied: [], changed: false, readOnly: true, error: "invalid schemaVersion " + current.schemaVersion, reason: ["invalid schemaVersion %1", [String(current.schemaVersion)]] }
 
   if (from > latest)
     return { doc: current, from: from, to: from, applied: [], changed: false, readOnly: true, error: "" }
