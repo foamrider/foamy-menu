@@ -1608,12 +1608,14 @@ OverlayWindow {
       }
 
       Row {
+        id: footerStatusRow
         anchors.left: parent.left
         anchors.leftMargin: window.px(16)
         anchors.verticalCenter: parent.verticalCenter
         spacing: window.px(8)
 
         Text {
+          id: footerIcon
           anchors.verticalCenter: parent.verticalCenter
           textFormat: Text.PlainText
           text: window.toast ? (window.toast.style === "failure" ? "\uf071" : "\uf00c") : window.brandIcon
@@ -1629,11 +1631,15 @@ OverlayWindow {
           color: window.look.foreground
           opacity: window.toast ? 0.9 : 0.6
           elide: Text.ElideRight
-          width: Math.min(implicitWidth, footer.width / 2)
+          // Half the footer at most, and it ends (with the Ctrl T hint) a
+          // margin before the actions on the right, which a narrow card
+          // leaves less than half for.
+          width: Math.max(0, Math.min(implicitWidth, footer.width / 2, footerActions.x - footerStatusRow.anchors.leftMargin * 2 - footerIcon.width - footerStatusRow.spacing - (footerCopyHint.visible ? footerCopyHint.width + footerStatusRow.spacing : 0)))
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
         KeyHint {
+          id: footerCopyHint
           visible: !!window.toast && window.toast.actions.length > 0
           anchors.verticalCenter: parent.verticalCenter
           keys: "Ctrl T"
