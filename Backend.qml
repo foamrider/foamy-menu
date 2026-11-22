@@ -1138,12 +1138,14 @@ Item {
           throw new Error("Unknown command " + id)
         if (data.alias !== undefined && data.alias !== null) {
           var alias = String(data.alias).trim().toLowerCase()
+          // Both refusals reach the alias view's toast: AltGr+Space types
+          // U+00A0 on the Norwegian layout, which its Space key lets through.
           if (/\s/.test(alias))
-            throw new Error("An alias cannot contain spaces")
+            throw new Error(backend.tr("An alias cannot contain spaces"))
           var commands = settingsStore.doc.commands
           for (var other in commands) {
             if (other !== id && (commands[other] || {}).alias === alias && alias)
-              throw new Error("Alias “" + alias + "” is already used by " + ((backend.candidatesById[other] || {}).title || other))
+              throw new Error(backend.tr("Alias “%1” is already used by %2", [alias, (backend.candidatesById[other] || {}).title || other]))
           }
         }
         backend.updateCommand(id, function (s) {
@@ -1441,13 +1443,16 @@ Item {
         scopeSource.refresh(scopeSource.scopes[i].id)
   }
 
-  // State of the scope on screen, for its empty and loading text.
+  // State of the scope on screen, for its empty and loading text. The
+  // failure is a catalog text with its values.
   function scopeState(scopeId) {
     var scope = scopeSource.scope(scopeId)
+    var failure = scopeSource.failures[scopeId]
     return {
       loaded: Scopes.isQuery(scope) || !!scopeSource.items[scopeId],
       loading: scopeSource.loading,
-      failure: scopeSource.failures[scopeId] || "",
+      failure: failure ? failure[0] : "",
+      failureValues: failure ? failure[1] : [],
       emptyText: scope ? scope.emptyText : "",
       placeholder: scope ? scope.placeholder : "",
       keyword: scope ? scope.keyword : "",

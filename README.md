@@ -494,8 +494,8 @@ lives in `core/`, I/O in `services/`, and the launcher UI in `ui/`. `Menu.qml` r
 
 `tests/runtime.py` exercises the stock adapter. `tests/launcher.py` exercises
 the new launcher, action panel, calculator, Apps grid, scopes (a fake
-`~/.ssh/config` read by the bundled helper, a user scope file, Enter through a
-stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts,
+`~/.ssh/config` read by the bundled helper, a user scope file, one whose
+command fails, Enter through a stubbed `omarchy-launch-tui`), keyboard navigation, theme/width layouts,
 route handoffs, and the rates and suggestion fetches against a local HTTPS
 server in an isolated offscreen shell with stub commands. It runs the
 dark layout in English and the light layout in Norwegian. The light run also

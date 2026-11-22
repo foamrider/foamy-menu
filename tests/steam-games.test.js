@@ -228,7 +228,7 @@ test("app manifests over the helper's byte budget fail the list instead of cutti
     const run = spawnSync(program, args, { env: { HOME: fixture.home, PATH: process.env.PATH }, encoding: "utf8", timeout: 10000 })
     assert.equal(run.error, undefined)
     assert.deepEqual([run.status, run.stdout], [1, ""], "no list, and an error exit")
-    assert.equal(Scopes.exitFailure(run.status, run.stderr), "foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games")
+    assert.deepEqual(Scopes.exitFailure(run.status, run.stderr), ["foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games", []])
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true })
   }

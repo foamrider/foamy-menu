@@ -374,6 +374,18 @@ EOF
             {"id": "off", "enabled": False, "title": "Off", "source": {"type": "list", "items": []}, "open": ["true"]}
         )
     )
+    # A command that fails without a word on stderr: the scope says how it
+    # exited, in the launcher's language.
+    (scopes / "failing.json").write_text(
+        json.dumps(
+            {
+                "title": "Failing",
+                "keyword": "fail",
+                "source": {"type": "command", "command": ["sh", "-c", "exit 3"]},
+                "open": ["true"],
+            }
+        )
+    )
     (stubs / "omarchy-launch-tui").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
     (stubs / "omarchy-launch-tui").chmod(0o755)
     (stubs / "omarchy-launch-browser").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_BROWSER_FILE"\n')

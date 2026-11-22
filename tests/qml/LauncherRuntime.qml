@@ -407,7 +407,7 @@ ShellRoot {
         test.check(backend.candidatesById["builtin:calculator-history"].title === test.said("Calculator History", "Kalkulatorhistorikk"), "built-in titles are translated")
         test.check(backend.scopes.map(function (s) {
           return s.id
-        }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,shelf" : "ssh,google,duckduckgo,bookmarks,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
+        }).join() === (test.nativeHelper ? "ssh,google,duckduckgo,steam,bookmarks,failing,shelf" : "ssh,google,duckduckgo,bookmarks,failing,shelf"), "built-in and user scopes load; enabled:false is skipped; Games once Steam lists games")
         test.check(backend.callSync("rootSearch.search", {
           query: "kettle",
           view: {
@@ -922,8 +922,8 @@ ShellRoot {
       case 36:
         if (test.waitFor(!runProbe.loading && !guardProbe.loading && guardProbe.said.length > 0))
           break
-        test.check(/^\/nonexistent\/foamy-no-such-command: /.test(runProbe.failures.broken || "") && !runProbe.items.broken, "a command that can't run fails its scope: " + runProbe.failures.broken)
-        test.check(runProbe.failures.hung === "timed out" && !runProbe.items.hung, "a hung command scope times out at its deadline")
+        test.check(/^\/nonexistent\/foamy-no-such-command: /.test((runProbe.failures.broken || [""])[0]) && !runProbe.items.broken, "a command that can't run fails its scope: " + JSON.stringify(runProbe.failures.broken))
+        test.check(JSON.stringify(runProbe.failures.hung) === JSON.stringify(["timed out", []]) && !runProbe.items.hung, "a hung command scope times out at its deadline: " + JSON.stringify(runProbe.failures.hung))
         test.check(!runProbe.failures.flood && runProbe.items.flood.length === Scopes.MAX_ITEMS && runProbe.items.flood[0].title === "1" && runProbe.said.some(function (t) {
           return t.indexOf("scope flood: output is over") === 0
         }), "a flood of output is stopped at the cap and its first items kept")
@@ -1069,7 +1069,24 @@ ShellRoot {
         test.stage--
         break
       case 52:
-        // Every run comes here, in different states.
+        // Every run comes here, in different states. First a command scope
+        // that fails without stderr: its empty view says how it exited, in
+        // the user's language.
+        if (test.asked === "") {
+          menu.open('{"menu":"root"}')
+          view.popToRoot()
+          view.setQuery("fail")
+          key(Qt.Key_Tab)
+          test.asked = "failing-scope"
+          test.stage--
+          break
+        }
+        if (test.asked === "failing-scope") {
+          if (test.waitFor(view.view.kind === "scope" && !!view.scopeState && view.scopeState.failure !== ""))
+            break
+          test.asked = ""
+          test.check(JSON.stringify(view.emptyText) === JSON.stringify([test.said("Could not load Failing", "Kunne ikke laste Failing"), test.said("exited with code 3", "avsluttet med kode 3")]), "a command scope that fails says how it exited, in the user's language: " + JSON.stringify(view.emptyText))
+        }
         menu.open('{"menu":"root"}')
         view.popToRoot()
         view.setQuery("")
@@ -1117,9 +1134,12 @@ ShellRoot {
           commandId: "builtin:settings"
         }).data.alias === "st", "an alias is saved trimmed and in lower case")
         var taken = alias("builtin:calculator-history", "st")
-        test.check(!taken.ok && taken.error.indexOf("already used") >= 0, "an alias another command uses is refused: " + taken.error)
-        var spaced = alias("builtin:calculator-history", "a b")
-        test.check(!spaced.ok && spaced.error.indexOf("cannot contain spaces") >= 0, "an alias with a space is refused: " + spaced.error)
+        var owner = backend.candidatesById["builtin:settings"].title
+        test.check(!taken.ok && taken.error === test.said("Alias “st” is already used by " + owner, "Aliaset «st» brukes allerede av " + owner), "an alias another command uses is refused, in the user's language: " + taken.error)
+        // AltGr+Space types U+00A0 on the Norwegian layout; the alias view's
+        // Space key lets it through.
+        var spaced = alias("builtin:calculator-history", "a b")
+        test.check(!spaced.ok && spaced.error === test.said("An alias cannot contain spaces", "Et alias kan ikke inneholde mellomrom"), "an alias with a space is refused, in the user's language: " + spaced.error)
         var unknown = alias("builtin:no-such-command", "x")
         test.check(!unknown.ok && unknown.error.indexOf("Unknown command") >= 0, "an alias for an unknown command is refused: " + unknown.error)
         view.popToRoot()

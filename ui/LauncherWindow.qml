@@ -138,7 +138,7 @@ OverlayWindow {
       return [window.t("Loading…"), ""]
     var s = window.scopeState
     if (s && s.failure && !s.loaded)
-      return [window.t("Could not load %1", [window.view.title]), window.t(s.failure)]
+      return [window.t("Could not load %1", [window.view.title]), window.t(s.failure, s.failureValues)]
     if (s && !s.loaded)
       return [window.t("Loading…"), ""]
     if (s && !window.query)

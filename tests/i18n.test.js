@@ -72,9 +72,10 @@ function usedKeys() {
   keys.add("That value isn't allowed.")
   keys.add("Couldn't save the setting.")
   // Why a store refuses a change, as [text, values] the read-only toast
-  // translates after "%1 is read-only: ".
-  for (const file of ["services/JsonStore.qml", "core/Migrate.js"])
-    for (const [, key] of read(file).matchAll(/\["([^"]+)", \[/g)) { keys.add(key); fragments.add(key) }
+  // translates after "%1 is read-only: ", and why a scope did not load,
+  // which its empty view translates.
+  for (const file of ["services/JsonStore.qml", "core/Migrate.js", "services/ScopeSource.qml", "core/Scopes.js"])
+    for (const [, key] of read(file).replace(/^\s*\/\/.*$/gm, "").matchAll(/\["([^"]+)", \[/g)) { keys.add(key); fragments.add(key) }
   return { keys, units, fragments }
 }
 
