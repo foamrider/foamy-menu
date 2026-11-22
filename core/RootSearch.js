@@ -314,6 +314,9 @@ function rootSections(candidates, query, ctx, deps) {
   var decorated = []
   for (var i = 0; i < candidates.length; i++) {
     if (!isEnabled(candidates[i], ctx) || !passesFilter(candidates[i], ctx.filter)) continue
+    // "never" rows belong to their own view (a scope's items, the settings),
+    // not to any part of the root list.
+    if (candidates[i].rootSearch.when === "never") continue
     decorated.push(decorate(candidates[i], ctx, deps))
   }
   var opts = rankOptions(ctx)
