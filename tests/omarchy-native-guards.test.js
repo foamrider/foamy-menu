@@ -110,7 +110,7 @@ test("startup can use the legacy fallback, then imports OEM once and compiles ev
   assert.equal(fileURLToPath(url), source.omarchyPath + "/shell/plugins/menu/MenuModel.js")
   assert.equal(parent, source)
   assert.equal(name, "OmarchyGuardCompiler")
-  assert.deepEqual(Array.from(guardProc.command), ["timeout", "--kill-after=1s", "10s", "bash", "-lc", "stock-1"])
+  assert.deepEqual(Array.from(guardProc.command), ["timeout", "--signal=KILL", "10s", "bash", "-lc", "stock-1"])
   assert.equal(guardProc.requestTree, source.tree)
   assert.deepEqual(Array.from(guardProc.expectedGuards), ["probe:w", "probe:c", "probe:d", "other:w"])
   h.exit(0)
@@ -221,45 +221,57 @@ test("running -> false after exited() changes nothing; alone it fails the batch 
 })
 
 test("a hung guard batch and its background groups end at the deadline", (t) => {
-  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foamy-menu-guard-hang-"))
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
-  const pids = path.join(dir, "pids")
-  const menu = {}
-  // Twelve hung guards over the batch's eight background groups.
-  for (let i = 0; i < 12; i++) menu["hung" + i] = { when: 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
-  const h = harness(() => { throw new Error("fallback script") })
-  h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
-  // Long enough for bash -lc and all eight groups to start on a busy machine
-  // (at 0.3 s some were killed before they recorded their pids).
-  h.source.commandTimeout = "2s"
-  h.start()
-  const [cmd, ...args] = h.guardProc.command
-  assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--kill-after=1s", "2s", "bash", "-lc"])
-  const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
-  // 124: the deadline fired and SIGTERM ended bash (a SIGKILL after
-  // --kill-after kills timeout itself: signal, no status). The pid check
-  // below proves that the background groups ended too.
-  assert.ifError(result.error)
-  assert.equal(result.signal, null)
-  assert.equal(result.status, 124)
-  const listed = fs.readFileSync(pids, "utf8").trim().split(/\s+/)
-  // Each group runs its guards in turn: its first one hangs (two pids each).
-  assert.equal(listed.length, 16)
   // A killed orphan is a zombie until its new parent reaps it: that's gone.
   const running = pid => {
     try { return !/^\d+ \(.*\) Z /.test(fs.readFileSync("/proc/" + pid + "/stat", "utf8")) } catch (e) { return false }
   }
-  let alive = listed.filter(running)
-  for (let i = 0; i < 20 && alive.length; i++) {
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
-    alive = alive.filter(running)
+  // A group that ignores SIGTERM passes that on to its guard's sleep.
+  for (const [name, prefix] of [["guards that end on SIGTERM", ""], ["guards that ignore SIGTERM", "trap '' TERM; "]]) {
+    const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "foamy-menu-guard-hang-"))
+    const pids = path.join(dir, "pids")
+    const recorded = () => fs.existsSync(pids) ? fs.readFileSync(pids, "utf8").trim().split(/\s+/).filter(Boolean) : []
+    // A failed run must not leave its 300 s sleeps behind: kill this run's
+    // own bash and sleep processes that still run.
+    t.after(() => {
+      for (const pid of recorded().filter(running)) {
+        try { if (/^\d+ \((bash|sleep)\) /.test(fs.readFileSync("/proc/" + pid + "/stat", "utf8"))) process.kill(Number(pid), "SIGKILL") } catch (e) {}
+      }
+      fs.rmSync(dir, { recursive: true, force: true })
+    })
+    const menu = {}
+    // Twelve hung guards over the batch's eight background groups.
+    for (let i = 0; i < 12; i++) menu["hung" + i] = { when: prefix + 'echo $BASHPID >> "$PIDS"; sleep 300 & echo $! >> "$PIDS"; wait' }
+    const h = harness(() => { throw new Error("fallback script") })
+    h.source.tree = OmarchyMenu.buildTree(OmarchyMenu.parse(JSON.stringify(menu)).items, [])
+    // Long enough for bash -lc and all eight groups to start on a busy machine
+    // (at 0.3 s some were killed before they recorded their pids).
+    h.source.commandTimeout = "2s"
+    h.start()
+    const [cmd, ...args] = h.guardProc.command
+    assert.deepEqual([cmd, ...args.slice(0, 4)], ["timeout", "--signal=KILL", "2s", "bash", "-lc"], name)
+    // A group still running holds stdout open, so spawnSync would wait for
+    // it until its own 15 s limit.
+    const result = spawnSync(cmd, args, { encoding: "utf8", timeout: 15000, env: { PATH: process.env.PATH, HOME: dir, PIDS: pids } })
+    assert.ifError(result.error)
+    // SIGKILL to the whole process group kills timeout itself too.
+    assert.equal(result.signal, "SIGKILL", name)
+    assert.equal(result.status, null, name)
+    const listed = recorded()
+    // Each group runs its guards in turn: its first one hangs (two pids each).
+    assert.equal(listed.length, 16, name)
+    let alive = listed.filter(running)
+    for (let i = 0; i < 20 && alive.length; i++) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50)
+      alive = alive.filter(running)
+    }
+    assert.deepEqual(alive, [], name)
+    // Quickshell reports a process killed by a signal as a crash: the
+    // previous results stay.
+    const previous = h.source.guards
+    h.exit(9, 1, result.stdout)
+    assert.equal(h.source.guards, previous, name)
+    assert.match(h.messages[0][1], /refresh failed/, name)
   }
-  assert.deepEqual(alive, [])
-  // The batch's exit (124) keeps the previous results.
-  const previous = h.source.guards
-  h.exit(result.status, 0, result.stdout)
-  assert.equal(h.source.guards, previous)
-  assert.match(h.messages[0][1], /refresh failed/)
 })
 
 test("exit zero with missing or malformed rows retains previous guards", () => {
@@ -359,7 +371,7 @@ function providerHarness() {
   }
 }
 
-const bash = (script) => ["timeout", "--kill-after=1s", "10s", "bash", "-lc", script]
+const bash = (script) => ["timeout", "--signal=KILL", "10s", "bash", "-lc", script]
 
 test("provider lists run one at a time under the deadline and publish together", () => {
   const h = providerHarness()

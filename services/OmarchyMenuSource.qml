@@ -28,7 +28,9 @@ Item {
   property var guardCompiler: null
   // Each guard batch and provider list runs under coreutils timeout: at this
   // deadline its whole process group (the batch's background groups too)
-  // gets SIGTERM, then SIGKILL a second later. A batch that ends that way
+  // gets SIGKILL, which ends timeout as well. SIGTERM first would not do:
+  // timeout exits as soon as bash dies of it, and never sends its later
+  // SIGKILL to a group that ignores SIGTERM. A batch that ends that way
   // fails and keeps the previous results; so does a provider list.
   property string commandTimeout: "10s"
 
@@ -154,7 +156,7 @@ Item {
   }
 
   function bounded(argv) {
-    return ["timeout", "--kill-after=1s", source.commandTimeout].concat(argv)
+    return ["timeout", "--signal=KILL", source.commandTimeout].concat(argv)
   }
 
   function providerMenus() {
