@@ -243,6 +243,9 @@ test("a mixed duration moves the calendar by each part across the DST switch", (
   assert.equal(result("1 month 3 days from now"), "Sunday, 22 November 2026 at 4:06 PM", "a month part is a calendar month")
   assert.equal(result("13 days 3 hours from now"), "Sunday, 1 November 2026 at 7:06 PM", "the hours are exact after the calendar days")
   assert.equal(result("now + 2 weeks 3 days"), "Thursday, 5 November 2026 at 4:06 PM")
+  for (const q of ["now - -(2 weeks 3 days)", "-(2 weeks 3 days) ago"]) {
+    assert.equal(result(q), "Thursday, 5 November 2026 at 4:06 PM", "a negated sum keeps its parts: " + q)
+  }
   for (const q of ["13.5 days 12 hours from now", "1.5 weeks 3.5 days from now"]) {
     assert.equal(result(q), "Monday, 2 November 2026 at 4:06 PM", "a sum of whole calendar units moves the calendar: " + q)
   }

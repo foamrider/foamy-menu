@@ -1004,7 +1004,7 @@ Parser.prototype.parseMul = function() {
 }
 
 Parser.prototype.parseUnary = function() {
-  if (this.isOp("-")) { this.i++; var v = this.parseUnary(); if (v.type !== "num") throw new CalcError("cannot negate"); var out = num(-v.n, v.unit); out.pct = v.pct; return out }
+  if (this.isOp("-")) { this.i++; var v = this.parseUnary(); if (v.type !== "num") throw new CalcError("cannot negate"); var out = num(-v.n, v.unit); out.pct = v.pct; if (v.parts) out.parts = durationParts(v, -1); return out }
   if (this.isOp("+")) { this.i++; return this.parseUnary() }
   return this.parsePower()
 }
