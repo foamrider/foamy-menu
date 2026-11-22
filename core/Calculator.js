@@ -1534,9 +1534,15 @@ function evaluate(query, env) {
 var HISTORY_LIMIT = 4096
 var HISTORY_MAX_AGE_MS = 90 * 864e5
 
+// An entry that is not an object (calculator.json edited by hand) holds no
+// calculation: the history leaves it out.
+function isHistoryEntry(h) {
+  return !!h && typeof h === "object"
+}
+
 function pushHistory(history, entry, nowMs) {
   var list = (Array.isArray(history) ? history : []).filter(function(h) {
-    return h.query !== entry.query && (h.pinned || nowMs - h.createdAt < HISTORY_MAX_AGE_MS)
+    return isHistoryEntry(h) && h.query !== entry.query && (h.pinned || nowMs - h.createdAt < HISTORY_MAX_AGE_MS)
   })
   list.unshift({ id: entry.id, query: entry.query, result: entry.result, copy: entry.copy, plain: entry.plain || entry.copy, kind: entry.kind, createdAt: nowMs })
   return list.slice(0, HISTORY_LIMIT)
@@ -1544,7 +1550,7 @@ function pushHistory(history, entry, nowMs) {
 
 function filterHistory(history, query) {
   var q = String(query || "").trim().toLowerCase()
-  var list = Array.isArray(history) ? history : []
+  var list = (Array.isArray(history) ? history : []).filter(isHistoryEntry)
   if (!q) return list
   return list.filter(function(h) { return (h.query + " " + h.result).toLowerCase().indexOf(q) >= 0 })
 }

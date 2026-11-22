@@ -284,6 +284,15 @@ test("history is newest first, unique, pruned after 90 days and capped", () => {
   assert.equal(big.length, C.HISTORY_LIMIT)
 })
 
+test("history entries edited to something other than an object are left out", () => {
+  const kept = { id: "1", query: "2+2", result: "4", copy: "4", kind: "math", createdAt: NOW }
+  const edited = [null, 5, "x", kept]
+  assert.deepEqual(C.filterHistory(edited, ""), [kept])
+  assert.deepEqual(C.filterHistory(edited, "4"), [kept])
+  const pushed = C.pushHistory(edited, { id: "2", query: "3*3", result: "9", copy: "9", kind: "math" }, NOW)
+  assert.deepEqual(pushed.map((e) => e.id), ["2", "1"])
+})
+
 test("root search puts the Calculator section first; ↵ copies, Ctrl ↵ pastes", () => {
   const Scopes = require("../core/Scopes.js")
   const deps = { Ranker: require("../core/Ranker.js"), Frecency: require("../core/Frecency.js"), OmarchyMenu: require("../core/OmarchyMenu.js"), Scopes }

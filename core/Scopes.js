@@ -661,7 +661,7 @@ function historyOverflow(scope, visits, max) {
   var keys = Object.keys(visits || {}).filter(function(k) { return k.indexOf(prefix) === 0 })
   var limit = max === undefined ? MAX_HISTORY : max
   if (keys.length <= limit) return []
-  keys.sort(function(a, b) { return (visits[a].openedAt || 0) - (visits[b].openedAt || 0) })
+  keys.sort(function(a, b) { return ((visits[a] || {}).openedAt || 0) - ((visits[b] || {}).openedAt || 0) })
   return keys.slice(0, keys.length - limit)
 }
 

@@ -18,8 +18,10 @@ the store that holds favorites, aliases, ranking and calculator history.
 
 Then Backend.qml over such stores: it gets ready with an unreadable
 calculator.json and a settings.json without its general settings, a change
-the calculator store refuses fails with the reason, the zoom is saved, and
-long searches and long search terms stay out of frecency.json.
+the calculator store refuses fails with the reason, the zoom is saved,
+long searches and long search terms stay out of frecency.json, and entries
+edited to null in settings.json and calculator.json do not stop a favorite,
+an alias or a deleted calculation.
 
   tests/json-store.py
 
@@ -366,6 +368,17 @@ ShellRoot {
     blockLoading: true
     printErrors: false
   }
+  FileView {
+    id: calculatorFile
+    path: Quickshell.env("FOAMY_CALCULATOR_FILE")
+    blockLoading: true
+    printErrors: false
+  }
+  // Another program replaces calculator.json, as a save does.
+  Process {
+    id: calculatorWriter
+    command: ["sh", "-c", 'printf "%s" "$2" > "$1.new" && mv -- "$1.new" "$1"', "sh", Quickshell.env("FOAMY_CALCULATOR_FILE"), Quickshell.env("FOAMY_CALCULATOR_TEXT")]
+  }
   function done() {
     console.log("FOAMY DONE")
     Qt.quit()
@@ -466,6 +479,28 @@ ShellRoot {
       test.check(ok && urls.some(function (url) {
         return url.indexOf(encodeURIComponent(test.longText.trim())) >= 0
       }) && urls.indexOf("https://duckduckgo.com/?q=pasta") >= 0, "both searches open in the browser: " + browsed.text().slice(0, 200))
+      test.history()
+    })
+  }
+  // calculator.json replaced by a usable file whose history holds an entry
+  // edited to null before a calculation.
+  function history() {
+    calculatorFile.reload()
+    test.check(calculatorFile.text() === "[]\n", "the refused changes left calculator.json as it was: " + JSON.stringify(calculatorFile.text()))
+    calculatorWriter.running = true
+    wait.waitFor(function () {
+      var all = test.call("calculator.historyGetAll")
+      return all.ok && all.data.length === 2
+    }, 10000, function (ok) {
+      test.check(ok, "the replaced calculator.json is read")
+      var deleted = test.call("rootSearch.performAction", {
+        id: "calculator-history:7",
+        action: "delete-entry",
+        confirmed: true
+      })
+      test.check(deleted.ok && deleted.data.toast.style === "success", "an entry after a null entry is deleted: " + JSON.stringify(deleted))
+      var left = test.call("calculator.historyGetAll")
+      test.check(left.ok && JSON.stringify(left.data) === "[]", "the history holds neither the deleted entry nor the null one: " + JSON.stringify(left))
       test.done()
     })
   }
@@ -479,6 +514,16 @@ CURL = '#!/bin/sh\nhead -n 1 >> "$FOAMY_CURL_FILE"\nexit 7\n'
 # No general settings, and a command entry edited to null.
 NO_GENERAL = '{"schemaVersion": 1, "commands": {"gone": null}}\n'
 NOT_A_DOCUMENT = "[]\n"
+# What replaces calculator.json later: a null entry before a calculation.
+CALCULATOR = json.dumps(
+    {
+        "schemaVersion": 1,
+        "history": [
+            None,
+            {"id": "7", "query": "2+2", "result": "4", "copy": "4", "kind": "math", "createdAt": 1795333526003},
+        ],
+    }
+)
 
 
 def store_run(harness):
@@ -547,13 +592,19 @@ def backend_run(harness):
     run.env["FOAMY_BROWSER_FILE"] = str(run.base / "browsed")
     fetched = run.base / "fetched"
     run.env["FOAMY_CURL_FILE"] = str(fetched)
+    run.env["FOAMY_CALCULATOR_FILE"] = str(db / "calculator.json")
+    run.env["FOAMY_CALCULATOR_TEXT"] = CALCULATOR
     run.run(timeout=60)
     problems = run.failures()
     if fetched.exists():
         problems.append(f"the backend started a download: {fetched.read_text()!r}")
     found = (db / "calculator.json").read_text()
-    if found != NOT_A_DOCUMENT:
-        problems.append(f"calculator.json was written over: {found!r}")
+    try:
+        history = json.loads(found).get("history")
+    except ValueError:
+        history = None
+    if history != []:
+        problems.append(f"calculator.json should hold an empty history: {found!r}")
     settings = json.loads((db / "settings.json").read_text())
     commands = {"gone": None, "builtin:calculator-history": {"alias": "ch", "favoriteOrder": 0}}
     if settings.get("commands") != commands or settings.get("general", {}).get("uiZoom") != 1.5:
@@ -561,7 +612,11 @@ def backend_run(harness):
     frecency = db / "frecency.json"
     if not frecency.exists() or "rust async" in frecency.read_text():
         problems.append("frecency.json is missing or holds the long search")
-    return run, problems, "ready over unusable and partless stores; refused changes fail; long searches are not saved"
+    return (
+        run,
+        problems,
+        "ready over unusable and partless stores; refused changes fail; long searches are not saved; null entries",
+    )
 
 
 def main():

@@ -730,7 +730,7 @@ Item {
       }
     case "delete-entry":
       backend.change(calculatorStore, function (doc) {
-        doc.history = doc.history.filter(function (h) {
+        doc.history = Calculator.filterHistory(doc.history, "").filter(function (h) {
           return h.id !== historyId
         })
       })
@@ -758,7 +758,7 @@ Item {
 
   function historyEntry(id) {
     var key = String(id).slice("calculator-history:".length)
-    var list = calculatorStore.loaded ? calculatorStore.doc.history : []
+    var list = calculatorStore.loaded ? Calculator.filterHistory(calculatorStore.doc.history, "") : []
     for (var i = 0; i < list.length; i++)
       if (list[i].id === key)
         return list[i]
