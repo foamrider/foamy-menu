@@ -67,19 +67,30 @@ Item {
     store.changed()
   }
 
-  // Why a migrated document cannot be used: a part that a new document has
-  // as an object or a list is missing or of another type ("" when none).
+  // The parts a new document has as an object or a list, in a migrated
+  // document: a missing one is added as a new document has it (there is no
+  // data to lose; the file gets it with the next change), and one of another
+  // type makes the document unusable. Returns why, or "".
   // Migrate keeps schemaHistory itself, and nothing here reads it.
-  function shapeError(doc) {
+  function fillParts(doc) {
     var kind = function (value) {
       return Array.isArray(value) ? "list" : value === null ? "null" : typeof value
     }
     var empty = Migrate.migrate(null, store.migrations, store.now()).doc
+    var added = []
     for (const key in empty) {
       const want = kind(empty[key])
-      if (key !== "schemaHistory" && (want === "object" || want === "list") && kind(doc[key]) !== want)
+      if (key === "schemaHistory" || (want !== "object" && want !== "list"))
+        continue
+      if (doc[key] === undefined) {
+        doc[key] = empty[key]
+        added.push(key)
+      } else if (kind(doc[key]) !== want) {
         return key + " is not " + (want === "list" ? "a list" : "an object")
+      }
     }
+    if (added.length > 0)
+      store.message("warning", store.path + " has no " + added.join(", ") + "; using what a new file has", null)
     return ""
   }
 
@@ -108,7 +119,7 @@ Item {
     }
     if (result.error)
       return store.fail(result.error, store.path + ": " + result.error)
-    var shape = store.shapeError(result.doc)
+    var shape = store.fillParts(result.doc)
     if (shape)
       return store.fail("unusable " + store.path + ": " + shape, "unusable " + store.path + ": " + shape + " (left untouched; fix or remove it)")
 

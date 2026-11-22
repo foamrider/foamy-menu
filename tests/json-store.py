@@ -4,10 +4,11 @@ the store that holds favorites, aliases, ranking and calculator history.
 
 - a missing file becomes a new store; an update reaches the file;
 - an unusable file (not JSON, not an object, a bad schemaVersion, a failed
-  migration, a missing or mistyped part, no read permission) and a file from
-  a newer build are read-only: an update is refused and the file keeps its
-  bytes; the unusable file still gives the store an empty document, and
-  removing it makes a new one;
+  migration, a mistyped part, no read permission) and a file from a newer
+  build are read-only: an update is refused and the file keeps its bytes;
+  the unusable file still gives the store an empty document, and removing
+  it makes a new one;
+- a file without one of its parts gets an empty one and takes updates;
 - an update made just before the store is destroyed is still written;
 - a file another program replaced (atomically) is read again, and the store
   does not write over it;
@@ -16,8 +17,8 @@ the store that holds favorites, aliases, ranking and calculator history.
 
 Then Backend.qml over such stores: it gets ready with an unreadable
 calculator.json and a settings.json without its general settings, a change
-either store refuses fails with the reason, and long searches and long
-search terms stay out of frecency.json.
+the calculator store refuses fails with the reason, the zoom is saved, and
+long searches and long search terms stay out of frecency.json.
 
   tests/json-store.py
 
@@ -38,6 +39,7 @@ if not os.environ.get("FOAMY_HOST_45"):
 NEWER = '{"schemaVersion": 7, "items": ["from a newer build"]}\n'
 OUTSIDE = '{"schemaVersion":1,"items":["outside"]}'
 MINE = '{"schemaVersion":1,"items":["mine"]}'
+PARTLESS = '{"schemaVersion": 1}'
 REWRITTEN = '{"schemaVersion":1,"items":["mine","more"]}'
 # Files the store cannot use as they are; each must stay as it is.
 UNUSABLE = {
@@ -45,7 +47,6 @@ UNUSABLE = {
     "notobject": "[1, 2]",
     "badversion": '{"schemaVersion": "x", "items": []}',
     "throws": '{"explode": true}',
-    "noitems": '{"schemaVersion": 1}',
     "wronglist": '{"schemaVersion": 1, "items": {"a": 1}}',
     "denied": MINE,
 }
@@ -127,6 +128,13 @@ ShellRoot {
     onMessage: (level, text) => test.noted("watched", level, text)
   }
   Services.JsonStore {
+    id: partless
+    path: test.dir + "/partless.json"
+    migrations: test.migrations
+    ready: true
+    onMessage: (level, text) => test.noted("partless", level, text)
+  }
+  Services.JsonStore {
     id: emptied
     path: test.dir + "/emptied.json"
     migrations: test.migrations
@@ -192,7 +200,7 @@ ShellRoot {
   Component.onCompleted: {
     test.started = true
     wait.waitFor(function () {
-      return fresh.loaded && newer.loaded && watched.loaded && emptied.loaded && removed.loaded && holder.item && holder.item.loaded && test.unusable.every(function (name) {
+      return fresh.loaded && newer.loaded && watched.loaded && partless.loaded && emptied.loaded && removed.loaded && holder.item && holder.item.loaded && test.unusable.every(function (name) {
         return test.store(name).loaded || test.store(name).reported.length > 0
       })
     }, 10000, function (ok) {
@@ -214,6 +222,11 @@ ShellRoot {
       test.check(newer.readOnly && newer.doc.items[0] === "from a newer build" && !newer.update(function (d) {
         d.items = []
       }), "a file from a newer build is read but refuses an update")
+      test.check(!partless.readOnly && partless.lastError === "" && JSON.stringify(partless.doc.items) === "[]" && (test.warnings.partless || []).length === 1, "a file without its items gets an empty list: " + JSON.stringify(partless.doc) + " " + JSON.stringify(test.warnings.partless))
+      test.check(partless.update(function (d) {
+        d.items.push("x")
+      }), "a file without its items takes an update")
+      partless.flush()
       // The update's save timer dies with the store: only the flush on
       // destruction can write it.
       holder.item.update(function (d) {
@@ -325,11 +338,11 @@ ShellRoot {
     var zoom = test.call("settings.updateGeneralSettings", {
       uiZoom: 1.5
     })
-    test.check(!zoom.ok && zoom.error.indexOf("settings are read-only: ") === 0 && zoom.error.indexOf("general") >= 0, "a settings change is refused with the reason: " + JSON.stringify(zoom))
+    test.check(zoom.ok && zoom.data.uiZoom === 1.5, "the zoom is saved: " + JSON.stringify(zoom))
     var history = test.call("calculator.historyGetAll")
     test.check(history.ok && Array.isArray(history.data) && history.data.length === 0, "calculator history is empty: " + JSON.stringify(history))
     var health = test.call("system.healthDatabase")
-    test.check(health.ok && health.data.settings.loaded && health.data.settings.readOnly && health.data.settings.error.indexOf("general") >= 0, "the settings store reports why it is read-only: " + JSON.stringify(health))
+    test.check(health.ok && health.data.settings.loaded && !health.data.settings.readOnly && health.data.settings.error === "", "the settings store is usable: " + JSON.stringify(health))
     var cleared = test.call("calculator.historyDeleteAll")
     test.check(!cleared.ok && cleared.error.indexOf("calculator.json is read-only: unreadable ") === 0, "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
     // The commands and scope files are read apart from the stores.
@@ -339,12 +352,6 @@ ShellRoot {
       })
     }, 10000, function (ok) {
       test.check(ok, "the commands are listed and DuckDuckGo keeps its searches")
-      var favorite = test.call("rootSearch.performAction", {
-        id: "builtin:calculator-history",
-        action: "favorite-add",
-        query: ""
-      })
-      test.check(!favorite.ok && favorite.error.indexOf("settings.json is read-only: unusable ") === 0, "a favorite that cannot be saved fails with the reason: " + JSON.stringify(favorite))
       var reset = test.call("rootSearch.performAction", {
         id: "builtin:calculator-history",
         action: "reset-ranking",
@@ -422,6 +429,7 @@ def store_run(harness):
     (stores / "newer.json").write_text(NEWER)
     (stores / "watched.json").write_text('{"schemaVersion":1,"items":["before"]}')
     (stores / "emptied.json").write_text(MINE)
+    (stores / "partless.json").write_text(PARTLESS)
     (stores / "removed.json").write_text(MINE)
     run.env["FOAMY_STORE_DIR"] = str(stores)
     run.env["FOAMY_OUTSIDE"] = OUTSIDE
@@ -437,7 +445,7 @@ def store_run(harness):
         found = (stores / f"{name}.json").read_text()
         if found != text:
             problems.append(f"{name}.json was written over: {found!r}")
-    for name, items in (("unload", ["kept"]), ("removed", ["mine", "after"]), ("broken", [])):
+    for name, items in (("unload", ["kept"]), ("removed", ["mine", "after"]), ("broken", []), ("partless", ["x"])):
         path = stores / f"{name}.json"
         found = path.read_text() if path.exists() else "missing"
         try:
@@ -464,14 +472,16 @@ def backend_run(harness):
     run.env["FOAMY_BROWSER_FILE"] = str(run.base / "browsed")
     run.run(timeout=60)
     problems = run.failures()
-    for name, text in (("settings", NO_GENERAL), ("calculator", NOT_A_DOCUMENT)):
-        found = (db / f"{name}.json").read_text()
-        if found != text:
-            problems.append(f"{name}.json was written over: {found!r}")
+    found = (db / "calculator.json").read_text()
+    if found != NOT_A_DOCUMENT:
+        problems.append(f"calculator.json was written over: {found!r}")
+    settings = json.loads((db / "settings.json").read_text())
+    if settings.get("commands") != {} or settings.get("general", {}).get("uiZoom") != 1.5:
+        problems.append(f"settings.json does not hold the zoom and its commands: {settings!r}")
     frecency = db / "frecency.json"
     if not frecency.exists() or "rust async" in frecency.read_text():
         problems.append("frecency.json is missing or holds the long search")
-    return run, problems, "ready over unusable stores, a refused change fails, long searches are not saved"
+    return run, problems, "ready over unusable and partless stores; refused changes fail; long searches are not saved"
 
 
 def main():
