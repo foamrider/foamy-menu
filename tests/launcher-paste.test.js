@@ -16,7 +16,7 @@ function body(signature) {
 }
 
 // The launcher's paste functions, run from LauncherWindow.qml, with a fake
-// services/ClipboardReader.qml: start() begins a read, and the test answers
+// kit/FoamyClipboard.qml: start() begins a read, and the test answers
 // it later with read(text) or fail(message), as the real reader's signals do.
 function harness() {
   let next = 16

@@ -780,7 +780,7 @@ OverlayWindow {
     return false
   }
 
-  // Paste reads the clipboard out of process (services/ClipboardReader.qml),
+  // Paste reads the clipboard out of process (the kit's FoamyClipboard),
   // never through Qt, so the text arrives later. editRevision counts every
   // change a paste could land in the wrong place after: the query, the
   // cursor, the view, the action panel opening or closing, and a popup
@@ -798,7 +798,7 @@ OverlayWindow {
     if (clipboardReader.busy)
       return
     window.pasteRevision = window.editRevision
-    clipboardReader.start()
+    clipboardReader.start(false)
   }
 
   function cancelPaste() {
@@ -830,9 +830,8 @@ OverlayWindow {
       window.showToast("failure", message)
   }
 
-  ClipboardReader {
+  FoamyClipboard {
     id: clipboardReader
-    pluginDir: window.backend.pluginDir
     onRead: function (text) {
       window.insertPaste(text)
     }

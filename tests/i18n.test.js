@@ -63,8 +63,8 @@ function usedKeys() {
     }
     keys.add(Settings.hint(f)[0])
   }
-  // The paste failures services/ClipboardReader.qml reports for the launcher's toast.
-  for (const [, key] of read("services/ClipboardReader.qml").matchAll(/reader\.failed\("([^"]+)"\)/g)) keys.add(key)
+  // The paste failures kit/FoamyClipboard.qml reports for the launcher's toast.
+  for (const [, key] of read("kit/FoamyClipboard.qml").matchAll(/reader\.failed\("([^"]+)"\)/g)) keys.add(key)
   // The kit's text for a missing bundled helper, the SSH and Games scopes' failure.
   keys.add(require("../kit/node-loader.cjs").load("FoamyNative").UNAVAILABLE_TEXT)
   keys.add("That value isn't allowed.")
