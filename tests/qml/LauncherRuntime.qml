@@ -1214,15 +1214,42 @@ ShellRoot {
         test.setting("windowMode")
         break
       case 59:
+        // A paste that fails at the empty compact root: its toast shows, in
+        // the card, and the card is compact again once the toast is gone.
+        if (test.asked === "compact-clipboard") {
+          if (test.waitFor(clipboardFixture.done))
+            break
+          test.paste()
+          test.asked = "compact-paste"
+          test.stage--
+          break
+        }
+        if (test.asked === "compact-paste") {
+          if (test.waitFor(!!view.toast))
+            break
+          test.asked = ""
+          var toastText = test.findItem(function (node) {
+            return node.text === view.toast.title && node.elide !== undefined
+          })
+          test.check(test.failureToast("Could not paste clipboard text. Copy plain text and try again.", "Kunne ikke lime inn fra utklippstavlen. Kopier ren tekst og prøv igjen.") && !view.compact && !!toastText && toastText.mapToItem(view.cardItem, 0, toastText.height).y <= view.cardItem.height, "a paste that fails at the empty compact root shows its toast: compact " + view.compact + ", toast text " + (toastText ? "shown" : "not shown"))
+          view.toast = null
+          test.check(view.compact, "the window is compact again once the toast is gone")
+          test.setting("windowMode")
+          break
+        }
         if (test.waitFor(backend.settings.windowMode === "compact"))
           break
         view.popToRoot()
         view.setQuery("")
+        // A toast from an earlier stage would show the whole card.
+        view.toast = null
         test.check(view.compact, "compact mode shows only the search field at root")
         view.setQuery("f")
         test.check(!view.compact, "typing expands the compact window")
         view.setQuery("")
-        test.setting("windowMode")
+        test.clipboardMode("failure")
+        test.asked = "compact-clipboard"
+        test.stage--
         break
       case 60:
         if (test.waitFor(backend.settings.windowMode === "expanded"))

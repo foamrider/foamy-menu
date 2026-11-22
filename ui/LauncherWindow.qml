@@ -112,7 +112,10 @@ OverlayWindow {
   }
 
   readonly property bool atRoot: window.stack.length === 1
-  readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query
+  // Compact mode shows only the search field until there is more to show:
+  // typed text, or a toast. The toast is in the footer, and its Ctrl T
+  // actions open above it, so the whole card shows while it is up.
+  readonly property bool compact: window.general.windowMode === "compact" && window.atRoot && !window.query && !window.toast
   // The scope on screen: whether its items loaded, its failure, texts and layout.
   readonly property var scopeState: {
     window.backend.candidatesRevision
