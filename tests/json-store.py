@@ -310,6 +310,10 @@ ShellRoot {
   Foamy.Backend {
     id: backend
     version: "0.0.0-store"
+    // No exchange rates: with no rates cached the calculator downloads them.
+    settingsEntry: ({
+        currencyRates: false
+      })
   }
   FileView {
     id: browsed
@@ -412,6 +416,9 @@ ShellRoot {
 """
 
 BROWSER = '#!/bin/sh\nprintf "%s\\n" "$@" >> "$FOAMY_BROWSER_FILE"\n'
+# Every fetch the backend starts: the first line of its request is logged and
+# none goes out, so a download fails the run.
+CURL = '#!/bin/sh\nhead -n 1 >> "$FOAMY_CURL_FILE"\nexit 7\n'
 NO_GENERAL = '{"schemaVersion": 1, "commands": {}}\n'
 NOT_A_DOCUMENT = "[]\n"
 
@@ -456,7 +463,11 @@ def store_run(harness):
 
 def backend_run(harness):
     run = harness.Run(
-        "4.5", BACKEND_SHELL, plugin=PLUGIN, prefix="foamy-menu-store-", fakebin={"omarchy-launch-browser": BROWSER}
+        "4.5",
+        BACKEND_SHELL,
+        plugin=PLUGIN,
+        prefix="foamy-menu-store-",
+        fakebin={"omarchy-launch-browser": BROWSER, "curl": CURL},
     )
     home = Path(run.env["HOME"])
     db = Path(run.env.get("XDG_DATA_HOME") or home / ".local/share") / "foamy-menu/db"
@@ -467,8 +478,12 @@ def backend_run(harness):
     scopes.mkdir(parents=True)
     (scopes / "duckduckgo.json").write_text(json.dumps({"id": "duckduckgo", "history": True}))
     run.env["FOAMY_BROWSER_FILE"] = str(run.base / "browsed")
+    fetched = run.base / "fetched"
+    run.env["FOAMY_CURL_FILE"] = str(fetched)
     run.run(timeout=60)
     problems = run.failures()
+    if fetched.exists():
+        problems.append(f"the backend started a download: {fetched.read_text()!r}")
     found = (db / "calculator.json").read_text()
     if found != NOT_A_DOCUMENT:
         problems.append(f"calculator.json was written over: {found!r}")
