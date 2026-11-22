@@ -1060,6 +1060,7 @@ Item {
         var t0 = Date.now()
         JSON.stringify(settingsStore.doc)
         JSON.stringify(frecencyStore.doc)
+        JSON.stringify(calculatorStore.doc)
         return {
           workMs: Date.now() - t0,
           settings: {
@@ -1071,6 +1072,11 @@ Item {
             loaded: frecencyStore.loaded,
             readOnly: frecencyStore.readOnly,
             error: frecencyStore.lastError
+          },
+          calculator: {
+            loaded: calculatorStore.loaded,
+            readOnly: calculatorStore.readOnly,
+            error: calculatorStore.lastError
           },
           loaded: settingsStore.loaded,
           readOnly: settingsStore.readOnly,

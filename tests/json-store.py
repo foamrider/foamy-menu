@@ -17,8 +17,9 @@ the store that holds favorites, aliases, ranking and calculator history.
   keeps its data in the store, and the store writes nothing over it.
 
 Then Backend.qml over such stores: it gets ready with an unreadable
-calculator.json and a settings.json without its general settings, a change
-the calculator store refuses fails with the reason, the zoom is saved,
+calculator.json and a settings.json without its general settings, the
+health reply says calculator.json is unusable, a change the calculator
+store refuses fails with the reason, the zoom is saved,
 long searches and long search terms stay out of frecency.json, and entries
 edited to null in settings.json and calculator.json do not stop a favorite,
 an alias or a deleted calculation.
@@ -405,6 +406,8 @@ ShellRoot {
     test.check(history.ok && Array.isArray(history.data) && history.data.length === 0, "calculator history is empty: " + JSON.stringify(history))
     var health = test.call("system.healthDatabase")
     test.check(health.ok && health.data.settings.loaded && !health.data.settings.readOnly && health.data.settings.error === "", "the settings store is usable: " + JSON.stringify(health))
+    var calculatorHealth = health.ok ? health.data.calculator : null
+    test.check(!!calculatorHealth && calculatorHealth.loaded && calculatorHealth.readOnly && calculatorHealth.error.indexOf("calculator.json: document is not a JSON object") >= 0, "the health reply says calculator.json is unusable: " + JSON.stringify(health))
     var cleared = test.call("calculator.historyDeleteAll")
     // In the user's language, with the reason before anything a short toast cuts.
     test.check(!cleared.ok && cleared.error === "calculator.json er skrivebeskyttet: document is not a JSON object", "clearing the history of an unreadable calculator.json fails with the reason: " + JSON.stringify(cleared))
