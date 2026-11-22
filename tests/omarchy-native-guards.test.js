@@ -423,6 +423,24 @@ test("a list that fails, times out, crashes or cannot start keeps the previous l
   }
 })
 
+// Provider names come from the menu files, the user's extension file too.
+// A name that only an object has as a member is no provider the launcher
+// knows: no list runs for it.
+test("a provider named like an object member runs no list", () => {
+  const h = providerHarness()
+  h.source.tree = providerTree(providerMenu, {
+    "style.member": { label: "Member", provider: "constructor" },
+    "style.text": { label: "Text", provider: "toString" },
+    "style.proto": { label: "Proto", provider: "__proto__" }
+  })
+  h.source.refresh()
+  h.end(0, 0, "Hack\tHack\tHack\n")
+  h.end(0, 0, "linux\tlinux\tlinux\n")
+  assert.deepEqual(h.providerProc.starts, [bash(OmarchyMenu.PROVIDERS.fonts.script), bash(OmarchyMenu.PROVIDERS.kernels.script)])
+  assert.equal(h.providerProc.running, false, "the queue is done")
+  assert.deepEqual(Object.keys(h.source.providerItems).sort(), ["style.font", "update.kernel"])
+})
+
 test("running -> false after the last exit changes nothing", () => {
   const h = providerHarness()
   h.source.refresh()
