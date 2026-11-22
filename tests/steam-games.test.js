@@ -6,7 +6,7 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const { execFileSync } = require("node:child_process")
+const { execFileSync, spawnSync } = require("node:child_process")
 const helper = require("./search-helper.js")
 const Scopes = require("../core/Scopes.js")
 const Settings = require("../core/Settings.js")
@@ -208,5 +208,28 @@ test("an unreadable appinfo.vdf does not stop the list: games by their manifests
     } finally {
       fs.rmSync(fixture.home, { recursive: true, force: true })
     }
+  }
+})
+
+// The helper stops reading app manifests after 64 MiB in all (a real one is a
+// few KiB). A list cut there would miss the games after it, so the run fails
+// and the scope keeps the list it had.
+test("app manifests over the helper's byte budget fail the list instead of cutting it short", { skip }, () => {
+  const fixture = makeSteam()
+  try {
+    // 64 manifests of 1 MiB of zeros (sparse, so they take no space) sort
+    // before the real ones and give no app.
+    for (let appid = 1; appid <= 64; appid++) {
+      const file = path.join(fixture.steam, `steamapps/appmanifest_${appid}.acf`)
+      fs.writeFileSync(file, "")
+      fs.truncateSync(file, 1024 * 1024)
+    }
+    const [program, ...args] = [...helper.argv, "steam-games"]
+    const run = spawnSync(program, args, { env: { HOME: fixture.home, PATH: process.env.PATH }, encoding: "utf8", timeout: 10000 })
+    assert.equal(run.error, undefined)
+    assert.deepEqual([run.status, run.stdout], [1, ""], "no list, and an error exit")
+    assert.equal(Scopes.exitFailure(run.status, run.stderr), "foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games")
+  } finally {
+    fs.rmSync(fixture.home, { recursive: true, force: true })
   }
 })

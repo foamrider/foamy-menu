@@ -12,9 +12,9 @@ How the lists are made:
 
 ## `foamy-menu-search`
 
-- `bin/aarch64/foamy-menu-search`: sha256 `4d23f9ef79414f89c7a22645fb63227b686b80c14e286c4b045e918e1f73a645`
-- `bin/x86_64/foamy-menu-search`: sha256 `722861d9eef38da9c21ca0c239e0f6d4cb0eeca1deada83e4c10eeb25c39d178`
-- `search/native.pin`: source `46b28d15a05543369f2a10c89486007bff2948c640562a187bd1ad91fa188242`, toolchain 1.99.1
+- `bin/aarch64/foamy-menu-search`: sha256 `76baf4ecbb950331911e197f477077e579d84700b02f9ce8ef4fd41ada691721`
+- `bin/x86_64/foamy-menu-search`: sha256 `f95c865a20a8592812fb2d9b5cd30b1888cf119334f9ff0dea775d21844e59c5`
+- `search/native.pin`: source `659d515e4074dfa32e9585775af8318c869d0a17215f7c733205e397d3e669f8`, toolchain 1.99.1
 
 ### Crates linked into `foamy-menu-search`
 
