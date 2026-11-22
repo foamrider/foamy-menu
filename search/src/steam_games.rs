@@ -58,7 +58,8 @@ pub(crate) const MAX_VDF_BYTES: u64 = 1024 * 1024;
 pub(crate) const MAX_LIBRARIES: usize = 64;
 /// Directory entries examined in one folder (steamapps, an art folder).
 pub(crate) const MAX_DIR_ENTRIES: usize = 65_536;
-/// Games listed (the scope keeps at most this many items).
+/// Games listed (the scope keeps at most this many items); no manifest is
+/// read after this many installed apps are found.
 pub(crate) const MAX_GAMES: usize = 5_000;
 /// Bytes of one appinfo.vdf entry; a larger size ends the scan.
 pub(crate) const MAX_APPINFO_ENTRY: u32 = 16 * 1024 * 1024;
@@ -173,13 +174,14 @@ pub(crate) fn find_root(home: &Path) -> Option<PathBuf> {
 pub(crate) fn list(root: &Path) -> Vec<Game> {
     let mut seen = HashSet::new();
     let mut installed = Vec::new();
-    for library in libraries(root) {
+    // Manifests are read one at a time, so none is read past the limit.
+    'libraries: for library in libraries(root) {
         for (appid, name) in manifests(&library) {
-            if installed.len() >= MAX_GAMES {
-                break;
-            }
             if seen.insert(appid) {
                 installed.push((appid, name));
+                if installed.len() >= MAX_GAMES {
+                    break 'libraries;
+                }
             }
         }
     }
@@ -271,12 +273,12 @@ pub(crate) fn libraries(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// `(appid, name)` of each app manifest in a library, by file name.
-pub(crate) fn manifests(library: &Path) -> Vec<(u32, String)> {
-    let Ok(dir) = fs::read_dir(library.join("steamapps")) else {
-        return Vec::new();
-    };
-    let mut files: Vec<(u32, PathBuf)> = dir
+/// `(appid, name)` of each app manifest in a library, by file name; each
+/// manifest is read when the iterator reaches it.
+pub(crate) fn manifests(library: &Path) -> impl Iterator<Item = (u32, String)> {
+    let mut files: Vec<(u32, PathBuf)> = fs::read_dir(library.join("steamapps"))
+        .into_iter()
+        .flatten()
         .take(MAX_DIR_ENTRIES)
         .filter_map(Result::ok)
         .filter_map(|entry| {
@@ -287,21 +289,18 @@ pub(crate) fn manifests(library: &Path) -> Vec<(u32, String)> {
         })
         .collect();
     files.sort();
-    files
-        .into_iter()
-        .filter_map(|(appid, path)| {
-            let data = read_file_limited(&path, MAX_VDF_BYTES).ok()?;
-            let state = parse_text(&data)?;
-            let state = state.get("AppState")?;
-            if state.str("appid").and_then(parse_appid) != Some(appid) {
-                return None;
-            }
-            if matches!(state.str("StateFlags"), Some("0" | "1")) {
-                return None;
-            }
-            Some((appid, clean_name(state.str("name")?)?))
-        })
-        .collect()
+    files.into_iter().filter_map(|(appid, path)| {
+        let data = read_file_limited(&path, MAX_VDF_BYTES).ok()?;
+        let state = parse_text(&data)?;
+        let state = state.get("AppState")?;
+        if state.str("appid").and_then(parse_appid) != Some(appid) {
+            return None;
+        }
+        if matches!(state.str("StateFlags"), Some("0" | "1")) {
+            return None;
+        }
+        Some((appid, clean_name(state.str("name")?)?))
+    })
 }
 
 fn parse_appid(text: &str) -> Option<u32> {
@@ -1001,6 +1000,54 @@ mod tests {
         let text = String::from_utf8(format(&games)).unwrap();
         assert!(text.starts_with("Alpha\t9\t\t/"), "{text}");
         assert_eq!(text.lines().count(), 2);
+    }
+
+    #[test]
+    fn no_manifest_is_read_once_max_games_apps_are_found() {
+        let root = Root::new();
+        let lib = root.0.join("lib2");
+        root.write(
+            "steamapps/libraryfolders.vdf",
+            format!(
+                "\"libraryfolders\" {{ \"1\" {{ \"path\" \"{}\" }} }}",
+                lib.display()
+            ),
+        );
+        let last = MAX_GAMES as u32;
+        for appid in 1..=last + 1 {
+            root.manifest("", appid, "Game");
+        }
+        root.manifest("lib2", last + 2, "Later");
+        // Reading a file moves its access time on from the epoch (relatime
+        // still updates an access time older than the modification time);
+        // listing the folder does not.
+        let manifest = |dir: &str, appid: u32| {
+            root.0
+                .join(format!("{dir}steamapps/appmanifest_{appid}.acf"))
+        };
+        let watched = [
+            manifest("", last),
+            manifest("", last + 1),
+            manifest("lib2/", last + 2),
+        ];
+        for path in &watched {
+            File::options()
+                .write(true)
+                .open(path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_accessed(SystemTime::UNIX_EPOCH))
+                .unwrap();
+        }
+        let games = list(&root.0);
+        assert_eq!(games.len(), MAX_GAMES);
+        let read =
+            |path: &Path| fs::metadata(path).unwrap().accessed().unwrap() != SystemTime::UNIX_EPOCH;
+        assert!(
+            read(&watched[0]),
+            "the temporary file system must record access times"
+        );
+        assert!(!read(&watched[1]), "the manifest after the limit");
+        assert!(!read(&watched[2]), "a manifest of the next library");
     }
 
     #[test]

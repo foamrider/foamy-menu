@@ -19,7 +19,9 @@
 //! - `HostName`, `User` and `Port` apply to the concrete names of the block
 //!   they are in; the first value ssh would read wins. Blocks of patterns
 //!   (`Host *`) and settings before the first `Host` are not applied: the
-//!   subtitle shows what a host's own blocks say.
+//!   subtitle shows what a host's own blocks say. A value with a control
+//!   character (a tab kept by quotes) leaves the subtitle empty: it would
+//!   break the line format.
 //! - `Include` is read where it stands, as ssh does: its files come before
 //!   the rest of the including file, and an included file's lines before its
 //!   own first `Host`/`Match` belong to the including block. Relative paths
@@ -28,10 +30,12 @@
 //!   a literal `.`), and its matches are read in byte order. `~user` is not
 //!   expanded (no user database lookup); such an Include matches nothing.
 //! - Each file is read at most once (by its canonical path), which also stops
-//!   Include cycles; ssh would instead fail on them at depth 16.
+//!   Include cycles; ssh would instead fail on them at depth 16. A file that
+//!   is refused (too large, not a regular file) counts as read.
 //!
 //! Bounds: Include depth [`MAX_DEPTH`] (ssh's own limit), [`MAX_FILES`] files
-//! of at most [`MAX_FILE_BYTES`] each and [`MAX_TOTAL_BYTES`] in all,
+//! of at most [`MAX_FILE_BYTES`] each and [`MAX_TOTAL_BYTES`] read in all
+//! (the bytes read from a file over its limit included),
 //! [`MAX_INCLUDE_PATTERNS`] Include arguments, [`MAX_DIR_ENTRIES`] directory
 //! entries examined by globs, [`MAX_HOSTS`] hosts. Symlinks are resolved
 //! once (`realpath`, as ssh and the old script follow them) and the result
@@ -124,14 +128,24 @@ impl Walker<'_> {
         let Ok(real) = std::fs::canonicalize(path) else {
             return;
         };
-        if self.visited.contains(&real) {
+        // Remembered before the read, so a file that is refused (too large,
+        // not a regular file) is not read again for every Include naming it.
+        if !self.visited.insert(real.clone()) {
             return;
         }
-        let Ok(data) = read_file_limited(&real, MAX_FILE_BYTES.min(self.bytes_left)) else {
-            return;
+        let limit = MAX_FILE_BYTES.min(self.bytes_left);
+        let data = match read_file_limited(&real, limit) {
+            Ok(data) => data,
+            Err(error) => {
+                // InvalidData is the over-limit refusal, after limit + 1
+                // bytes were read: they count toward MAX_TOTAL_BYTES too.
+                if error.kind() == io::ErrorKind::InvalidData {
+                    self.bytes_left = self.bytes_left.saturating_sub(limit + 1);
+                }
+                return;
+            }
         };
         self.bytes_left -= data.len() as u64;
-        self.visited.insert(real);
         // The names the current block applies to; an included file starts in
         // the including block, and that block resumes after the Include.
         let mut block = inherited.to_vec();
@@ -304,7 +318,8 @@ impl Walker<'_> {
 }
 
 /// `user@hostname:port`: the user with the HostName (or the host itself),
-/// then a port other than 22.
+/// then a port other than 22. Empty when a value holds a control character
+/// (a quoted tab would add columns to the line).
 fn subtitle(name: &[u8], settings: &Settings) -> Vec<u8> {
     let target = settings.hostname.as_deref().unwrap_or_default();
     let mut text = target.to_vec();
@@ -323,6 +338,9 @@ fn subtitle(name: &[u8], settings: &Settings) -> Vec<u8> {
             text.as_slice()
         };
         text = [base, b":".as_slice(), port].concat();
+    }
+    if text.iter().any(|&byte| byte < b' ' || byte == 0x7f) {
+        return Vec::new();
     }
     text
 }
@@ -734,6 +752,49 @@ mod tests {
         let hosts: Vec<String> = (0..MAX_HOSTS + 5).map(|i| format!("h{i}")).collect();
         home.write(".ssh/config", &format!("Host {}\n", hosts.join(" ")));
         assert_eq!(home.list().lines().count(), MAX_HOSTS);
+    }
+
+    #[test]
+    fn a_file_over_the_size_cap_is_read_once_and_counted() {
+        let home = Home::new();
+        let big = "#".repeat(MAX_FILE_BYTES as usize + 1);
+        home.write(".ssh/big", &big);
+        // However many Includes name it, it is one of the MAX_FILES files.
+        for i in 0..MAX_FILES {
+            home.write(&format!(".ssh/many/{i:04}"), &format!("Host many-{i:04}\n"));
+        }
+        home.write(
+            ".ssh/config",
+            "Include big\nInclude big\nInclude big\nInclude many/*\n",
+        );
+        assert_eq!(home.list().lines().count(), MAX_FILES - 2);
+        // The bytes read from rejected files count toward MAX_TOTAL_BYTES:
+        // eight of them use it up, so the file after them is not read.
+        let mut config = String::new();
+        for i in 0..MAX_TOTAL_BYTES / MAX_FILE_BYTES {
+            home.write(&format!(".ssh/big{i}"), &big);
+            config.push_str(&format!("Include big{i}\n"));
+        }
+        home.write(".ssh/late", "Host late\n");
+        home.write(
+            ".ssh/config",
+            &format!("Host early\n{config}Include late\n"),
+        );
+        assert_eq!(home.list(), "early\tearly\t\n");
+    }
+
+    #[test]
+    fn a_control_character_in_a_value_leaves_the_subtitle_empty() {
+        let home = Home::new();
+        // Quotes keep a tab in the value; ssh still reads the first value.
+        home.write(
+            ".ssh/config",
+            "Host tab\n HostName \"h\t/usr/share/pixmaps/x.png\"\n HostName later\nHost cr\n User \"a\rb\"\nHost port\n Port \"2222\x01\"\nHost space\n HostName \"a b\"\n",
+        );
+        assert_eq!(
+            home.list(),
+            "cr\tcr\t\nport\tport\t\nspace\tspace\ta b\ntab\ttab\t\n"
+        );
     }
 
     #[test]

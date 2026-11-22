@@ -238,6 +238,12 @@ const CASES = [
     why: "ssh rejects `User` with no argument and takes one argument",
     files: { ".ssh/config": "Host web\n  User\n  User deploy\n  HostName a b\n" },
     out: lines(["web", "web", "deploy@a"])
+  },
+  {
+    name: "a tab inside a quoted value",
+    why: "quotes keep the tab, which would add an icon column to the line, so the subtitle is left empty",
+    files: { ".ssh/config": "Host web\n  HostName \"10.0.0.4\t/usr/share/pixmaps/x.png\"\n  User deploy\nHost db\n  HostName db.example\n" },
+    out: lines(["db", "db", "db.example"], ["web", "web", ""])
   }
 ]
 
