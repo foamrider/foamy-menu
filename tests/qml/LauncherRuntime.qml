@@ -471,7 +471,7 @@ ShellRoot {
         if (!test.nativeHelper) {
           // The host list comes from the bundled helper too.
           var state = backend.scopeState("ssh")
-          test.check(state.failure === "This plugin's helper isn't available for this CPU." && view.emptyText[1] === state.failure, "without a bundled helper the SSH scope says so")
+          test.check(state.failure === "This plugin's helper isn't available for this CPU." && view.emptyText[1] === test.said(state.failure, "Hjelpeprogrammet til denne utvidelsen er ikke tilgjengelig for denne prosessoren."), "without a bundled helper the SSH scope says so in the user's language")
           view.popToRoot()
           view.setQuery("bookmarks")
           test.stage = 15
