@@ -579,19 +579,22 @@ function preferredUnit(d, from) {
 function isDuration(v) { return v.type === "num" && v.unit && dimsKey(v.unit.dims) === "T1" }
 
 function addDuration(d, v, sign) {
+  var unit = v.unit
+  var calendar = unit === UNITS.d || unit === UNITS.wk || unit === UNITS.mo || unit === UNITS.yr
   // A sum of durations moves the date by each part in turn, so the calendar
-  // parts of "2 weeks 3 days" stay calendar days across a DST switch.
-  if (v.parts) {
+  // parts of "2 weeks 3 days" stay calendar days across a DST switch. A sum
+  // that is a whole number of its calendar unit ("1.5 days 12 hours") moves
+  // the calendar as that unit, since its parts alone are exact seconds.
+  if (v.parts && !(calendar && Math.floor(v.n) === v.n)) {
     for (var p = 0; p < v.parts.length; p++) d = addDuration(d, v.parts[p], sign)
     return d
   }
-  var unit = v.unit
   // "3 work days from now" would mean business days, which we don't model. [D]
   if (unit === WORKDAY || unit === WORKWEEK) throw new CalcError("work days are not calendar days")
   var n = v.n * sign
   var t = new Date(d.ms)
   // Calendar units move the calendar; the rest are exact seconds.
-  if (unit === UNITS.d || unit === UNITS.wk || unit === UNITS.mo || unit === UNITS.yr) {
+  if (calendar) {
     if (Math.floor(n) === n) {
       if (unit === UNITS.d) t.setDate(t.getDate() + n)
       else if (unit === UNITS.wk) t.setDate(t.getDate() + 7 * n)
