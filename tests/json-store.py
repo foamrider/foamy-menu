@@ -71,7 +71,6 @@ ShellRoot {
         return d
       }
     }]
-  property bool started: false
   property var warnings: ({})
   function check(ok, detail) {
     console.log((ok ? "PASS " : "FOAMY FAIL ") + detail)
@@ -98,12 +97,11 @@ ShellRoot {
     model: test.unusable
     delegate: Services.JsonStore {
       required property string modelData
-      // Counted on the store itself: a delegate the Instantiator replaced
-      // may report too.
+      // The errors this store reported.
       property var reported: []
       path: test.dir + "/" + modelData + ".json"
       migrations: test.migrations
-      ready: test.started
+      ready: true
       onMessage: (level, text) => {
         if (level === "error")
           reported = reported.concat([text])
@@ -198,7 +196,6 @@ ShellRoot {
     return store.doc && store.doc.items ? store.doc.items[0] : undefined
   }
   Component.onCompleted: {
-    test.started = true
     wait.waitFor(function () {
       return fresh.loaded && newer.loaded && watched.loaded && partless.loaded && emptied.loaded && removed.loaded && holder.item && holder.item.loaded && test.unusable.every(function (name) {
         return test.store(name).loaded || test.store(name).reported.length > 0
