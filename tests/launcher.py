@@ -386,6 +386,24 @@ EOF
             }
         )
     )
+    # A command that fails with a reason wider than the card: it must wrap.
+    # Wider than the widest card of these runs (1200 px), and within the 200
+    # characters a failure keeps (Scopes.exitFailure).
+    long_reason = (
+        "long-failure: the list could not be read, and this reason is long enough"
+        " that it never fits on one line of the launcher card, whatever width the"
+        " launcher has, so the empty view has to wrap it there"
+    )
+    (scopes / "long-failure.json").write_text(
+        json.dumps(
+            {
+                "title": "Long Failure",
+                "keyword": "longfail",
+                "source": {"type": "command", "command": ["sh", "-c", 'echo "$1" >&2; exit 1', "sh", long_reason]},
+                "open": ["true"],
+            }
+        )
+    )
     (stubs / "omarchy-launch-tui").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_LAUNCH_FILE"\n')
     (stubs / "omarchy-launch-tui").chmod(0o755)
     (stubs / "omarchy-launch-browser").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$FOAMY_BROWSER_FILE"\n')

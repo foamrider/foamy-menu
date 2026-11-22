@@ -1565,6 +1565,7 @@ OverlayWindow {
 
       Column {
         anchors.centerIn: parent
+        width: parent.width - window.px(32)
         spacing: window.px(8)
         visible: window.editing || rows.count === 0
 
@@ -1584,8 +1585,12 @@ OverlayWindow {
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.title * window.zoom)
         }
+        // A failure's reason can be longer than the card is wide (a helper's
+        // limit, a command's stderr): it wraps instead of running past it.
         Text {
-          anchors.horizontalCenter: parent.horizontalCenter
+          width: parent.width
+          horizontalAlignment: Text.AlignHCenter
+          wrapMode: Text.Wrap
           textFormat: Text.PlainText
           text: window.emptyText[1]
           visible: text.length > 0

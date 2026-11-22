@@ -6,17 +6,21 @@ const assert = require("node:assert/strict")
 const fs = require("node:fs")
 const os = require("node:os")
 const path = require("node:path")
-const { execFileSync } = require("node:child_process")
+const { execFileSync, spawnSync } = require("node:child_process")
 const helper = require("./search-helper.js")
 const Scopes = require("../core/Scopes.js")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
+const I18n = require("../kit/node-loader.cjs").load("FoamyI18nText")
+const en = require("../i18n/en.json")
+const no = require("../i18n/no.json")
 
 const root = path.join(__dirname, "..")
 const skip = helper.skip && "no bundled search helper for this CPU"
 const isRoot = typeof process.getuid === "function" && process.getuid() === 0
 
-// A fixture home: files (text; @HOME@ is the home path), dirs, symlinks
-// (path -> target, both relative to the home), FIFOs and file modes.
+// A fixture home: files (text; @HOME@ is the home path) and their sizes
+// (padded with a hole of zeros), dirs, symlinks (path -> target, both
+// relative to the home), FIFOs and file modes.
 function makeHome(fixture) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "foamy-ssh-hosts-"))
   fs.mkdirSync(path.join(home, ".ssh"), { mode: 0o700 })
@@ -26,6 +30,7 @@ function makeHome(fixture) {
     fs.mkdirSync(path.dirname(at(rel)), { recursive: true })
     fs.writeFileSync(at(rel), text.replaceAll("@HOME@", home), { mode: 0o600 })
   }
+  for (const [rel, size] of Object.entries(fixture.sizes || {})) fs.truncateSync(at(rel), size)
   for (const [rel, target] of Object.entries(fixture.links || {})) {
     fs.mkdirSync(path.dirname(at(rel)), { recursive: true })
     fs.symlinkSync(at(target), at(rel))
@@ -253,6 +258,46 @@ for (const fixture of CASES) {
     const home = makeHome(fixture)
     try {
       assert.equal(runRust(home, fixture), fixture.out, fixture.why)
+    } finally {
+      fs.rmSync(home, { recursive: true, force: true })
+    }
+  })
+}
+
+// `count` entries named prefix0, prefix1, …, each holding `text`.
+const numbered = (prefix, count, text = "") => Object.fromEntries(Array.from({ length: count }, (_, i) => [prefix + i, text]))
+
+// A config past one of the helper's totals would list only part of its
+// hosts. The helper fails instead (exit 1, nothing on stdout, the reason on
+// stderr), so the SSH scope keeps the hosts it had (tests/scope-source.test.js)
+// and shows why, in the user's language. Where each bound lies is tested in
+// search/src/ssh_hosts.rs.
+const PAST_A_TOTAL = [
+  ["files", { files: { ".ssh/config": "Include many/*\n", ...numbered(".ssh/many/", 256) } },
+    "the SSH config and its Includes are more than 256 files"],
+  // Eight files of 1 MiB and the config.
+  ["bytes", { files: { ".ssh/config": "Include part?\n", ...numbered(".ssh/part", 8) }, sizes: numbered(".ssh/part", 8, 1024 * 1024) },
+    "the SSH config and its Includes hold more than 8 MiB"],
+  ["Include arguments", { files: { ".ssh/config": "Include nothing-here\n".repeat(4097) } },
+    "the SSH config has more than 4096 Include arguments"],
+  ["directory entries", { files: { ".ssh/config": "Include many/x*\n", ...numbered(".ssh/many/", 16385) } },
+    "the SSH config's Include patterns look at more than 16384 directory entries"],
+  ["hosts", { files: { ".ssh/config": "Host " + Object.keys(numbered("h", 10001)).join(" ") + "\n" } },
+    "the SSH config names more than 10000 hosts"]
+]
+
+for (const [bound, fixture, reason] of PAST_A_TOTAL) {
+  test(`ssh-hosts: a config past the ${bound} total fails with the reason, in the user's language`, { skip }, () => {
+    const home = makeHome(fixture)
+    try {
+      const [program, ...args] = [...helper.argv, "ssh-hosts"]
+      const run = spawnSync(program, args, { env: env(home, fixture), encoding: "utf8", timeout: 10000 })
+      assert.equal(run.error, undefined)
+      assert.deepEqual([run.status, run.stdout], [1, ""], "no list, and an error exit")
+      const line = "foamy-menu-search: ssh-hosts: " + reason + "; not listing part of the hosts"
+      assert.deepEqual(Scopes.exitFailure(run.status, run.stderr), [line, []])
+      assert.ok(Object.hasOwn(en, line), "the reason has a catalog entry")
+      assert.notEqual(I18n.translator(no, en).t(line), line, "the reason is translated")
     } finally {
       fs.rmSync(home, { recursive: true, force: true })
     }
