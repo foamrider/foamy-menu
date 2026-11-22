@@ -94,7 +94,8 @@ Item {
     return ""
   }
 
-  function ingest(text) {
+  // missing: the file is gone, not only empty.
+  function ingest(text, missing) {
     if (store.loaded && !store.readOnly && text === store._lastWritten)
       return
     var parsed = Migrate.parse(text)
@@ -105,9 +106,16 @@ Item {
     // not a new file: writing a new document now would replace the data and
     // the save in progress. The data stays in memory and is written with the
     // next change.
-    if (!parsed.doc && store.loaded && !store.lastError) {
+    if (!parsed.doc && store.loaded && !store.readOnly) {
       store._lastWritten = ""
       store.message("warning", store.path + " is empty or gone; keeping its data until the next change", null)
+      return
+    }
+    // A read-only store never writes, so it has nothing to keep: a removed
+    // file starts a new store. An empty one is still being written in place
+    // (an editor fixing it); a new document now would replace that text.
+    if (!parsed.doc && store.loaded && !missing) {
+      store.message("warning", store.path + " is empty; waiting for its text", null)
       return
     }
 
@@ -160,7 +168,7 @@ Item {
     onFileChanged: reload()
     onLoadFailed: function (error) {
       if (error === FileViewError.FileNotFound)
-        store.ingest("")
+        store.ingest("", true)
       else
         store.fail("cannot read " + store.path + ": " + FileViewError.toString(error))
     }

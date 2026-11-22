@@ -151,6 +151,10 @@ they are kept in `~/.local/share/foamy-menu/db/`. A file there that Foamy
 cannot use (not JSON, or a part of the wrong type) is left as it is: the
 launcher starts without that file's data, saves nothing to it and logs why.
 Fix the file and Foamy reads it again; remove it and Foamy starts a new one.
+The same holds for a file from a newer build. A usable file that is removed
+or emptied while the shell runs keeps its data in the launcher, which writes
+it again with the next change: to start over, remove it while the shell is
+stopped.
 
 ## Scopes
 
@@ -506,9 +510,10 @@ open window, focus waits until the launcher's layer is gone, and a lookup
 that fails (bad output, an error, a hung `hyprctl`) launches the app once.
 `tests/json-store.py` runs the store that holds favorites, aliases, ranking
 and calculator history against real files: a new file, unusable ones and
-one from a newer build (left as they are), one without a part, a save just
-before the store goes, and a file another program replaced, empties to save
-in place, or removes.
+one from a newer build (left as they are, and new stores once removed), one
+without a part, a save just before the store goes, a file another program
+replaced, empties to save in place, or removes, and an unusable file fixed
+in place.
 It then starts the backend over an unusable calculator.json and a
 settings.json without its general settings, saves the zoom, and checks that
 long searches are not saved.

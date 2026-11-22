@@ -6,8 +6,9 @@ the store that holds favorites, aliases, ranking and calculator history.
 - an unusable file (not JSON, not an object, a bad schemaVersion, a failed
   migration, a mistyped part, no read permission) and a file from a newer
   build are read-only: an update is refused and the file keeps its bytes;
-  the unusable file still gives the store an empty document, and removing
-  it makes a new one;
+  the unusable file still gives the store an empty document; removing it,
+  or the newer one, makes a new store, and an unusable file another program
+  empties to fix it in place stays read-only until the fixed text is read;
 - a file without one of its parts gets an empty one and takes updates;
 - an update made just before the store is destroyed is still written;
 - a file another program replaced (atomically) is read again, and the store
@@ -41,6 +42,7 @@ OUTSIDE = '{"schemaVersion":1,"items":["outside"]}'
 MINE = '{"schemaVersion":1,"items":["mine"]}'
 PARTLESS = '{"schemaVersion": 1}'
 REWRITTEN = '{"schemaVersion":1,"items":["mine","more"]}'
+MENDED = '{"schemaVersion":1,"items":["fixed by hand"]}'
 # Files the store cannot use as they are; each must stay as it is.
 UNUSABLE = {
     "broken": "{oops",
@@ -146,6 +148,13 @@ ShellRoot {
     ready: true
     onMessage: (level, text) => test.noted("removed", level, text)
   }
+  Services.JsonStore {
+    id: mended
+    path: test.dir + "/mended.json"
+    migrations: test.migrations
+    ready: true
+    onMessage: (level, text) => test.noted("mended", level, text)
+  }
   Loader {
     id: holder
     sourceComponent: Services.JsonStore {
@@ -188,6 +197,16 @@ ShellRoot {
     id: fixer
     command: ["rm", "--", test.dir + "/broken.json"]
   }
+  Process {
+    id: newerRemover
+    command: ["rm", "--", test.dir + "/newer.json"]
+  }
+  // An editor fixing an unusable file in place.
+  Process {
+    id: mender
+    stdinEnabled: true
+    command: ["sh", "-c", 'exec 3>"$1"; read -r go; printf "%s" "$2" >&3', "sh", test.dir + "/mended.json", Quickshell.env("FOAMY_MENDED")]
+  }
   function done() {
     console.log("FOAMY DONE")
     Qt.quit()
@@ -197,7 +216,7 @@ ShellRoot {
   }
   Component.onCompleted: {
     wait.waitFor(function () {
-      return fresh.loaded && newer.loaded && watched.loaded && partless.loaded && emptied.loaded && removed.loaded && holder.item && holder.item.loaded && test.unusable.every(function (name) {
+      return fresh.loaded && newer.loaded && watched.loaded && partless.loaded && emptied.loaded && removed.loaded && mended.loaded && holder.item && holder.item.loaded && test.unusable.every(function (name) {
         return test.store(name).loaded || test.store(name).reported.length > 0
       })
     }, 10000, function (ok) {
@@ -219,6 +238,7 @@ ShellRoot {
       test.check(newer.readOnly && newer.doc.items[0] === "from a newer build" && !newer.update(function (d) {
         d.items = []
       }), "a file from a newer build is read but refuses an update")
+      test.check(mended.readOnly && mended.lastError !== "", "an unreadable file to fix in place is read-only")
       test.check(!partless.readOnly && partless.lastError === "" && JSON.stringify(partless.doc.items) === "[]" && (test.warnings.partless || []).length === 1, "a file without its items gets an empty list: " + JSON.stringify(partless.doc) + " " + JSON.stringify(test.warnings.partless))
       test.check(partless.update(function (d) {
         d.items.push("x")
@@ -234,6 +254,7 @@ ShellRoot {
       inPlace.running = true
       remover.running = true
       fixer.running = true
+      newerRemover.running = true
       wait.waitFor(function () {
         var saved = JSON.parse(test.read(freshFile) || "{}")
         return saved.schemaVersion === 1 && saved.items && saved.items[0] === "a"
@@ -279,9 +300,33 @@ ShellRoot {
       removed.flush()
       var broken = test.store("broken")
       wait.waitFor(function () {
-        return broken.loaded && !broken.readOnly
+        return broken.loaded && !broken.readOnly && !newer.readOnly
       }, 10000, function (ok) {
         test.check(ok && broken.lastError === "" && broken.doc.items.length === 0, "removing an unreadable file makes a new store: " + JSON.stringify(broken.doc) + " " + broken.lastError)
+        test.check(ok && newer.lastError === "" && newer.doc.items.length === 0 && newer.update(function (d) {
+          d.items.push("new")
+        }), "removing a file from a newer build makes a new store: " + JSON.stringify(newer.doc))
+        newer.flush()
+        test.mending()
+      })
+    })
+  }
+  // Until the store reports the empty file (or reads it as a new one).
+  function mending() {
+    mender.running = true
+    wait.waitFor(function () {
+      return !!test.warnings.mended || !mended.readOnly
+    }, 10000, function (ok) {
+      test.check(ok && mended.readOnly && mended.lastError !== "", "an unusable file another program empties to write it in place stays read-only: " + JSON.stringify(mended.doc) + " " + mended.lastError)
+      mender.write("go\\n")
+      wait.waitFor(function () {
+        return !!mended.doc && mended.doc.items[0] === "fixed by hand"
+      }, 10000, function (ok) {
+        test.check(ok && !mended.readOnly && mended.lastError === "", "the fixed text written in place is read: " + JSON.stringify(mended.doc) + " " + mended.lastError)
+        // Each later change in the directory reads denied.json again.
+        test.check(test.unusable.every(function (name) {
+          return test.store(name).reported.length === 1
+        }), "each unusable file is still reported once")
         test.done()
       })
     })
@@ -435,21 +480,29 @@ def store_run(harness):
     (stores / "emptied.json").write_text(MINE)
     (stores / "partless.json").write_text(PARTLESS)
     (stores / "removed.json").write_text(MINE)
+    (stores / "mended.json").write_text(UNUSABLE["broken"])
     run.env["FOAMY_STORE_DIR"] = str(stores)
     run.env["FOAMY_OUTSIDE"] = OUTSIDE
     run.env["FOAMY_REWRITTEN"] = REWRITTEN
+    run.env["FOAMY_MENDED"] = MENDED
     run.env["FOAMY_UNUSABLE"] = json.dumps(list(UNUSABLE))
     run.run(timeout=60)
     (stores / "denied.json").chmod(0o600)
     problems = run.failures()
     # What the files hold once the shell is gone.
     expected = {name: text for name, text in UNUSABLE.items() if name != "broken"}
-    expected.update({"newer": NEWER, "watched": OUTSIDE, "emptied": REWRITTEN})
+    expected.update({"watched": OUTSIDE, "emptied": REWRITTEN, "mended": MENDED})
     for name, text in expected.items():
         found = (stores / f"{name}.json").read_text()
         if found != text:
             problems.append(f"{name}.json was written over: {found!r}")
-    for name, items in (("unload", ["kept"]), ("removed", ["mine", "after"]), ("broken", []), ("partless", ["x"])):
+    for name, items in (
+        ("unload", ["kept"]),
+        ("removed", ["mine", "after"]),
+        ("broken", []),
+        ("partless", ["x"]),
+        ("newer", ["new"]),
+    ):
         path = stores / f"{name}.json"
         found = path.read_text() if path.exists() else "missing"
         try:
