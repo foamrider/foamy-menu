@@ -472,8 +472,12 @@ toolchain (`rust-toolchain.toml`, rustup with the musl targets), installs
 `bin/<arch>/foamy-menu-search` and updates `search/native.pin`. Cargo output goes
 to `~/.cache/foamy-native/foamy-menu`, never into the plugin folder, which the
 shell watches. `bin/build-search --test` runs rustfmt, clippy and the cargo tests;
-`--verify` rebuilds from scratch and compares bytes. Commit the binaries and the
-pin with the source. The helper tests (`cargo test --test protocol` in `search/`,
+`--verify` rebuilds from scratch and compares bytes. Three cargo tests tell from
+a file's access time whether it was read, so the temporary directory (`TMPDIR`,
+else `/tmp`) must record access times, as the default `relatime` does; mounted
+`noatime`, they fail with "the temporary file system must record access
+times". Commit the binaries and the pin with the source. The helper tests
+(`cargo test --test protocol` in `search/`,
 `node --test tests/*.test.js`) run against another build when `FOAMY_HELPER` holds
 a JSON argv prefix with an absolute path, e.g.
 `FOAMY_HELPER="[\"$PWD/bin/aarch64/foamy-menu-search\"]"` (qemu-user binfmt).
