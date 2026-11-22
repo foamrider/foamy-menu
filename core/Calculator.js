@@ -620,12 +620,14 @@ function durationParts(v, sign) {
 // one: month moves do not cancel (31 January + 1 month is 3 March, and
 // 1 month back is 3 February), so "1 month - 1 month + 1 day" moves by the
 // day alone. A whole number of years moves the calendar as 12 months each,
-// so it adds up with months.
+// and a whole number of weeks as 7 days each, so they add up with months
+// and days: "1 week - 7 days" must not step over a DST switch and back.
 function mergeParts(parts) {
   var out = []
   for (var i = 0; i < parts.length; i++) {
     var p = parts[i]
     if (p.unit === UNITS.yr && Math.floor(p.n) === p.n) p = num(12 * p.n, UNITS.mo)
+    else if (p.unit === UNITS.wk && Math.floor(p.n) === p.n) p = num(7 * p.n, UNITS.d)
     var j = 0
     while (j < out.length && out[j].unit !== p.unit) j++
     if (j < out.length) out[j] = num(out[j].n + p.n, p.unit)

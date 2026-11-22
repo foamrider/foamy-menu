@@ -263,6 +263,14 @@ test("parts of one calendar unit that cancel do not move the date", () => {
   assert.equal(result("2028-02-29 + (1 year - 12 months + 1 day)"), "Wednesday, 1 March 2028", "a whole year is 12 months")
   assert.equal(result("2026-01-31 + (2 months - 1 month + 1 day)"), "Wednesday, 4 March 2026", "the rest of a unit still moves once")
   assert.equal(result("2026-01-31 + (1 hour - 1 hour + 1 month - 1 month + 1 day)"), "Sunday, 1 February 2026")
+  // New York enters summer time on Sunday 8 March 2026, and 02:30 does not
+  // exist that night: a week forward lands on 03:30, and 7 days back from
+  // there keeps 03:30. A whole week is 7 days, so the two cancel first.
+  const march = { ...env, nowMs: Date.UTC(2026, 2, 1, 7, 30), localOffset: -300 }
+  for (const q of ["now + (1 week - 7 days + 1 hour)", "now + (7 days - 1 week + 1 hour)", "now + (1 week + 1 hour - 7 days)"]) {
+    assert.equal(result(q, march), "Sunday, 1 March 2026 at 3:30 AM", q)
+  }
+  assert.equal(result("now + (2 weeks - 7 days)", march), "Sunday, 8 March 2026 at 3:30 AM", "the rest of the weeks still moves once")
 })
 
 test("work time follows workHoursPerDay and remToPxRate is configurable", () => {
