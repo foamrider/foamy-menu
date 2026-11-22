@@ -347,6 +347,9 @@ ShellRoot {
   // Longer than any listed value (Scopes.MAX_TEXT, 512), shorter than
   // what a search engine takes.
   readonly property string longText: Array(121).join("rust async ")
+  // Just at and just over that limit.
+  readonly property string edgeText: Array(513).join("b")
+  readonly property string overText: Array(514).join("c")
   function check(ok, detail) {
     console.log((ok ? "PASS " : "FOAMY FAIL ") + detail)
   }
@@ -453,6 +456,32 @@ ShellRoot {
       id: "scope-item:duckduckgo:pasta"
     })
     test.check(shortSaved.ok && !!shortSaved.data, "a short search is saved")
+    test.call("rootSearch.performAction", {
+      id: "scope-query:duckduckgo",
+      action: "open",
+      query: test.edgeText
+    })
+    test.call("rootSearch.performAction", {
+      id: "scope-query:duckduckgo",
+      action: "open",
+      query: test.overText
+    })
+    var edgeSaved = test.call("frecency.get", {
+      id: "scope-item:duckduckgo:" + test.edgeText
+    })
+    test.check(edgeSaved.ok && !!edgeSaved.data, "a search of exactly 512 characters is saved")
+    var overSaved = test.call("frecency.get", {
+      id: "scope-item:duckduckgo:" + test.overText
+    })
+    test.check(overSaved.ok && overSaved.data === null, "a search of 513 characters is not saved")
+    test.call("frecency.visit", {
+      id: "builtin:calculator-history",
+      query: test.overText
+    })
+    test.call("frecency.visit", {
+      id: "builtin:calculator-history",
+      query: test.edgeText
+    })
     test.call("frecency.visit", {
       id: "builtin:calculator-history",
       query: test.longText
@@ -466,13 +495,13 @@ ShellRoot {
     })
     test.check(visited.ok && !!visited.data && JSON.stringify(visited.data.searchTerms.map(function (t) {
       return t.term
-    })) === '["calc"]', "a visit keeps a short search term and drops a long one: " + JSON.stringify(visited.data).slice(0, 200))
+    })) === JSON.stringify([test.edgeText, "calc"]), "a visit keeps search terms of up to 512 characters and drops longer ones: " + JSON.stringify(visited.data).slice(0, 200))
     var recent = test.call("rootSearch.getSearchHistory")
-    test.check(recent.ok && JSON.stringify(recent.data) === '["calc"]', "search history keeps a short query and drops a long one: " + JSON.stringify(recent.data).slice(0, 200))
-    // The searches run detached; both reach the browser stand-in.
+    test.check(recent.ok && JSON.stringify(recent.data) === JSON.stringify(["calc", test.edgeText]), "search history keeps queries of up to 512 characters and drops longer ones: " + JSON.stringify(recent.data).slice(0, 200))
+    // The searches run detached; all four reach the browser stand-in.
     wait.waitFor(function () {
       browsed.reload()
-      return browsed.text().split("\\n").length >= 3
+      return browsed.text().split("\\n").length >= 5
     }, 10000, function (ok) {
       // In either order: each stand-in appends when it gets to run.
       var urls = browsed.text().split("\\n")
