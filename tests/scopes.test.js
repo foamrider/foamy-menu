@@ -102,7 +102,7 @@ test("command output: title, value and subtitle per line; blanks and duplicates 
   ])
 })
 
-test("command output: over-long lines, titles and values are skipped; a long subtitle is cut; at most 5000 items", () => {
+test("command output: over-long lines, titles and values are skipped; a long subtitle is cut; at most 10,000 items", () => {
   const max = Scopes.MAX_TEXT
   const long = "x".repeat(max + 1)
   const items = Scopes.parseOutput([
@@ -118,8 +118,8 @@ test("command output: over-long lines, titles and values are skipped; a long sub
   assert.equal(items[1].subtitle.length, max)
   assert.deepEqual(Object.keys(items[2]).sort(), ["subtitle", "title", "value"], "over-long picture paths are dropped")
   assert.equal(items[3].value.length, max)
-  const many = Array.from({ length: 5010 }, (_, i) => "host" + i).join("\n")
-  assert.equal(Scopes.parseOutput(many).length, 5000, "README: at most 5000 items")
+  const many = Array.from({ length: 10010 }, (_, i) => "host" + i).join("\n")
+  assert.equal(Scopes.parseOutput(many).length, 10000, "README: at most 10,000 items")
 })
 
 test("commands fill {value} and {plugin} inside one argument each; values are checked", () => {

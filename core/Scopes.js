@@ -22,7 +22,10 @@
 
 var ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/
 var KEYWORD_PATTERN = /^[^\s]{1,32}$/
-var MAX_ITEMS = 5000
+// Items a scope keeps. The SSH helper lists up to 10,000 hosts and fails a
+// config with more (MAX_HOSTS in search/src/ssh_hosts.rs), so the SSH list
+// is never cut here.
+var MAX_ITEMS = 10000
 var MAX_TEXT = 512
 var DEFAULT_TIMEOUT_MS = 10000
 // A scope without icon or iconName gets a search glyph (Nerd Font md-magnify).

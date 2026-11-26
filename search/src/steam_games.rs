@@ -68,7 +68,7 @@ pub(crate) const MAX_LIBRARIES: usize = 64;
 /// Directory entries examined in one folder (steamapps, an art folder).
 pub(crate) const MAX_DIR_ENTRIES: usize = 65_536;
 /// Installed apps, tools among them (left out only after the cut): no
-/// manifest is read after this many. The scope keeps at most this many items.
+/// manifest is read after this many.
 pub(crate) const MAX_GAMES: usize = 5_000;
 /// Bytes of one appinfo.vdf entry; a larger size ends the scan.
 pub(crate) const MAX_APPINFO_ENTRY: u32 = 16 * 1024 * 1024;
