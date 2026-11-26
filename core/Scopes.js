@@ -24,9 +24,11 @@ var ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/
 var KEYWORD_PATTERN = /^[^\s]{1,32}$/
 // Items a list or command scope keeps: with ASCII texts at MAX_TEXT that is a
 // list of about 8.07 MB, inside the search helper's 8 MiB request line
-// (core/FleaSearch.js). The SSH scope keeps MAX_SSH_HOSTS (maxItems()): its
-// helper lists up to that many hosts and fails a config with more
-// (MAX_HOSTS in search/src/ssh_hosts.rs), so its list is never cut here.
+// (core/FleaSearch.js). A scope that runs the bundled helper's SSH host list
+// (the SSH scope, unless a scope file gives it another command) keeps
+// MAX_SSH_HOSTS (maxItems()): the helper lists up to that many hosts and
+// fails a config with more (MAX_HOSTS in search/src/ssh_hosts.rs), so that
+// list is never cut here.
 var MAX_ITEMS = 5000
 var MAX_SSH_HOSTS = 10000
 var MAX_TEXT = 512
@@ -87,6 +89,10 @@ function isNativeCommand(argv) {
   return !!argv && argv.length > 5 && argv[0] === "bash" && argv[1] === "-c" && argv[2] === NATIVE_SCRIPT
 }
 
+// The SSH scope's source: every concrete Host in ~/.ssh/config and its
+// Includes, from the bundled helper (search/src/ssh_hosts.rs).
+var SSH_HOSTS_COMMAND = nativeCommand("foamy-menu-search", ["ssh-hosts"])
+
 var BUILTINS = [
   {
     id: "ssh",
@@ -98,8 +104,7 @@ var BUILTINS = [
     itemsTitle: "Hosts",
     placeholder: "Search hosts or type user@host…",
     emptyText: "No hosts in ~/.ssh/config",
-    // Every concrete Host in ~/.ssh/config and its Includes (search/src/ssh_hosts.rs).
-    source: { type: "command", command: nativeCommand("foamy-menu-search", ["ssh-hosts"]) },
+    source: { type: "command", command: SSH_HOSTS_COMMAND.slice() },
     open: ["omarchy-launch-tui", "--app-id=TUI.tile", "{plugin}/bin/foamy-ssh-connect", "{value}"],
     openTitle: "Connect",
     valuePattern: SSH_HOST_PATTERN,
@@ -404,10 +409,12 @@ function matchKeyword(scopes, query) {
   return null
 }
 
-// The items a scope keeps of a run's output: MAX_SSH_HOSTS for the SSH
-// scope, MAX_ITEMS for any other.
+// The items a scope keeps of a run's output: MAX_SSH_HOSTS when it runs the
+// bundled helper's SSH host list, MAX_ITEMS for any other command, also one
+// a scope file gives the SSH scope.
 function maxItems(scope) {
-  return scope && scope.id === "ssh" ? MAX_SSH_HOSTS : MAX_ITEMS
+  var command = scope && scope.source ? scope.source.command : null
+  return JSON.stringify(command) === JSON.stringify(SSH_HOSTS_COMMAND) ? MAX_SSH_HOSTS : MAX_ITEMS
 }
 
 // Command output: one item per line,

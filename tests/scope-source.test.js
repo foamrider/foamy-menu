@@ -241,21 +241,25 @@ test("a failed refresh keeps the last list; the same list again keeps its array"
 })
 
 // The SSH scope keeps every host its helper lists (up to 10,000). Any other
-// command scope keeps 5,000 items, a list the search helper can take.
-test("a run's items: the SSH scope keeps 10,000, any other command scope 5,000", () => {
+// command keeps 5,000 items, a list the search helper can take, also one
+// that a scope file puts in place of the SSH scope's own.
+test("a run's items: the SSH helper's host list keeps 10,000, any other command 5,000", () => {
   const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find(s => s.id === "ssh")
-  const h = harness([ssh, scope("hosts", ["lister"])])
+  const file = Scopes.parseFile("ssh.json", JSON.stringify({ id: "ssh", source: { type: "command", command: ["my-inventory"] } }))
+  const own = Scopes.merge(Scopes.BUILTINS, [{ name: "ssh.json", definition: file.definition }]).scopes.find(s => s.id === "ssh")
   const lines = Array.from({ length: 10010 }, (_, i) => "host" + i)
-  for (const id of ["ssh", "hosts"]) {
-    h.source.refresh(id)
+  // The items a run of the scope's command keeps of those lines.
+  const kept = definition => {
+    const h = harness([definition])
+    h.source.refresh(definition.id)
     h.proc.lines = lines.slice()
     h.exit(0)
-    h.stopped()
-    h.flush()
+    return h.loads[0].failure || h.loads[0].list.length
   }
-  const kept = Object.fromEntries(h.loads.map(l => [l.id, l.failure || l.list.length]))
-  assert.equal(kept.ssh, 10000, "the SSH scope keeps every host its helper lists")
-  assert.equal(kept.hosts, 5000, "another command scope keeps 5,000 items")
+  assert.equal(kept(ssh), 10000, "the SSH scope keeps every host its helper lists")
+  assert.equal(kept(scope("hosts", ["lister"])), 5000, "another command scope keeps 5,000 items")
+  assert.deepEqual(Array.from(own.source.command), ["my-inventory"])
+  assert.equal(kept(own), 5000, "a scope file that gives the SSH scope its own command keeps 5,000 items")
 })
 
 test("suggestions: no request for a scope with suggest off; the typed text is URL-encoded; a failed reply lists nothing", () => {
