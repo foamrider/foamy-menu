@@ -114,6 +114,7 @@
   "foamy-menu-search: ssh-hosts: the SSH config has more than 4096 Include arguments; not listing part of the hosts": "foamy-menu-search: ssh-hosts: the SSH config has more than 4096 Include arguments; not listing part of the hosts",
   "foamy-menu-search: ssh-hosts: the SSH config names more than 10000 hosts; not listing part of the hosts": "foamy-menu-search: ssh-hosts: the SSH config names more than 10000 hosts; not listing part of the hosts",
   "foamy-menu-search: ssh-hosts: the SSH config's Include patterns look at more than 16384 directory entries; not listing part of the hosts": "foamy-menu-search: ssh-hosts: the SSH config's Include patterns look at more than 16384 directory entries; not listing part of the hosts",
+  "foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games": "foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games",
   "Frecency": "Frecency",
   "Game": "Game",
   "Games": "Games",

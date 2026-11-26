@@ -114,6 +114,7 @@
   "foamy-menu-search: ssh-hosts: the SSH config has more than 4096 Include arguments; not listing part of the hosts": "foamy-menu-search: ssh-hosts: SSH-oppsettet har mer enn 4096 Include-argumenter; viser ikke bare en del av vertene",
   "foamy-menu-search: ssh-hosts: the SSH config names more than 10000 hosts; not listing part of the hosts": "foamy-menu-search: ssh-hosts: SSH-oppsettet har mer enn 10000 verter; viser ikke bare en del av vertene",
   "foamy-menu-search: ssh-hosts: the SSH config's Include patterns look at more than 16384 directory entries; not listing part of the hosts": "foamy-menu-search: ssh-hosts: Include-mønstrene i SSH-oppsettet går gjennom mer enn 16384 mappeoppføringer; viser ikke bare en del av vertene",
+  "foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games": "foamy-menu-search: steam-games: appmanifestene er på mer enn 64 MiB; viser ikke bare en del av spillene",
   "Frecency": "Bruksrangering",
   "Game": "Spill",
   "Games": "Spill",
