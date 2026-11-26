@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import "plugin" as Foamy
 import "plugin/services" as FoamyServices
 import "plugin/core/Fetch.js" as Fetch
@@ -1118,14 +1119,17 @@ ShellRoot {
           })
           var at = reason ? reason.mapToItem(view.cardItem, 0, 0) : null
           test.check(!!at && view.emptyText[1].indexOf("long-failure: ") === 0 && reason.lineCount > 1 && at.x >= 0 && at.x + reason.width <= view.cardItem.width, "a failure's long reason wraps inside the card: " + JSON.stringify(at) + " " + (reason ? reason.width + " of " + view.cardItem.width : "not shown"))
+          test.check(!!reason && Qt.colorEqual(reason.color, Commons.Color.urgent) && reason.opacity === 1, "a failure's reason is in the error colour: " + (reason ? reason.color + " at opacity " + reason.opacity : "not shown"))
         }
-        menu.open('{"menu":"root"}')
-        view.popToRoot()
-        view.setQuery("")
-        view.request({
-          id: "builtin:calculator-history",
-          action: "open",
-          query: ""
+        test.capture("scope-failure", function () {
+          menu.open('{"menu":"root"}')
+          view.popToRoot()
+          view.setQuery("")
+          view.request({
+            id: "builtin:calculator-history",
+            action: "open",
+            query: ""
+          })
         })
         break
       case 53:

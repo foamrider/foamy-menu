@@ -121,6 +121,14 @@ OverlayWindow {
     window.backend.candidatesRevision
     return window.view.kind === "scope" ? window.backend.scopeState(window.view.scopeId) : null
   }
+  // A scope state whose load failed with no items to show instead: its empty
+  // view says why. emptyText calls this on the state it read, not on
+  // scopeFailed: when the view changes, emptyText can run before
+  // scopeFailed is updated.
+  function failedLoad(s) {
+    return !!s && !!s.failure && !s.loaded
+  }
+  readonly property bool scopeFailed: window.failedLoad(window.scopeState)
   // The Apps view lays the same rows out as an icon grid, and so does a scope
   // whose layout is "icons" or "covers" (Steam Games).
   readonly property bool gridView: window.view.kind === "apps" || (!!window.scopeState && window.scopeState.layout !== "list")
@@ -140,7 +148,7 @@ OverlayWindow {
     if (!window.backend.ready)
       return [window.t("Loading…"), ""]
     var s = window.scopeState
-    if (s && s.failure && !s.loaded)
+    if (window.failedLoad(s))
       return [window.t("Could not load %1", [window.view.title]), window.t(s.failure, s.failureValues)]
     if (s && !s.loaded)
       return [window.t("Loading…"), ""]
@@ -1587,6 +1595,8 @@ OverlayWindow {
         }
         // A failure's reason can be longer than the card is wide (a helper's
         // limit, a command's stderr): it wraps instead of running past it.
+        // It is an error, so it takes the urgent colour (DESIGN.md); any
+        // other detail is a muted hint.
         Text {
           width: parent.width
           horizontalAlignment: Text.AlignHCenter
@@ -1594,8 +1604,8 @@ OverlayWindow {
           textFormat: Text.PlainText
           text: window.emptyText[1]
           visible: text.length > 0
-          color: window.look.foreground
-          opacity: 0.55
+          color: window.scopeFailed ? Commons.Color.urgent : window.look.foreground
+          opacity: window.scopeFailed ? 1 : 0.55
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
         }
