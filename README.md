@@ -28,8 +28,10 @@ one query per keystroke, and skips fields that cannot match before scoring
 them. So every view matches the same rows at each strictness, misspellings
 included. The built-in matcher takes over in every view for the rest of the
 shell session when the helper is missing for the CPU, exits, fails or takes
-over a second to answer. It also matches a query over 256 characters, and
-the views the helper does not search: a web search scope's saved searches and
+over a second to answer. It also matches a query over 256 characters, a
+list past the helper's limits (a request over 8 MiB, or more than 20,000
+entries; the other list stays with the helper), and the views the helper
+does not search: a web search scope's saved searches and
 Calculator History. The same binary
 lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`) and the Games
 scope's Steam games (`foamy-menu-search steam-games`), one short run each time
