@@ -240,6 +240,24 @@ test("a failed refresh keeps the last list; the same list again keeps its array"
   assert.deepEqual(h.source.items.hosts.map(i => i.title), ["c"])
 })
 
+// The SSH scope keeps every host its helper lists (up to 10,000). Any other
+// command scope keeps 5,000 items, a list the search helper can take.
+test("a run's items: the SSH scope keeps 10,000, any other command scope 5,000", () => {
+  const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find(s => s.id === "ssh")
+  const h = harness([ssh, scope("hosts", ["lister"])])
+  const lines = Array.from({ length: 10010 }, (_, i) => "host" + i)
+  for (const id of ["ssh", "hosts"]) {
+    h.source.refresh(id)
+    h.proc.lines = lines.slice()
+    h.exit(0)
+    h.stopped()
+    h.flush()
+  }
+  const kept = Object.fromEntries(h.loads.map(l => [l.id, l.failure || l.list.length]))
+  assert.equal(kept.ssh, 10000, "the SSH scope keeps every host its helper lists")
+  assert.equal(kept.hosts, 5000, "another command scope keeps 5,000 items")
+})
+
 test("suggestions: no request for a scope with suggest off; the typed text is URL-encoded; a failed reply lists nothing", () => {
   const scopes = Scopes.merge(Scopes.BUILTINS, [{ name: "duckduckgo.json", definition: { id: "duckduckgo", suggest: true } }]).scopes
   const h = harness(scopes)

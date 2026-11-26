@@ -22,10 +22,13 @@
 
 var ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/
 var KEYWORD_PATTERN = /^[^\s]{1,32}$/
-// Items a scope keeps. The SSH helper lists up to 10,000 hosts and fails a
-// config with more (MAX_HOSTS in search/src/ssh_hosts.rs), so the SSH list
-// is never cut here.
-var MAX_ITEMS = 10000
+// Items a list or command scope keeps: with ASCII texts at MAX_TEXT that is a
+// list of about 8.07 MB, inside the search helper's 8 MiB request line
+// (core/FleaSearch.js). The SSH scope keeps MAX_SSH_HOSTS (maxItems()): its
+// helper lists up to that many hosts and fails a config with more
+// (MAX_HOSTS in search/src/ssh_hosts.rs), so its list is never cut here.
+var MAX_ITEMS = 5000
+var MAX_SSH_HOSTS = 10000
 var MAX_TEXT = 512
 var DEFAULT_TIMEOUT_MS = 10000
 // A scope without icon or iconName gets a search glyph (Nerd Font md-magnify).
@@ -401,17 +404,24 @@ function matchKeyword(scopes, query) {
   return null
 }
 
+// The items a scope keeps of a run's output: MAX_SSH_HOSTS for the SSH
+// scope, MAX_ITEMS for any other.
+function maxItems(scope) {
+  return scope && scope.id === "ssh" ? MAX_SSH_HOSTS : MAX_ITEMS
+}
+
 // Command output: one item per line,
 // "title<TAB>value<TAB>subtitle<TAB>icon<TAB>cover"; value defaults to the
 // title, the rest may be left out. icon is an image file or an icon name,
 // cover an image file (absolute paths; anything else is dropped). Blank and
-// over-long lines are skipped; at most MAX_ITEMS items, duplicate values kept
-// once.
-function parseOutput(output) {
+// over-long lines are skipped; at most max items (MAX_ITEMS when not given),
+// duplicate values kept once.
+function parseOutput(output, max) {
+  var limit = max || MAX_ITEMS
   var lines = String(output || "").split("\n")
   var items = []
   var seen = Object.create(null)
-  for (var i = 0; i < lines.length && items.length < MAX_ITEMS; i++) {
+  for (var i = 0; i < lines.length && items.length < limit; i++) {
     var line = lines[i].replace(/\r$/, "")
     if (!line.trim() || line.length > MAX_TEXT * 5) continue
     var parts = line.split("\t")
@@ -713,6 +723,7 @@ if (typeof module !== "undefined") {
     parseFile: parseFile,
     merge: merge,
     matchKeyword: matchKeyword,
+    maxItems: maxItems,
     parseOutput: parseOutput,
     itemId: itemId,
     typedId: typedId,

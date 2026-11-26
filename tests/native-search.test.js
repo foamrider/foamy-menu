@@ -355,9 +355,9 @@ test("the service drives the real helper: load, query, reload, two catalogs", { 
 // The helper refuses a request line over 8 MiB and a list over 20,000
 // entries, and a refusal turns it off in every view. A list past either
 // limit is never sent: the built-in matcher searches that list alone, the
-// other list keeps the helper, and it is logged once per list. A scope at its
-// item cap, with each title and subtitle at the length cap, is past the line
-// limit.
+// other list keeps the helper, and it is logged once per list. The SSH scope
+// at its item cap (10,000), with each title and subtitle at the length cap,
+// is past the line limit.
 test("a list past the helper's limits stays with the built-in matcher, and the other list keeps the helper", { skip: helperUnderTest.skip, timeout: 60000 }, async t => {
   const h = harness()
   const argv = helperUnderTest.required ? helperUnderTest.argv : h.command()
@@ -391,9 +391,9 @@ test("a list past the helper's limits stays with the built-in matcher, and the o
   assert.deepEqual(await found("root", "files"), ["root0"], "the helper answers")
   const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find(s => s.id === "ssh")
   const text = (prefix, i) => prefix + String(i).padStart(Scopes.MAX_TEXT - prefix.length, "0")
-  const output = Array.from({ length: Scopes.MAX_ITEMS }, (_, i) => text("h", i) + "\t\t" + text("u@", i)).join("\n")
-  const hosts = Scopes.parseOutput(output).map(item => Scopes.itemCandidate(ssh, item))
-  assert.equal(hosts.length, Scopes.MAX_ITEMS)
+  const output = Array.from({ length: Scopes.maxItems(ssh) }, (_, i) => text("h", i) + "\t\t" + text("u@", i)).join("\n")
+  const hosts = Scopes.parseOutput(output, Scopes.maxItems(ssh)).map(item => Scopes.itemCandidate(ssh, item))
+  assert.equal(hosts.length, 10000)
   h.service.setCatalog("view", F.entries(hosts, R.transliterate), hosts.map(c => c.id))
   assert.equal(await ask("view", "h1"), null, "the scope at its caps is searched by the built-in matcher")
   assert.deepEqual(await found("root", "files"), ["root0"], "the root list keeps the helper")
@@ -435,7 +435,7 @@ test("a list past the helper's limits stays with the built-in matcher, and the o
   assert.equal(h.service.disabled, false)
   assert.deepEqual(h.events, [], "the helper never failed")
   const logged = h.messages.map(m => [m.level, m.text.split(" ")[1], m.metadata.entries])
-  assert.deepEqual(logged, [["warning", "view", Scopes.MAX_ITEMS], ["warning", "root", F.MAX_ENTRIES + 1]], "one line for each list, however often it was past the limits")
+  assert.deepEqual(logged, [["warning", "view", 10000], ["warning", "root", F.MAX_ENTRIES + 1]], "one line for each list, however often it was past the limits")
   child.stdin.end()
 })
 
