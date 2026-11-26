@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Commons
+import qs.Commons as Commons
 import "plugin" as Foamy
 import "plugin/services" as FoamyServices
 import "plugin/core/Fetch.js" as Fetch
@@ -376,14 +377,11 @@ ShellRoot {
     }
   }
   // A guard batch that hangs (its menu's one guard sleeps) ends at the
-  // deadline, keeps the previous results and stops loading. Not 2s: the
-  // kit's clipboard stand-in for timeout turns `timeout --signal=KILL 2s`
-  // (clipboard.sh's read) into 60s, until foamy-kit's preview/hostenv.py
-  // matches only clipboard.sh's read.
+  // deadline, keeps the previous results and stops loading.
   FoamyServices.OmarchyMenuSource {
     id: guardProbe
     omarchyPath: Quickshell.env("FOAMY_GUARD_OMARCHY")
-    commandTimeout: "3s"
+    commandTimeout: "2s"
     property var said: []
     onMessage: function (level, text, metadata) {
       guardProbe.said = guardProbe.said.concat([text])
@@ -1121,14 +1119,17 @@ ShellRoot {
           })
           var at = reason ? reason.mapToItem(view.cardItem, 0, 0) : null
           test.check(!!at && view.emptyText[1].indexOf("long-failure: ") === 0 && reason.lineCount > 1 && at.x >= 0 && at.x + reason.width <= view.cardItem.width, "a failure's long reason wraps inside the card: " + JSON.stringify(at) + " " + (reason ? reason.width + " of " + view.cardItem.width : "not shown"))
+          test.check(!!reason && Qt.colorEqual(reason.color, Commons.Color.urgent) && reason.opacity === 1, "a failure's reason is in the error colour: " + (reason ? reason.color + " at opacity " + reason.opacity : "not shown"))
         }
-        menu.open('{"menu":"root"}')
-        view.popToRoot()
-        view.setQuery("")
-        view.request({
-          id: "builtin:calculator-history",
-          action: "open",
-          query: ""
+        test.capture("scope-failure", function () {
+          menu.open('{"menu":"root"}')
+          view.popToRoot()
+          view.setQuery("")
+          view.request({
+            id: "builtin:calculator-history",
+            action: "open",
+            query: ""
+          })
         })
         break
       case 53:

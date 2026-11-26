@@ -9,6 +9,7 @@ const helperUnderTest = require("./search-helper.js")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
 const F = require("../core/FleaSearch.js")
 const R = require("../core/Ranker.js")
+const Scopes = require("../core/Scopes.js")
 
 const source = fs.readFileSync(path.join(__dirname, "../services/NativeSearch.qml"), "utf8")
 // The text of `name: ` in the first block after `from`, to the end of the
@@ -24,8 +25,11 @@ function binding(name, from, block) {
 
 // NativeSearch.qml's functions on plain objects; "root" starts with one entry.
 function harness() {
-  const events = [], writes = []
-  const service = { catalogs: {}, serial: 0, disabled: false, pending: null, failed: m => events.push(m), pluginDir: path.join(__dirname, "..") }
+  const events = [], writes = [], messages = []
+  const service = {
+    catalogs: {}, serial: 0, disabled: false, pending: null, reportedLimits: {}, failed: m => events.push(m),
+    message: (level, text, metadata) => messages.push({ level, text, metadata }), pluginDir: path.join(__dirname, "..")
+  }
   const helper = { running: false, write: s => writes.push(JSON.parse(s)) }
   const timeout = { active: false, restart() { this.active = true }, stop() { this.active = false } }
   const context = vm.createContext({ service, helper, timeout, FleaSearch: F, FoamyNative })
@@ -42,7 +46,7 @@ function harness() {
   const onExited = binding("onExited", "id: helper", true)
   const onTriggered = binding("onTriggered", "id: timeout")
   return {
-    service, helper, timeout, events, writes, start, loadId, reply: obj => service.receive(JSON.stringify(obj)),
+    service, helper, timeout, events, writes, messages, start, loadId, reply: obj => service.receive(JSON.stringify(obj)),
     // The helper Process ends: its own onExited handler.
     exit(code) {
       helper.running = false
@@ -346,6 +350,117 @@ test("the service drives the real helper: load, query, reload, two catalogs", { 
   assert.equal(h.service.disabled, false)
   assert.deepEqual(h.events, [])
   child.stdin.end()
+})
+
+// The helper refuses a request line over 8 MiB and a list over 20,000
+// entries, and a refusal turns it off in every view. A list past either
+// limit is never sent: the built-in matcher searches that list alone, the
+// other list keeps the helper, and it is logged once per list. The SSH scope
+// at its item cap (10,000), with each title and subtitle at the length cap,
+// is past the line limit.
+test("a list past the helper's limits stays with the built-in matcher, and the other list keeps the helper", { skip: helperUnderTest.skip, timeout: 60000 }, async t => {
+  const h = harness()
+  const argv = helperUnderTest.required ? helperUnderTest.argv : h.command()
+  const child = spawn(argv[0], argv.slice(1), { stdio: ["pipe", "pipe", "inherit"] })
+  t.after(() => child.kill())
+  readline.createInterface({ input: child.stdout }).on("line", line => h.service.receive(line))
+  child.on("exit", code => { if (!child.stdin.writableEnded) h.exit(code) })
+  const sent = []
+  h.helper.write = s => {
+    const load = /^\{"id":\d+,"catalog":"(\w+)","entries":/.exec(s)
+    if (load) sent.push(load[1] + " " + Buffer.byteLength(s.trimEnd()))
+    child.stdin.write(s)
+  }
+  // A search's answer: hits from the helper, or null when the built-in
+  // matcher answers. The first search starts the helper, which then loads
+  // every list (the Process's onStarted).
+  const ask = (name, query) => new Promise(resolve => {
+    const running = h.helper.running
+    h.service.search(name, query, "medium", resolve)
+    if (!running && h.helper.running) h.start()
+  })
+  // The ids the helper found, or null when the built-in matcher answers.
+  const found = async (name, query) => {
+    const answer = await ask(name, query)
+    return answer && Object.keys(answer)
+  }
+  const entries = titles => F.entries(titles.map(title => ({ title })), R.transliterate)
+  const set = (name, list) => h.service.setCatalog(name, list, list.map((_, i) => name + i))
+
+  set("root", entries(["Files", "Firefox"]))
+  assert.deepEqual(await found("root", "files"), ["root0"], "the helper answers")
+  const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find(s => s.id === "ssh")
+  const text = (prefix, i) => prefix + String(i).padStart(Scopes.MAX_TEXT - prefix.length, "0")
+  const output = Array.from({ length: Scopes.maxItems(ssh) }, (_, i) => text("h", i) + "\t\t" + text("u@", i)).join("\n")
+  const hosts = Scopes.parseOutput(output, Scopes.maxItems(ssh)).map(item => Scopes.itemCandidate(ssh, item))
+  assert.equal(hosts.length, 10000)
+  h.service.setCatalog("view", F.entries(hosts, R.transliterate), hosts.map(c => c.id))
+  assert.equal(await ask("view", "h1"), null, "the scope at its caps is searched by the built-in matcher")
+  assert.deepEqual(await found("root", "files"), ["root0"], "the root list keeps the helper")
+  assert.ok(!sent.some(load => load.startsWith("view ")), "the scope's list never reaches the helper: " + sent)
+
+  // The line limit to the byte, counted in UTF-8 as the helper reads it:
+  // titles of 2-, 3- and 4-byte characters (15,003 bytes; the helper takes
+  // 16 KiB a field), the last one sized to make the request `bytes` long
+  // with the longest id a request can have.
+  const sized = bytes => {
+    const entry = title => ({ title, subtitle: "", alternateTitles: [], keywords: [], bundleId: "" })
+    const full = entry("é€😀".repeat(1667))
+    const base = F.loadSize("view", JSON.stringify([entry("")]))
+    const per = F.loadSize("view", JSON.stringify([full, entry("")])) - base
+    const count = Math.floor((bytes - base) / per)
+    const list = Array(count).fill(full).concat([entry("a".repeat(bytes - base - count * per))])
+    const request = F.loadRequest(Number.MAX_SAFE_INTEGER, "view", JSON.stringify(list))
+    assert.equal(Buffer.byteLength(request), bytes, "the request is as long as asked")
+    return list
+  }
+  set("view", sized(F.MAX_REQUEST_BYTES))
+  assert.notEqual(await ask("view", "a"), null, "a list at the line limit loads")
+  set("view", sized(F.MAX_REQUEST_BYTES + 1))
+  assert.equal(await ask("view", "a"), null, "one byte more stays with the built-in matcher")
+  assert.deepEqual(await found("root", "files"), ["root0"], "the root list keeps the helper")
+
+  // The entry limit: two root search scopes at their cap and the apps are
+  // more than the helper takes.
+  set("root", entries(Array.from({ length: F.MAX_ENTRIES }, (_, i) => "app " + i)))
+  assert.ok(await ask("root", "app 19999"), "a list at the entry limit loads")
+  set("root", entries(Array.from({ length: F.MAX_ENTRIES + 1 }, (_, i) => "app " + i)))
+  assert.equal(await ask("root", "app 1"), null, "one entry more stays with the built-in matcher")
+  set("view", entries(["web", "db"]))
+  assert.deepEqual(await found("view", "web"), ["view0"], "the view's list keeps the helper")
+  // A list that fits again goes back to the helper.
+  set("root", entries(["Terminal"]))
+  assert.deepEqual(await found("root", "term"), ["root0"], "a list that fits again goes back to the helper")
+
+  assert.equal(h.service.disabled, false)
+  assert.deepEqual(h.events, [], "the helper never failed")
+  const logged = h.messages.map(m => [m.level, m.text.split(" ")[1], m.metadata.entries])
+  assert.deepEqual(logged, [["warning", "view", 10000], ["warning", "root", F.MAX_ENTRIES + 1]], "one line for each list, however often it was past the limits")
+  child.stdin.end()
+})
+
+// A search waits for its list to load; a list past the limits never loads,
+// so without an answer the timeout would turn the helper off in every view.
+test("a search waiting for a list that grows past the helper's limits gets the built-in matcher at once", () => {
+  const h = harness(), got = []
+  h.start()
+  h.reply({ id: h.loadId("root"), loaded: 1 })
+  h.service.search("root", "fi", "medium", r => got.push(r))
+  const writes = h.writes.length
+  const many = Array.from({ length: F.MAX_ENTRIES + 1 }, (_, i) => ({ title: "app " + i }))
+  h.service.setCatalog("root", many, many.map((_, i) => "app" + i))
+  assert.deepEqual(got, [null], "the built-in matcher answers the waiting search")
+  assert.equal(h.service.pending, null)
+  assert.equal(h.timeout.active, false, "no timeout is left to turn the helper off")
+  assert.equal(h.writes.length, writes, "the list is not sent")
+  assert.equal(h.service.disabled, false)
+})
+
+// A lone surrogate (a text cut inside a pair) counts as the U+FFFD that
+// replaces it on the way out.
+test("a load request is measured in the UTF-8 bytes the helper reads", () => {
+  for (const text of ["", "a", "é", "€", "😀", "é€😀a", "\ud800", "\udc00", "\ud800a\udc00", "a\udc00\ud800😀"])
+    assert.equal(F.utf8Length(text), Buffer.byteLength(text), JSON.stringify(text))
 })
 
 test("no helper for this CPU, or one that can't run, falls back to the built-in matcher once", () => {

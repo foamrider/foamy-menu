@@ -5,6 +5,7 @@ const Frecency = require("../core/Frecency.js")
 const OmarchyMenu = require("../core/OmarchyMenu.js")
 const RS = require("../core/RootSearch.js")
 const Scopes = require("../core/Scopes.js")
+const F = require("../core/FleaSearch.js")
 
 const deps = { Ranker, Frecency, OmarchyMenu, Scopes }
 const NOW = Date.UTC(2026, 10, 6, 12)
@@ -120,6 +121,20 @@ test("command output: over-long lines, titles and values are skipped; a long sub
   assert.equal(items[3].value.length, max)
   const many = Array.from({ length: 5010 }, (_, i) => "host" + i).join("\n")
   assert.equal(Scopes.parseOutput(many).length, 5000, "README: at most 5000 items")
+})
+
+// Why a scope keeps 5000 items: at both caps, with every title, value and
+// subtitle MAX_TEXT ASCII characters, its list still fits one request to the
+// search helper. A larger list would stay with the built-in matcher, which
+// is slow on long texts.
+test("a command scope at its item and text caps is a list the search helper takes", () => {
+  const scope = { id: "big", title: "Big", source: { type: "command", command: ["lister"] }, open: ["true"] }
+  const text = (prefix, i) => prefix + String(i).padStart(Scopes.MAX_TEXT - prefix.length, "0")
+  const output = Array.from({ length: Scopes.MAX_ITEMS + 10 }, (_, i) => [text("t", i), text("v", i), text("s", i)].join("\t")).join("\n")
+  const items = Scopes.parseOutput(output, Scopes.maxItems(scope))
+  assert.equal(items.length, Scopes.MAX_ITEMS, "the scope keeps MAX_ITEMS items")
+  const line = JSON.stringify(F.entries(items.map((item) => Scopes.itemCandidate(scope, item)), Ranker.transliterate))
+  assert.ok(F.loadFits("view", items.length, line), "the list is " + F.loadSize("view", line) + " bytes; the helper takes " + F.MAX_REQUEST_BYTES)
 })
 
 test("commands fill {value} and {plugin} inside one argument each; values are checked", () => {

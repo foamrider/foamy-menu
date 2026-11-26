@@ -6,10 +6,11 @@ import "../kit/FoamyNative.js" as FoamyNative
 Item {
   id: service
   // The helper's lists by catalog name (see search/src/protocol.rs): each is
-  // { line, count, ids, loadId, loaded }, where line is the JSON entries
-  // array as sent. Backend sets "root" (the root candidates, which submenus
-  // and the Apps grid search too) and "view" (the open scope's items or the
-  // settings rows).
+  // { line, count, ids, fits, loadId, loaded }, where line is the JSON
+  // entries array as sent and fits is false for a list past the helper's
+  // limits, which is never sent. Backend sets "root" (the root candidates,
+  // which submenus and the Apps grid search too) and "view" (the open
+  // scope's items or the settings rows).
   property var catalogs: ({})
   // The bundled helper is bin/<arch>/foamy-menu-search; without one for this
   // CPU (or after any failure) the built-in matcher takes over in every view.
@@ -17,7 +18,10 @@ Item {
   property bool disabled: false
   property int serial: 0
   property var pending: null
+  // Catalog names already logged as past the helper's limits: once each.
+  property var reportedLimits: ({})
   signal failed(string message)
+  signal message(string level, string text, var metadata)
 
   function cancel() {
     service.pending = null
@@ -28,7 +32,10 @@ Item {
   // the same order). The helper loads it again only when the entries
   // changed. A search pending on this catalog gets a new id, so a reply the
   // helper computed on the old list (its indexes) can't match, and it is
-  // sent again once the new list is loaded.
+  // sent again once the new list is loaded. A list past the helper's limits
+  // is not sent: the helper would refuse it and turn itself off in every
+  // view. The built-in matcher searches that list alone until one fits
+  // again, and the other catalog keeps the helper.
   function setCatalog(name, entries, ids) {
     var line = JSON.stringify(entries)
     var current = service.catalogs[name]
@@ -37,16 +44,33 @@ Item {
       current.ids = ids
       return
     }
+    var fits = FleaSearch.loadFits(name, entries.length, line)
     service.catalogs[name] = {
       line: line,
       count: entries.length,
       ids: ids,
+      fits: fits,
       loadId: 0,
       loaded: false
     }
+    if (!fits && !service.reportedLimits[name]) {
+      service.reportedLimits[name] = true
+      service.message("warning", "the " + name + " list is past the search helper's limits (" + FleaSearch.MAX_ENTRIES + " entries, " + FleaSearch.MAX_REQUEST_BYTES + " bytes); the built-in matcher searches it", {
+        entries: entries.length,
+        bytes: FleaSearch.loadSize(name, line)
+      })
+    }
     var request = service.pending
-    if (request && request.catalog === name)
-      request.id = ++service.serial
+    if (request && request.catalog === name) {
+      if (fits)
+        request.id = ++service.serial
+      else {
+        // It waited for this list, which will not load: the built-in
+        // matcher answers it now.
+        service.cancel()
+        request.callback(null)
+      }
+    }
     if (helper.running)
       service.load(name)
   }
@@ -54,7 +78,7 @@ Item {
   function search(name, query, sensitivity, callback) {
     service.cancel()
     var catalog = service.catalogs[name]
-    if (service.disabled || !catalog || query.length > FleaSearch.MAX_QUERY_LENGTH) {
+    if (service.disabled || !catalog || !catalog.fits || query.length > FleaSearch.MAX_QUERY_LENGTH) {
       callback(null)
       return
     }
@@ -74,10 +98,12 @@ Item {
 
   function load(name) {
     var catalog = service.catalogs[name]
+    if (!catalog.fits)
+      return
     catalog.loaded = false
     catalog.loadId = ++service.serial
     // The entries are already JSON; only the envelope is built here.
-    helper.write("{\"id\":" + catalog.loadId + ",\"catalog\":" + JSON.stringify(name) + ",\"entries\":" + catalog.line + "}\n")
+    helper.write(FleaSearch.loadRequest(catalog.loadId, name, catalog.line) + "\n")
   }
 
   function loadAll() {

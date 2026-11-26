@@ -160,6 +160,9 @@ Item {
     onFailed: function (message) {
       backend.log("warning", "search", message)
     }
+    onMessage: function (level, text, metadata) {
+      backend.log(level, "search", text, metadata)
+    }
   }
   function subscribe(method, callback) {
     return Rpc.subscribe(backend.registry, method, callback)

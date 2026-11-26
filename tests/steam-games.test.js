@@ -13,6 +13,9 @@ const Settings = require("../core/Settings.js")
 const RS = require("../core/RootSearch.js")
 const Prefs = require("../kit/node-loader.cjs").load("FoamyPrefs")
 const FoamyNative = require("../kit/node-loader.cjs").load("FoamyNative")
+const I18n = require("../kit/node-loader.cjs").load("FoamyI18nText")
+const en = require("../i18n/en.json")
+const no = require("../i18n/no.json")
 
 const root = path.join(__dirname, "..")
 const skip = helper.skip && "no bundled search helper for this CPU"
@@ -213,8 +216,8 @@ test("an unreadable appinfo.vdf does not stop the list: games by their manifests
 
 // The helper stops reading app manifests after 64 MiB in all (a real one is a
 // few KiB). A list cut there would miss the games after it, so the run fails
-// and the scope keeps the list it had.
-test("app manifests over the helper's byte budget fail the list instead of cutting it short", { skip }, () => {
+// and the scope keeps the list it had, or shows why in the user's language.
+test("app manifests over the helper's byte budget fail the list instead of cutting it short, with the reason in the user's language", { skip }, () => {
   const fixture = makeSteam()
   try {
     // 64 manifests of 1 MiB of zeros (sparse, so they take no space) sort
@@ -228,7 +231,10 @@ test("app manifests over the helper's byte budget fail the list instead of cutti
     const run = spawnSync(program, args, { env: { HOME: fixture.home, PATH: process.env.PATH }, encoding: "utf8", timeout: 10000 })
     assert.equal(run.error, undefined)
     assert.deepEqual([run.status, run.stdout], [1, ""], "no list, and an error exit")
-    assert.deepEqual(Scopes.exitFailure(run.status, run.stderr), ["foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games", []])
+    const line = "foamy-menu-search: steam-games: app manifests hold more than 64 MiB; not listing part of the games"
+    assert.deepEqual(Scopes.exitFailure(run.status, run.stderr), [line, []])
+    assert.ok(Object.hasOwn(en, line), "the reason has a catalog entry")
+    assert.notEqual(I18n.translator(no, en).t(line), line, "the reason is translated")
   } finally {
     fs.rmSync(fixture.home, { recursive: true, force: true })
   }

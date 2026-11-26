@@ -304,6 +304,22 @@ for (const [bound, fixture, reason] of PAST_A_TOTAL) {
   })
 }
 
+// Up to the helper's hosts total (one more fails, above) the scope keeps
+// every host it lists: its own item cap must not cut the list short.
+test("ssh-hosts: a config at the hosts total is listed whole in the scope", { skip }, () => {
+  const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find((s) => s.id === "ssh")
+  const names = Object.keys(numbered("h", 10000))
+  const fixture = { files: { ".ssh/config": "Host " + names.join(" ") + "\n" } }
+  const home = makeHome(fixture)
+  try {
+    const values = new Set(Scopes.parseOutput(runRust(home, fixture), Scopes.maxItems(ssh)).map((item) => item.value))
+    assert.equal(values.size, names.length, "every host is an item")
+    assert.ok(names.every((name) => values.has(name)), "every host is an item")
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true })
+  }
+})
+
 test("the SSH scope runs the bundled helper's ssh-hosts, as FoamyNative launches it", { skip }, () => {
   const ssh = Scopes.merge(Scopes.BUILTINS, []).scopes.find((s) => s.id === "ssh")
   const argv = Scopes.fill(ssh.source.command, "", root)

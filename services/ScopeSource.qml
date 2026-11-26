@@ -179,7 +179,7 @@ Item {
         source.message("warning", "scope " + id + ": " + FoamyI18nText.substitute(failure[0], failure[1]), {
           command: proc.scopeCommand
         })
-      source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n")), failure)
+      source.setItems(id, failure ? null : Scopes.parseOutput(proc.lines.join("\n"), Scopes.maxItems(current)), failure)
     }
     proc.scopeId = ""
     proc.lines = []

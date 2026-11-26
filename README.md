@@ -28,8 +28,10 @@ one query per keystroke, and skips fields that cannot match before scoring
 them. So every view matches the same rows at each strictness, misspellings
 included. The built-in matcher takes over in every view for the rest of the
 shell session when the helper is missing for the CPU, exits, fails or takes
-over a second to answer. It also matches a query over 256 characters, and
-the views the helper does not search: a web search scope's saved searches and
+over a second to answer. It also matches a query over 256 characters, a
+list past the helper's limits (a request over 8 MiB, or more than 20,000
+entries; the other list stays with the helper), and the views the helper
+does not search: a web search scope's saved searches and
 Calculator History. The same binary
 lists the SSH scope's hosts (`foamy-menu-search ssh-hosts`) and the Games
 scope's Steam games (`foamy-menu-search steam-games`), one short run each time
@@ -371,7 +373,8 @@ and `cover` too. It runs when the scope is entered, with a
 10-second default timeout (`timeout` 100–60000 ms): at the deadline the
 command's process group (the command and what it started) gets SIGTERM, and
 SIGKILL a second later. The previous list stays on screen while it
-refreshes, and a failed run keeps it. At most 5000 items; the launcher reads
+refreshes, and a failed run keeps it. At most 5000 items (10,000 hosts from
+the SSH scope's own host list); the launcher reads
 at most 8 MiB of a command's output (a fixed `bash` wrapper pipes it through
 `head -c`), so a command that prints more is stopped there by SIGPIPE, and
 the whole lines before the cut are its list.
