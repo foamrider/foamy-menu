@@ -7,6 +7,7 @@ import "plugin" as Foamy
 import "plugin/services" as FoamyServices
 import "plugin/core/Fetch.js" as Fetch
 import "plugin/core/Scopes.js" as Scopes
+import "plugin/kit"
 
 ShellRoot {
   id: test
@@ -758,6 +759,13 @@ ShellRoot {
         // the row's primary action and Actions.
         view.showToast("failure", test.said("A whole number from 0 to 4096. Empty uses the default.", "Et heltall fra 0 til 4096. Tomt bruker standardverdien."))
         var footerGap = test.footerGap()
+        // The failure icon reads on the footer's fill.
+        var failureIcon = test.findItem(function (node) {
+          return node.text === "\uf071"
+        })
+        var footerFill = Qt.tint(view.look.background, Qt.alpha(view.look.foreground, 0.04))
+        var iconRatio = failureIcon ? FoamyPalette.contrastRatio(failureIcon.color, footerFill) : 0
+        test.check(iconRatio >= 4.5, "a failure toast's icon reads on the footer: " + (failureIcon ? failureIcon.color + ", " + iconRatio.toFixed(2) + ":1" : "not shown"))
         test.check(footerGap >= 0, "a long failure toast and its Ctrl T end before the footer's actions (gap " + footerGap + " px)")
         key(Qt.Key_K, Qt.ControlModifier)
         test.check(view.actionPanelOpen && view.actions.some(function (a) {
@@ -1119,7 +1127,10 @@ ShellRoot {
           })
           var at = reason ? reason.mapToItem(view.cardItem, 0, 0) : null
           test.check(!!at && view.emptyText[1].indexOf("long-failure: ") === 0 && reason.lineCount > 1 && at.x >= 0 && at.x + reason.width <= view.cardItem.width, "a failure's long reason wraps inside the card: " + JSON.stringify(at) + " " + (reason ? reason.width + " of " + view.cardItem.width : "not shown"))
-          test.check(!!reason && Qt.colorEqual(reason.color, Commons.Color.urgent) && reason.opacity === 1, "a failure's reason is in the error colour: " + (reason ? reason.color + " at opacity " + reason.opacity : "not shown"))
+          // The theme's red, made readable on the card (launcher.py also
+          // runs a theme whose red reads 2.70:1 there).
+          var reasonRatio = reason ? FoamyPalette.contrastRatio(reason.color, view.look.background) : 0
+          test.check(!!reason && Qt.colorEqual(reason.color, FoamyPalette.onSurface(FoamyPalette.error, view.look.background)) && reasonRatio >= 4.5 && reason.opacity === 1, "a failure's reason is in the error colour and reads on the card: " + (reason ? reason.color + " at opacity " + reason.opacity + ", " + reasonRatio.toFixed(2) + ":1" : "not shown"))
         }
         test.capture("scope-failure", function () {
           menu.open('{"menu":"root"}')
@@ -1144,6 +1155,15 @@ ShellRoot {
         test.check(kept > 0, "Calculator History lists the saved calculation")
         key(Qt.Key_D, Qt.ControlModifier | Qt.ShiftModifier)
         test.check(!!view.alert && history() === kept, "Ctrl+Shift+D asks before it deletes the history")
+        // Its destructive button's label reads on the button's red tint.
+        var dangerButton = test.findItem(function (node) {
+          return node.danger === true
+        })
+        var dangerLabel = dangerButton ? test.findItem(function (node) {
+          return node.text === dangerButton.modelData.title
+        }, dangerButton) : null
+        var dangerRatio = dangerLabel ? FoamyPalette.contrastRatio(dangerLabel.color, Qt.tint(view.look.background, dangerButton.color)) : 0
+        test.check(dangerRatio >= 4.5, "the alert's destructive label reads on its button: " + (dangerLabel ? dangerLabel.color + ", " + dangerRatio.toFixed(2) + ":1" : "not shown"))
         test.plainTexts("the alert")
         key(Qt.Key_Escape)
         test.check(!view.alert && history() === kept && launcher.opened, "Esc on the alert keeps the history")
