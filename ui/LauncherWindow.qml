@@ -1647,7 +1647,7 @@ OverlayWindow {
           font.family: window.toast ? window.look.fontFamily : window.brandFont
           font.pixelSize: window.toast ? window.px(12) : window.px(11)
           // On the footer's fill.
-          color: window.toast && window.toast.style === "failure" ? FoamyPalette.onSurface(FoamyPalette.error, Qt.tint(window.look.background, Util.alpha(window.look.foreground, 0.04))) : window.look.accent
+          color: window.toast && window.toast.style === "failure" ? FoamyPalette.onSurface(FoamyPalette.error, Qt.tint(window.look.background, footer.color)) : window.look.accent
         }
         Text {
           id: footerStatus

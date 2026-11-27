@@ -763,7 +763,8 @@ ShellRoot {
         var failureIcon = test.findItem(function (node) {
           return node.text === "\uf071"
         })
-        var footerFill = Qt.tint(view.look.background, Qt.alpha(view.look.foreground, 0.04))
+        // The icon's row sits on the footer: the fill as it is drawn.
+        var footerFill = failureIcon ? Qt.tint(view.look.background, failureIcon.parent.parent.color) : view.look.background
         var iconRatio = failureIcon ? FoamyPalette.contrastRatio(failureIcon.color, footerFill) : 0
         test.check(iconRatio >= 4.5, "a failure toast's icon reads on the footer: " + (failureIcon ? failureIcon.color + ", " + iconRatio.toFixed(2) + ":1" : "not shown"))
         test.check(footerGap >= 0, "a long failure toast and its Ctrl T end before the footer's actions (gap " + footerGap + " px)")

@@ -23,10 +23,11 @@ Rectangle {
   // Omarchy's ConfirmDialog colours: the theme's urgent colour for a
   // destructive action, the menu scrim behind.
   readonly property color danger: Commons.Color.urgent
+  readonly property color dangerFill: Util.alpha(danger, 0.22)
   // Its label and edge: the urgent colour made readable on the destructive
   // button's tint. Its key hint takes the same colour but KeyHint mutes it,
   // so the hint reads less than that.
-  readonly property color dangerInk: FoamyPalette.onSurface(danger, Qt.tint(look.background, Util.alpha(danger, 0.22)))
+  readonly property color dangerInk: FoamyPalette.onSurface(danger, Qt.tint(look.background, dangerFill))
 
   color: Commons.Color.menu.scrim
 
@@ -114,7 +115,7 @@ Rectangle {
             radius: Math.max(Style.cornerRadius, alert.px(6))
             border.width: danger ? 1 : 0
             border.color: alert.dangerInk
-            color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
+            color: danger ? alert.dangerFill : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
 
             Row {
               anchors.centerIn: parent
