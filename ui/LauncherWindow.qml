@@ -1595,7 +1595,7 @@ OverlayWindow {
         }
         // A failure's reason can be longer than the card is wide (a helper's
         // limit, a command's stderr): it wraps instead of running past it.
-        // It is an error, so it takes the urgent colour (DESIGN.md); any
+        // It is an error, so it takes the readable error colour (DESIGN.md); any
         // other detail is a muted hint.
         Text {
           width: parent.width
@@ -1604,7 +1604,7 @@ OverlayWindow {
           textFormat: Text.PlainText
           text: window.emptyText[1]
           visible: text.length > 0
-          color: window.scopeFailed ? Commons.Color.urgent : window.look.foreground
+          color: window.scopeFailed ? FoamyPalette.onSurface(FoamyPalette.error, window.look.background) : window.look.foreground
           opacity: window.scopeFailed ? 1 : 0.55
           font.family: window.look.fontFamily
           font.pixelSize: Math.round(Style.font.bodySmall * window.zoom)
@@ -1646,7 +1646,8 @@ OverlayWindow {
           text: window.toast ? (window.toast.style === "failure" ? "\uf071" : "\uf00c") : window.brandIcon
           font.family: window.toast ? window.look.fontFamily : window.brandFont
           font.pixelSize: window.toast ? window.px(12) : window.px(11)
-          color: window.toast && window.toast.style === "failure" ? Commons.Color.urgent : window.look.accent
+          // On the footer's fill.
+          color: window.toast && window.toast.style === "failure" ? FoamyPalette.onSurface(FoamyPalette.error, Qt.tint(window.look.background, footer.color)) : window.look.accent
         }
         Text {
           id: footerStatus

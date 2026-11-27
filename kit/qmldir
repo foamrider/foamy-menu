@@ -1,7 +1,8 @@
-# foamy-kit 0.15.1 3ad76bc00b67db9efb2368174344bd7935ebeae6fe1007605b3c4f6dc27f1997 — do not edit; change foamy-kit and run sync
+# foamy-kit 0.15.2 539f4cc2e67bdc9c400a1395cd4cd9c955072ce33f5eccf939cb93c9a183bff8 — do not edit; change foamy-kit and run sync
 FoamyClipboard 1.0 FoamyClipboard.qml
 singleton FoamyI18n 1.0 FoamyI18n.qml
 FoamyIpc 1.0 FoamyIpc.qml
 FoamyIpcPreference 1.0 FoamyIpcPreference.qml
 singleton FoamyMotion 1.0 FoamyMotion.qml
+singleton FoamyPalette 1.0 FoamyPalette.qml
 FoamyPrefsQueue 1.0 FoamyPrefsQueue.qml

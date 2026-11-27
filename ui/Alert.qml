@@ -1,3 +1,4 @@
+pragma ComponentBehavior: Bound
 import QtQuick
 import qs.Commons
 import qs.Commons as Commons
@@ -22,6 +23,11 @@ Rectangle {
   // Omarchy's ConfirmDialog colours: the theme's urgent colour for a
   // destructive action, the menu scrim behind.
   readonly property color danger: Commons.Color.urgent
+  readonly property color dangerFill: Util.alpha(danger, 0.22)
+  // Its label and edge: the urgent colour made readable on the destructive
+  // button's tint. Its key hint takes the same colour but KeyHint mutes it,
+  // so the hint reads less than that.
+  readonly property color dangerInk: FoamyPalette.onSurface(danger, Qt.tint(look.background, dangerFill))
 
   color: Commons.Color.menu.scrim
 
@@ -101,14 +107,15 @@ Rectangle {
           ]
 
           Rectangle {
+            id: button
             required property var modelData
             readonly property bool danger: modelData.primary && alert.spec && alert.spec.destructive
             width: (column.width - alert.px(10)) / 2
             height: alert.px(34)
             radius: Math.max(Style.cornerRadius, alert.px(6))
             border.width: danger ? 1 : 0
-            border.color: alert.danger
-            color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
+            border.color: alert.dangerInk
+            color: danger ? alert.dangerFill : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
 
             Row {
               anchors.centerIn: parent
@@ -118,14 +125,14 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 textFormat: Text.PlainText
                 text: modelData.title
-                color: parent.parent.danger ? alert.danger : alert.look.foreground
+                color: button.danger ? alert.dangerInk : alert.look.foreground
                 font.family: alert.look.fontFamily
                 font.pixelSize: Math.round(Style.font.body * alert.zoom)
               }
               KeyHint {
                 anchors.verticalCenter: parent.verticalCenter
                 keys: modelData.key
-                color: parent.parent.danger ? alert.danger : alert.look.foreground
+                color: button.danger ? alert.dangerInk : alert.look.foreground
                 fontFamily: alert.look.fontFamily
                 zoom: alert.zoom
               }

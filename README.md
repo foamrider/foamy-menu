@@ -513,7 +513,9 @@ dark layout in English and the light layout in Norwegian. The light run also
 runs the fetch, command scope and paste probes and checks that no fetch put
 its URL on curl's command line, and it moves `XDG_CONFIG_HOME` away from
 `~/.config`: the settings must still come from `~/.config/omarchy/shell.json`.
-Every run checks that the stores it saved are owner-only. `preview.png` is
+A last dark run uses foamy-kit's dim-red theme (its red reads 2.70:1 on the
+background): the error texts and the destructive label must still read at
+4.5:1. Every run checks that the stores it saved are owner-only. `preview.png` is
 `root.png` from the English dark run of
 `python3 -I tests/launcher.py --shots DIR`. `tests/app-focuser.py` runs the
 app focuser against a fake `hyprctl`: quick repeated opens each focus the

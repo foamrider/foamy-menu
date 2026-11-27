@@ -493,7 +493,7 @@ with open(path, "w") as f:
         }
     )
     if shots:
-        out = Path(shots) / f"{host}-{theme}-{width}-{language}"
+        out = Path(shots) / f"{host}-{Path(theme).stem}-{width}-{language}"
         out.mkdir(parents=True, exist_ok=True)
         run.env["FOAMY_MENU_SHOTS"] = str(out)
     try:
@@ -551,7 +551,7 @@ with open(path, "w") as f:
         run.ok = False
         result += f"; stores are not private: {private!r}"
     label = "" if native else "/no-native-helper"
-    print(f"{'PASS' if run.ok else 'FAIL'} launcher {host}/{theme}/{width}/{language}{label}: {result}")
+    print(f"{'PASS' if run.ok else 'FAIL'} launcher {host}/{Path(theme).stem}/{width}/{language}{label}: {result}")
     if not run.ok:
         print(run.log[-12000:])
         print(f"log kept at {run.base}")
@@ -581,6 +581,9 @@ def main():
     # The same checks with no bundled helper (JS matcher fallback), in
     # Norwegian, so the "helper isn't available" text must be translated.
     results.append(run_case(host, "dark", 1280, "no", None, native=False, icon=other_icon))
+    # A dark theme with a dim red (2.70:1 on its background): error and
+    # destructive text must lighten until it reads.
+    results.append(run_case(host, KIT / "tests/fixtures/themes/dim-red.toml", 1280, "en", args.shots))
     return 0 if all(results) else 1
 
 

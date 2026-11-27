@@ -170,34 +170,11 @@ ui/ActionPanel.qml: unqualified: Unqualified access | width: panel.px(18)
 ui/ActionPanel.qml: unqualified: Unqualified access | zoom: panel.zoom
 ui/Alert.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * alert.zoom)
 ui/Alert.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * alert.zoom)
-ui/Alert.qml: missing-property: Member "danger" not found on type "QQuickItem" | color: parent.parent.danger ? alert.danger : alert.look.foreground
-ui/Alert.qml: missing-property: Member "danger" not found on type "QQuickItem" | color: parent.parent.danger ? alert.danger : alert.look.foreground
 ui/Alert.qml: missing-property: Member "scrim" not found on type "QObject" | color: Commons.Color.menu.scrim
 ui/Alert.qml: missing-property: Member "title" not found on type "QObject" | font.pixelSize: Math.round(Style.font.title * alert.zoom)
-ui/Alert.qml: unqualified: Unqualified access | border.color: alert.danger
-ui/Alert.qml: unqualified: Unqualified access | color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
-ui/Alert.qml: unqualified: Unqualified access | color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
-ui/Alert.qml: unqualified: Unqualified access | color: danger ? Util.alpha(alert.danger, 0.22) : modelData.primary ? alert.look.selectedBackground : Util.alpha(alert.look.foreground, 0.08)
-ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
-ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
-ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
-ui/Alert.qml: unqualified: Unqualified access | color: parent.parent.danger ? alert.danger : alert.look.foreground
-ui/Alert.qml: unqualified: Unqualified access | font.family: alert.look.fontFamily
-ui/Alert.qml: unqualified: Unqualified access | font.pixelSize: Math.round(Style.font.body * alert.zoom)
-ui/Alert.qml: unqualified: Unqualified access | fontFamily: alert.look.fontFamily
-ui/Alert.qml: unqualified: Unqualified access | height: alert.px(34)
 ui/Alert.qml: unqualified: Unqualified access | keys: modelData.key
 ui/Alert.qml: unqualified: Unqualified access | onClicked: modelData.primary ? alert.confirmed() : alert.cancelled()
-ui/Alert.qml: unqualified: Unqualified access | onClicked: modelData.primary ? alert.confirmed() : alert.cancelled()
-ui/Alert.qml: unqualified: Unqualified access | onClicked: modelData.primary ? alert.confirmed() : alert.cancelled()
-ui/Alert.qml: unqualified: Unqualified access | radius: Math.max(Style.cornerRadius, alert.px(6))
-ui/Alert.qml: unqualified: Unqualified access | readonly property bool danger: modelData.primary && alert.spec && alert.spec.destructive
-ui/Alert.qml: unqualified: Unqualified access | readonly property bool danger: modelData.primary && alert.spec && alert.spec.destructive
-ui/Alert.qml: unqualified: Unqualified access | spacing: alert.px(8)
 ui/Alert.qml: unqualified: Unqualified access | text: modelData.title
-ui/Alert.qml: unqualified: Unqualified access | width: (column.width - alert.px(10)) / 2
-ui/Alert.qml: unqualified: Unqualified access | width: (column.width - alert.px(10)) / 2
-ui/Alert.qml: unqualified: Unqualified access | zoom: alert.zoom
 ui/AppCell.qml: missing-property: Member "body" not found on type "QObject" | font.pixelSize: Math.round(Style.font.body * cell.zoom)
 ui/AppCell.qml: missing-property: Member "bodySmall" not found on type "QObject" | font.pixelSize: Math.round(Style.font.bodySmall * cell.zoom)
 ui/AppCell.qml: unqualified: Unqualified access | maskSource: coverMask
