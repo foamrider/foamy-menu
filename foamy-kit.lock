@@ -3,7 +3,7 @@
 # notices, REVIEW.md and kit/i18n-texts.json are hashed whole. tests/kit-check.sh verifies them.
 version 0.15.1
 source a7c1c2d5e277116163713b417ea137a69a98af4a
-components FoamyClipboard,FoamyI18n,FoamyIpc,FoamyMotion,FoamyNative,FoamyPrefs
+components FoamyClipboard,FoamyI18n,FoamyIpc,FoamyMotion,FoamyNative,FoamyPalette,FoamyPrefs
 5079c3e4ecd2ca5399dff48f64327729d8e84916a4c73fbcb9e0491b16014990  .github/workflows/checks.yml
 98bd9e4430551129a6f4c309ee8ba59b66514db5ca1d4c5b7151ec308f6d632b  .github/workflows/verify-native.yml
 23adc6c9c393c6f29eab5dcbabc13a27a38abdee1cf78c07efb69879dc28f6f7  .oxlintrc.json
@@ -17,6 +17,7 @@ a541e98f164e6c2e83b493341e50b128ba539dc4f32cf2253fb688731a513c3c  kit/FoamyI18nT
 72e0502f9cd35ca638b6af1c5e3e5411738a161cff2ed18f5751e11e9365f48c  kit/FoamyIpcResolver.js
 ac985fdddb1be105d4ca5590c31fb7972e55cf5b05a792ef618a80afda25980f  kit/FoamyMotion.qml
 0e877660044748bd8926a24de47ee8f6f194e085fb20b794e0621b039eda1eb4  kit/FoamyNative.js
+ef4882d76a20b9a897c574e949d0a94292d57265201d15ec86bc93bdb15edc05  kit/FoamyPalette.qml
 6cc5852ff9a1eabd8b4868035a9e246f36382c48fc90bebeafb87859239d3432  kit/FoamyPrefs.js
 7a2d60361f0ea0176830ab8c3911a4ed157c0b9b6171b70bb1ae283611c0d7e9  kit/FoamyPrefsQueue.qml
 2f585065dffcce41c2ad5712118ce3f4f1e19d8801c537025cb389a40f1b7ad5  kit/clipboard.sh
@@ -24,7 +25,7 @@ ac985fdddb1be105d4ca5590c31fb7972e55cf5b05a792ef618a80afda25980f  kit/FoamyMotio
 31cd6228f43b6b189e993ba517cbf8f18c4ba2681a4e71be49b853a39d6114ba  kit/native/build-native.sh
 a4bc7f02a0306d8440f7c20b801f1ffd6318dc4d1bc252732b5840d559d11bf3  kit/native/native.py
 90b1a10f5f5005c94031f36fef0ad3d8e705cf4e13372dd8362ef4579e0a93df  kit/node-loader.cjs
-3ad76bc00b67db9efb2368174344bd7935ebeae6fe1007605b3c4f6dc27f1997  kit/qmldir
+539f4cc2e67bdc9c400a1395cd4cd9c955072ce33f5eccf939cb93c9a183bff8  kit/qmldir
 3d657fb3ee8f6f57c5d15c125ffe6dee501b81e2b41cac673c7cc08c1e542ed4  kit/rust/foamy-helper/Cargo.toml
 5592404e3c4e7163e2f415b7a176ff06d9638d3fd2a0080079905c703395e9d1  kit/rust/foamy-helper/src/child.rs
 9596fa6fae4438602442c80654aaddef2acb4018795ceaa53a1753d3bbaa8b02  kit/rust/foamy-helper/src/favicon.rs
